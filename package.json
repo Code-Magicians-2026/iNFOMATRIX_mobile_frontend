@@ -1,5 +1,5 @@
 {
-  "name": "infomatrix_mobile__frontend",
+  "name": "infomatrix_mobile_frontend",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {

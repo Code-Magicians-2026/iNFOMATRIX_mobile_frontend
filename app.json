@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "iNFOMATRIX_mobile__frontend",
-    "slug": "iNFOMATRIX_mobile__frontend",
-    "version": "1.0.0",
+    "name": "infomatrix_mobile_frontend",
+    "slug": "infomatrix_mobile_frontend",
+    "version": "0.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "infomatrixmobilefrontend",
