@@ -1,0 +1,10 @@
+interface:
+  display_name: "Генератор Android Компонентів"
+  short_description: "Створює UI елементи з підтримкою ripple та elevation"
+policy:
+  allow_implicit_invocation: true
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "expo-docs-server"
+      description: "MCP сервер для доступу до свіжої документації Expo"
