@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DarkTheme, DefaultTheme, Theme } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Appearance } from 'react-native';
 import { ThemeColors, darkColors, lightColors } from '@/shared/styles/theme';
 
 interface ThemeState {
@@ -12,11 +13,12 @@ interface ThemeState {
 }
 
 const STORAGE_KEY = 'APP_THEME';
+const initialIsDark = Appearance.getColorScheme() === 'dark';
 
 const useThemeStore = create<ThemeState>((set, get) => ({
-  isDark: true,
-  theme: DarkTheme,
-  colors: darkColors,
+  isDark: initialIsDark,
+  theme: initialIsDark ? DarkTheme : DefaultTheme,
+  colors: initialIsDark ? darkColors : lightColors,
 
   toggleTheme: async () => {
     const current = get().isDark;

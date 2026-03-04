@@ -10,7 +10,7 @@ import LoginScreen from '@/src/screens/LoginScreen';
 import RegistrationScreen from '@/src/screens/RegistrationScreen';
 
 export type TabParamList = {
-  Library: undefined;
+  Main: undefined;
   Guide: undefined;
 };
 
@@ -25,10 +25,10 @@ export type AppStackParamList = {
 const Stack = createNativeStackNavigator<AppStackParamList>();
 
 const getMainHeaderTitle = (route: unknown) => {
-  const focusedRouteName = getFocusedRouteNameFromRoute(route as never) ?? 'Library';
+  const focusedRouteName = getFocusedRouteNameFromRoute(route as never) ?? 'Main';
 
   switch (focusedRouteName) {
-    case 'Library':
+    case 'Main':
       return 'Library';
     case 'Guide':
       return 'Guide';
