@@ -1,14 +1,28 @@
-import React from "react";
-import { SafeAreaView, Text } from "react-native";
+import React from 'react';
+import { SafeAreaView, StyleSheet, Text } from 'react-native';
+
+import useThemeStore from '@/context/Theme-store';
 
 const MainScreen = () => {
+  const colors = useThemeStore((s) => s.colors);
+
   return (
-    <SafeAreaView
-      style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
-    >
-      <Text>Main screen</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.text, { color: colors.text }]}>Main screen</Text>
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: {
+    fontSize: 18,
+    fontWeight: '500',
+  },
+});
 
 export default MainScreen;

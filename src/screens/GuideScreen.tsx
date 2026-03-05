@@ -1,12 +1,28 @@
 import React from 'react';
-import { SafeAreaView, Text } from 'react-native';
+import { SafeAreaView, StyleSheet, Text } from 'react-native';
+
+import useThemeStore from '@/context/Theme-store';
 
 const GuideScreen = () => {
+  const colors = useThemeStore((s) => s.colors);
+
   return (
-    <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Guide screen</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.text, { color: colors.text }]}>Guide screen</Text>
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: {
+    fontSize: 18,
+    fontWeight: '500',
+  },
+});
 
 export default GuideScreen;

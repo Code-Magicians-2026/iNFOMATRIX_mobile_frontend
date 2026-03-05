@@ -1,20 +1,27 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import React from 'react';
+import { ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import useThemeStore from '@/context/Theme-store';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const theme = useThemeStore((s) => s.theme);
+  const isDark = useThemeStore((s) => s.isDark);
+  const loadTheme = useThemeStore((s) => s.loadTheme);
+
+  React.useEffect(() => {
+    void loadTheme();
+  }, [loadTheme]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={theme}>
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
     </ThemeProvider>
   );
 }

@@ -1,7 +1,8 @@
-import React from "react";
-import { View, Text, Switch } from "react-native";
-import { getStyles } from "@/src/screens/styles";
-import useThemeStore from "@/context/Theme-store";
+import React from 'react';
+import { SafeAreaView, Switch, Text, View } from 'react-native';
+
+import useThemeStore from '@/context/Theme-store';
+import { getStyles } from '@/src/screens/styles';
 
 const SettingsScreen = () => {
   const isDark = useThemeStore((s) => s.isDark);
@@ -10,10 +11,18 @@ const SettingsScreen = () => {
   const styles = React.useMemo(() => getStyles(colors), [colors]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>Темна тема</Text>
-      <Switch value={isDark} onValueChange={toggleTheme} />
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.settingRow}>
+        <Text style={styles.label}>Темна тема</Text>
+        <Switch
+          value={isDark}
+          onValueChange={() => {
+            void toggleTheme();
+          }}
+          trackColor={{ false: '#767577', true: '#ff2d55' }}
+        />
+      </View>
+    </SafeAreaView>
   );
 };
 
