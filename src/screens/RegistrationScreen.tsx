@@ -10,8 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
+import { StackActions } from '@react-navigation/native';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -20,6 +22,7 @@ import { getApiErrorMessage } from '@/src/api/client';
 import type { ThemeColors } from '@/shared/styles/theme';
 
 type RegistrationNavigation = NativeStackNavigationProp<AppStackParamList, 'Registration'>;
+type RegistrationRoute = RouteProp<AppStackParamList, 'Registration'>;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -28,6 +31,7 @@ const RegistrationScreen = () => {
   const styles = React.useMemo(() => getStyles(colors), [colors]);
   const register = useAuthStore((s) => s.register);
   const navigation = useNavigation<RegistrationNavigation>();
+  const route = useRoute<RegistrationRoute>();
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -57,7 +61,7 @@ const RegistrationScreen = () => {
 
     try {
       await register(normalizedEmail, password);
-      navigation.replace('Login', { initialEmail: normalizedEmail });
+      navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
     } catch (registrationError) {
       setError(getApiErrorMessage(registrationError, 'Не вдалося зареєструватися.'));
     } finally {
@@ -134,7 +138,12 @@ const RegistrationScreen = () => {
           </Pressable>
 
           <Pressable
-            onPress={() => navigation.navigate('Login')}
+            onPress={() =>
+              navigation.navigate('Login', {
+                initialEmail: email.trim().toLowerCase(),
+                redirectTo: route.params?.redirectTo ?? 'Profile',
+              })
+            }
             disabled={isSubmitting}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}

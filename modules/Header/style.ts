@@ -1,9 +1,16 @@
 import { StyleSheet } from 'react-native';
 
-export const getStyles = (isDark: boolean) => {
+export const getStyles = (isDark: boolean, isAuthenticated: boolean) => {
   const background = isDark ? '#1f1f1f' : '#ffffff';
   const border = isDark ? '#343434' : '#e6e6e6';
   const text = isDark ? '#f2f2f2' : '#111111';
+  const profileBackground = isAuthenticated
+    ? isDark
+      ? '#1f9ad4'
+      : '#0077b6'
+    : isDark
+      ? '#5a5a60'
+      : '#9a9aa1';
 
   return StyleSheet.create({
     header: {
@@ -44,7 +51,7 @@ export const getStyles = (isDark: boolean) => {
       width: 36,
       height: 36,
       borderRadius: 18,
-      backgroundColor: '#ff2d55',
+      backgroundColor: profileBackground,
       alignItems: 'center',
       justifyContent: 'center',
     },

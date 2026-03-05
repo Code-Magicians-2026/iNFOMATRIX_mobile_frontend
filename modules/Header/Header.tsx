@@ -3,6 +3,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 
 import { getStyles } from './style';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import useAuthStore from '@/context/Auth-store';
 
 type HeaderProps = {
   title: string;
@@ -14,7 +15,16 @@ type HeaderProps = {
 const Header = ({ title, onProfilePress, showBackButton = false, onBackPress }: HeaderProps) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const styles = React.useMemo(() => getStyles(isDark), [isDark]);
+  const isAuthenticated = useAuthStore((s) => Boolean(s.session?.accessToken));
+  const styles = React.useMemo(() => getStyles(isDark, isAuthenticated), [isAuthenticated, isDark]);
+  const sessionEmail = useAuthStore((s) => s.session?.email ?? '');
+  const profileInitial = React.useMemo(() => {
+    const normalized = sessionEmail.trim();
+    if (!normalized) {
+      return 'G';
+    }
+    return normalized[0].toUpperCase();
+  }, [sessionEmail]);
 
   return (
     <View style={styles.header}>
@@ -28,8 +38,12 @@ const Header = ({ title, onProfilePress, showBackButton = false, onBackPress }: 
 
       <Text style={styles.title}>{title}</Text>
 
-      <TouchableOpacity onPress={onProfilePress} style={styles.profileButton}>
-        <Text style={styles.profileButtonText}>P</Text>
+      <TouchableOpacity
+        onPress={onProfilePress}
+        disabled={!onProfilePress}
+        style={styles.profileButton}
+      >
+        <Text style={styles.profileButtonText}>{profileInitial}</Text>
       </TouchableOpacity>
     </View>
   );

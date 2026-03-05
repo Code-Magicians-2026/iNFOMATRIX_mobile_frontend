@@ -56,7 +56,7 @@ const ProfileScreen = () => {
         ) : (
           <>
             <Pressable
-              onPress={() => navigation.navigate('Login')}
+              onPress={() => navigation.navigate('Login', { redirectTo: 'Profile' })}
               style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             >
@@ -64,7 +64,11 @@ const ProfileScreen = () => {
             </Pressable>
 
             <Pressable
-              onPress={() => navigation.navigate('Registration')}
+              onPress={() =>
+                navigation.navigate('Registration', {
+                  redirectTo: 'Profile',
+                })
+              }
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             >

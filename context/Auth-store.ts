@@ -22,7 +22,7 @@ interface AuthState {
 
 const STORAGE_KEY = 'AUTH_SESSION';
 
-const useAuthStore = create<AuthState>((set) => ({
+const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   isHydrated: false,
 
@@ -48,6 +48,11 @@ const useAuthStore = create<AuthState>((set) => ({
 
   register: async (email: string, password: string) => {
     await registerRequest({ email, password });
+    try {
+      await get().login(email, password);
+    } catch {
+      throw new Error('Акаунт створено, але автовхід не вдався. Увійдіть вручну.');
+    }
   },
 
   login: async (email: string, password: string) => {
@@ -66,12 +71,16 @@ const useAuthStore = create<AuthState>((set) => ({
     };
 
     set({ session });
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    } catch {}
   },
 
   logout: async () => {
     set({ session: null });
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch {}
   },
 }));
 

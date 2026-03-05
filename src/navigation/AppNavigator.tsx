@@ -18,8 +18,8 @@ export type AppStackParamList = {
   MainTabs: undefined;
   Profile: undefined;
   Settings: undefined;
-  Login: { initialEmail?: string } | undefined;
-  Registration: undefined;
+  Login: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
+  Registration: { redirectTo?: 'Settings' | 'Profile' } | undefined;
 };
 
 const Stack = createNativeStackNavigator<AppStackParamList>();

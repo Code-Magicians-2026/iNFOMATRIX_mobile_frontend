@@ -13,6 +13,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import { StackActions } from '@react-navigation/native';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -54,7 +55,7 @@ const LoginScreen = () => {
 
     try {
       await login(normalizedEmail, password);
-      navigation.goBack();
+      navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
     } catch (loginError) {
       setError(getApiErrorMessage(loginError, 'Не вдалося увійти.'));
     } finally {
@@ -118,7 +119,11 @@ const LoginScreen = () => {
           </Pressable>
 
           <Pressable
-            onPress={() => navigation.navigate('Registration')}
+            onPress={() =>
+              navigation.navigate('Registration', {
+                redirectTo: route.params?.redirectTo ?? 'Profile',
+              })
+            }
             disabled={isSubmitting}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
