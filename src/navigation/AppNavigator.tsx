@@ -18,7 +18,7 @@ export type AppStackParamList = {
   MainTabs: undefined;
   Profile: undefined;
   Settings: undefined;
-  Login: undefined;
+  Login: { initialEmail?: string } | undefined;
   Registration: undefined;
 };
 

@@ -5,15 +5,18 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import useThemeStore from '@/context/Theme-store';
+import useAuthStore from '@/context/Auth-store';
 
 export default function RootLayout() {
   const theme = useThemeStore((s) => s.theme);
   const isDark = useThemeStore((s) => s.isDark);
   const loadTheme = useThemeStore((s) => s.loadTheme);
+  const hydrateAuth = useAuthStore((s) => s.hydrate);
 
   React.useEffect(() => {
     void loadTheme();
-  }, [loadTheme]);
+    void hydrateAuth();
+  }, [hydrateAuth, loadTheme]);
 
   return (
     <ThemeProvider value={theme}>
