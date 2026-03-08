@@ -8,6 +8,7 @@ import 'react-native-reanimated';
 import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
 import { queryClient } from '@/src/features/auth/api/queryClient';
+import AppErrorBoundary from '@/shared/components/AppErrorBoundary';
 
 export default function RootLayout() {
   const theme = useThemeStore((s) => s.theme);
@@ -22,12 +23,14 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider value={theme}>
-        <Stack>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-        </Stack>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-      </ThemeProvider>
+      <AppErrorBoundary isDark={isDark}>
+        <ThemeProvider value={theme}>
+          <Stack>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+          </Stack>
+          <StatusBar style={isDark ? 'light' : 'dark'} />
+        </ThemeProvider>
+      </AppErrorBoundary>
     </QueryClientProvider>
   );
 }
