@@ -4,6 +4,7 @@ export const getStyles = (isDark: boolean, isAuthenticated: boolean) => {
   const background = isDark ? '#1f1f1f' : '#ffffff';
   const border = isDark ? '#343434' : '#e6e6e6';
   const text = isDark ? '#f2f2f2' : '#111111';
+  const aiBackground = isDark ? '#2f3f58' : '#e7f0ff';
   const profileBackground = isAuthenticated
     ? isDark
       ? '#1f9ad4'
@@ -46,6 +47,20 @@ export const getStyles = (isDark: boolean, isAuthenticated: boolean) => {
     sideButtonPlaceholder: {
       width: 36,
       height: 36,
+    },
+    aiButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: aiBackground,
+      elevation: 2,
+    },
+    aiButtonText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: text,
     },
     profileButton: {
       width: 36,
