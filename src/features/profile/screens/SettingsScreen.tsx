@@ -17,14 +17,23 @@ const SettingsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.settingRow}>
-        <Text style={styles.label}>Темна тема</Text>
+      <View
+        style={styles.settingRow}
+        accessible
+        importantForAccessibility="yes"
+        accessibilityLabel="Налаштування темної теми"
+      >
+        <Text style={styles.label} allowFontScaling>
+          Темна тема
+        </Text>
         <Switch
           value={isDark}
           onValueChange={() => {
             void toggleTheme();
           }}
           trackColor={{ false: '#767577', true: '#ff2d55' }}
+          accessibilityLabel="Перемикач темної теми"
+          accessibilityHint="Вмикає або вимикає темну тему застосунку"
         />
       </View>
     </SafeAreaView>

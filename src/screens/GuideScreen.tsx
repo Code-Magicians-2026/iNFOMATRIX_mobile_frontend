@@ -11,7 +11,14 @@ const GuideScreen = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.text, { color: colors.text }]}>Guide screen</Text>
+      <Text
+        style={[styles.text, { color: colors.text }]}
+        allowFontScaling
+        accessible
+        importantForAccessibility="yes"
+      >
+        Guide screen
+      </Text>
     </SafeAreaView>
   );
 };

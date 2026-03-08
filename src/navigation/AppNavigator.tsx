@@ -64,6 +64,7 @@ export default function AppNavigator() {
               title="AI Chat"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onProfilePress={() => navigation.navigate('Profile')}
             />
           ),
         })}

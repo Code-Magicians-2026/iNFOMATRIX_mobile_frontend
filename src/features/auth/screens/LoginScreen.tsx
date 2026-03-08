@@ -74,12 +74,23 @@ const LoginScreen = () => {
         style={styles.keyboardWrapper}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.card}>
-          <Text style={styles.title}>Вхід</Text>
-          <Text style={styles.subtitle}>Увійдіть, щоб продовжити роботу</Text>
+        <View
+          style={styles.card}
+          accessible
+          importantForAccessibility="yes"
+          accessibilityLabel="Форма входу"
+        >
+          <Text style={styles.title} allowFontScaling>
+            Вхід
+          </Text>
+          <Text style={styles.subtitle} allowFontScaling>
+            Увійдіть, щоб продовжити роботу
+          </Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label} allowFontScaling>
+              Email
+            </Text>
             <TextInput
               style={styles.input}
               value={email}
@@ -90,11 +101,16 @@ const LoginScreen = () => {
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
               editable={!loginMutation.isPending}
+              accessibilityLabel="Електронна пошта"
+              accessibilityHint="Поле для введення електронної пошти"
+              importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Пароль</Text>
+            <Text style={styles.label} allowFontScaling>
+              Пароль
+            </Text>
             <TextInput
               style={styles.input}
               value={password}
@@ -103,10 +119,17 @@ const LoginScreen = () => {
               placeholder="Введіть пароль"
               placeholderTextColor={colors.textSecondary}
               editable={!loginMutation.isPending}
+              accessibilityLabel="Пароль"
+              accessibilityHint="Поле для введення паролю"
+              importantForAccessibility="yes"
             />
           </View>
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? (
+            <Text style={styles.errorText} accessibilityRole="alert" allowFontScaling>
+              {error}
+            </Text>
+          ) : null}
 
           <Pressable
             onPress={() => {
@@ -115,11 +138,18 @@ const LoginScreen = () => {
             disabled={loginMutation.isPending}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            accessibilityRole="button"
+            accessibilityLabel="Кнопка входу"
+            accessibilityHint="Виконує вхід у акаунт"
+            accessibilityState={{ disabled: loginMutation.isPending }}
+            importantForAccessibility="yes"
           >
             {loginMutation.isPending ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.primaryButtonText}>Увійти</Text>
+              <Text style={styles.primaryButtonText} allowFontScaling>
+                Увійти
+              </Text>
             )}
           </Pressable>
 
@@ -132,8 +162,15 @@ const LoginScreen = () => {
             disabled={loginMutation.isPending}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            accessibilityRole="button"
+            accessibilityLabel="Кнопка реєстрації"
+            accessibilityHint="Відкриває екран створення акаунта"
+            accessibilityState={{ disabled: loginMutation.isPending }}
+            importantForAccessibility="yes"
           >
-            <Text style={styles.secondaryButtonText}>Створити акаунт</Text>
+            <Text style={styles.secondaryButtonText} allowFontScaling>
+              Створити акаунт
+            </Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>

@@ -112,13 +112,22 @@ const AgentChatScreen = () => {
             },
           ]}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel={`Чат ${item.title}`}
+          accessibilityHint="Відкриває вибраний чат"
+          accessibilityState={{ selected: isSelected }}
+          importantForAccessibility="yes"
         >
-          <Text style={[styles.chatMenuTitle, { color: isSelected ? '#ffffff' : colors.text }]}>
+          <Text
+            style={[styles.chatMenuTitle, { color: isSelected ? '#ffffff' : colors.text }]}
+            allowFontScaling
+          >
             {item.title}
           </Text>
           <Text
             style={[styles.chatMenuPreview, { color: isSelected ? '#cfe9ff' : colors.textSecondary }]}
             numberOfLines={1}
+            allowFontScaling
           >
             {item.preview}
           </Text>
@@ -143,6 +152,7 @@ const AgentChatScreen = () => {
             styles.messageText,
             { color: item.role === 'user' ? '#ffffff' : colors.text },
           ]}
+          allowFontScaling
         >
           {item.text}
         </Text>
@@ -153,17 +163,24 @@ const AgentChatScreen = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.topBar}>
+      <View style={styles.topBar} importantForAccessibility="yes">
         {hasMultipleChats ? (
           <Pressable
             onPress={() => setIsChatMenuOpen((prev) => !prev)}
             style={[styles.menuTrigger, { backgroundColor: colors.card, borderColor: colors.border }]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            accessibilityRole="button"
+            accessibilityLabel="Список чатів"
+            accessibilityHint={isChatMenuOpen ? 'Закриває список чатів' : 'Відкриває список чатів'}
+            accessibilityState={{ expanded: isChatMenuOpen }}
+            importantForAccessibility="yes"
           >
-            <Text style={[styles.menuTriggerText, { color: colors.text }]}>Чати ({chats.length})</Text>
+            <Text style={[styles.menuTriggerText, { color: colors.text }]} allowFontScaling>
+              Чати ({chats.length})
+            </Text>
           </Pressable>
         ) : (
-          <Text style={[styles.screenTitle, { color: colors.text }]}>
+          <Text style={[styles.screenTitle, { color: colors.text }]} allowFontScaling>
             {activeChat?.title ?? 'Новий чат з агентом'}
           </Text>
         )}
@@ -171,8 +188,14 @@ const AgentChatScreen = () => {
           onPress={handleStartNewChat}
           style={[styles.newChatButton, { backgroundColor: colors.card, borderColor: colors.border }]}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="Новий чат"
+          accessibilityHint="Створює новий чат з агентом"
+          importantForAccessibility="yes"
         >
-          <Text style={[styles.newChatButtonText, { color: colors.text }]}>+ Новий чат</Text>
+          <Text style={[styles.newChatButtonText, { color: colors.text }]} allowFontScaling>
+            + Новий чат
+          </Text>
         </Pressable>
       </View>
 
@@ -199,7 +222,7 @@ const AgentChatScreen = () => {
             renderItem={renderMessageItem}
             contentContainerStyle={styles.messagesContent}
             ListEmptyComponent={
-              <Text style={[styles.emptyMessage, { color: colors.textSecondary }]}>
+              <Text style={[styles.emptyMessage, { color: colors.textSecondary }]} allowFontScaling>
                 Напишіть перше повідомлення.
               </Text>
             }
@@ -219,6 +242,9 @@ const AgentChatScreen = () => {
             onChangeText={setInputText}
             placeholder="Напишіть повідомлення..."
             placeholderTextColor={colors.textSecondary}
+            accessibilityLabel="Поле повідомлення"
+            accessibilityHint="Введіть текст повідомлення для чату"
+            importantForAccessibility="yes"
             style={[
               styles.input,
               {
@@ -232,8 +258,14 @@ const AgentChatScreen = () => {
             onPress={handleSend}
             style={[styles.sendButton, { backgroundColor: '#0077b6' }]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            accessibilityRole="button"
+            accessibilityLabel="Надіслати повідомлення"
+            accessibilityHint="Надсилає поточне повідомлення в чат"
+            importantForAccessibility="yes"
           >
-            <Text style={styles.sendButtonText}>Надіслати</Text>
+            <Text style={styles.sendButtonText} allowFontScaling>
+              Надіслати
+            </Text>
           </Pressable>
         </View>
       )}

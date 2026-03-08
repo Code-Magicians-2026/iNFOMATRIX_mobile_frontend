@@ -13,9 +13,11 @@ const MainScreen = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.content}>
-        <Text style={[styles.text, { color: colors.text }]}>Main screen</Text>
-        <Text style={[styles.welcomeText, { color: colors.textSecondary }]}>
+      <View style={styles.content} accessible importantForAccessibility="yes">
+        <Text style={[styles.text, { color: colors.text }]} allowFontScaling>
+          Main screen
+        </Text>
+        <Text style={[styles.welcomeText, { color: colors.textSecondary }]} allowFontScaling>
           Welcome, {userEmail}
         </Text>
       </View>

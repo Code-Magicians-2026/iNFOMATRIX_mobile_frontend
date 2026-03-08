@@ -80,12 +80,23 @@ const RegistrationScreen = () => {
         style={styles.keyboardWrapper}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.card}>
-          <Text style={styles.title}>Реєстрація</Text>
-          <Text style={styles.subtitle}>Створіть обліковий запис</Text>
+        <View
+          style={styles.card}
+          accessible
+          importantForAccessibility="yes"
+          accessibilityLabel="Форма реєстрації"
+        >
+          <Text style={styles.title} allowFontScaling>
+            Реєстрація
+          </Text>
+          <Text style={styles.subtitle} allowFontScaling>
+            Створіть обліковий запис
+          </Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label} allowFontScaling>
+              Email
+            </Text>
             <TextInput
               style={styles.input}
               value={email}
@@ -96,11 +107,16 @@ const RegistrationScreen = () => {
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
+              accessibilityLabel="Електронна пошта"
+              accessibilityHint="Поле для введення електронної пошти"
+              importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Пароль</Text>
+            <Text style={styles.label} allowFontScaling>
+              Пароль
+            </Text>
             <TextInput
               style={styles.input}
               value={password}
@@ -109,11 +125,16 @@ const RegistrationScreen = () => {
               placeholder="Мінімум 6 символів"
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
+              accessibilityLabel="Пароль"
+              accessibilityHint="Поле для введення паролю"
+              importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Підтвердження пароля</Text>
+            <Text style={styles.label} allowFontScaling>
+              Підтвердження пароля
+            </Text>
             <TextInput
               style={styles.input}
               value={confirmPassword}
@@ -122,10 +143,17 @@ const RegistrationScreen = () => {
               placeholder="Повторіть пароль"
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
+              accessibilityLabel="Підтвердження пароля"
+              accessibilityHint="Поле для повторного введення паролю"
+              importantForAccessibility="yes"
             />
           </View>
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? (
+            <Text style={styles.errorText} accessibilityRole="alert" allowFontScaling>
+              {error}
+            </Text>
+          ) : null}
 
           <Pressable
             onPress={() => {
@@ -134,11 +162,18 @@ const RegistrationScreen = () => {
             disabled={registerMutation.isPending}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            accessibilityRole="button"
+            accessibilityLabel="Кнопка реєстрації"
+            accessibilityHint="Створює новий акаунт"
+            accessibilityState={{ disabled: registerMutation.isPending }}
+            importantForAccessibility="yes"
           >
             {registerMutation.isPending ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.primaryButtonText}>Зареєструватися</Text>
+              <Text style={styles.primaryButtonText} allowFontScaling>
+                Зареєструватися
+              </Text>
             )}
           </Pressable>
 
@@ -152,8 +187,15 @@ const RegistrationScreen = () => {
             disabled={registerMutation.isPending}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            accessibilityRole="button"
+            accessibilityLabel="Кнопка входу"
+            accessibilityHint="Переходить на екран входу"
+            accessibilityState={{ disabled: registerMutation.isPending }}
+            importantForAccessibility="yes"
           >
-            <Text style={styles.secondaryButtonText}>Вже є акаунт</Text>
+            <Text style={styles.secondaryButtonText} allowFontScaling>
+              Вже є акаунт
+            </Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>

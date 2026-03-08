@@ -36,13 +36,19 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
     }
 
     return (
-      <View style={[styles.container, { backgroundColor: isDark ? '#1c1c1e' : '#f2f2f7' }]}>
-        <Text style={[styles.title, { color: isDark ? '#ffffff' : '#000000' }]}>
+      <View
+        style={[styles.container, { backgroundColor: isDark ? '#1c1c1e' : '#f2f2f7' }]}
+        accessible
+        importantForAccessibility="yes"
+      >
+        <Text style={[styles.title, { color: isDark ? '#ffffff' : '#000000' }]} allowFontScaling>
           Сталася помилка
         </Text>
         <Text
           style={[styles.subtitle, { color: isDark ? '#b8b8bd' : '#555555' }]}
           numberOfLines={3}
+          accessibilityRole="alert"
+          allowFontScaling
         >
           {error.message || 'Щось пішло не так.'}
         </Text>
@@ -50,8 +56,14 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
           onPress={this.handleRetry}
           style={styles.button}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="Спробувати ще раз"
+          accessibilityHint="Повторно рендерить екран після помилки"
+          importantForAccessibility="yes"
         >
-          <Text style={styles.buttonText}>Спробувати ще раз</Text>
+          <Text style={styles.buttonText} allowFontScaling>
+            Спробувати ще раз
+          </Text>
         </Pressable>
       </View>
     );

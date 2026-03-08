@@ -37,9 +37,18 @@ const ProfileScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {session ? (
-          <View style={styles.accountCard}>
-            <Text style={styles.accountLabel}>Ви увійшли як</Text>
-            <Text style={styles.accountEmail}>{session.email}</Text>
+          <View
+            style={styles.accountCard}
+            accessible
+            importantForAccessibility="yes"
+            accessibilityLabel={`Поточний користувач ${session.email}`}
+          >
+            <Text style={styles.accountLabel} allowFontScaling>
+              Ви увійшли як
+            </Text>
+            <Text style={styles.accountEmail} allowFontScaling>
+              {session.email}
+            </Text>
           </View>
         ) : null}
 
@@ -51,11 +60,18 @@ const ProfileScreen = () => {
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel="Вийти з акаунта"
+            accessibilityHint="Завершує поточну сесію користувача"
+            accessibilityState={{ disabled: isSubmitting }}
+            importantForAccessibility="yes"
           >
             {isSubmitting ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.primaryButtonText}>Вийти</Text>
+              <Text style={styles.primaryButtonText} allowFontScaling>
+                Вийти
+              </Text>
             )}
           </Pressable>
         ) : (
@@ -64,8 +80,14 @@ const ProfileScreen = () => {
               onPress={() => navigation.navigate('Login', { redirectTo: 'Profile' })}
               style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              accessibilityRole="button"
+              accessibilityLabel="Увійти"
+              accessibilityHint="Відкриває екран входу"
+              importantForAccessibility="yes"
             >
-              <Text style={styles.primaryButtonText}>Увійти</Text>
+              <Text style={styles.primaryButtonText} allowFontScaling>
+                Увійти
+              </Text>
             </Pressable>
 
             <Pressable
@@ -76,8 +98,14 @@ const ProfileScreen = () => {
               }
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              accessibilityRole="button"
+              accessibilityLabel="Реєстрація"
+              accessibilityHint="Відкриває екран реєстрації"
+              importantForAccessibility="yes"
             >
-              <Text style={styles.secondaryButtonText}>Реєстрація</Text>
+              <Text style={styles.secondaryButtonText} allowFontScaling>
+                Реєстрація
+              </Text>
             </Pressable>
           </>
         )}
@@ -86,8 +114,14 @@ const ProfileScreen = () => {
           onPress={() => navigation.navigate('Settings')}
           style={({ pressed }) => [styles.tertiaryButton, pressed && styles.pressed]}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="Налаштування"
+          accessibilityHint="Відкриває екран налаштувань"
+          importantForAccessibility="yes"
         >
-          <Text style={styles.tertiaryButtonText}>Налаштування</Text>
+          <Text style={styles.tertiaryButtonText} allowFontScaling>
+            Налаштування
+          </Text>
         </Pressable>
       </View>
     </SafeAreaView>
