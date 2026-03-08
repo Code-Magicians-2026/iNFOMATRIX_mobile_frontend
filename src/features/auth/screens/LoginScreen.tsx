@@ -17,7 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
-import { getApiErrorMessage } from '@/src/api/client';
+import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import type { ThemeColors } from '@/shared/styles/theme';
 
 type LoginNavigation = NativeStackNavigationProp<AppStackParamList, 'Login'>;

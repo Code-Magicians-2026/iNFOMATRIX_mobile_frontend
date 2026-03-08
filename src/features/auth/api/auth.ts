@@ -1,4 +1,4 @@
-import { request } from '@/src/api/client';
+import { request } from './client';
 
 export interface RegisterRequest {
   email: string;

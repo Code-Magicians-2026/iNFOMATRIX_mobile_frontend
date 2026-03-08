@@ -22,7 +22,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-vi.mock('@/src/api/auth', () => ({
+vi.mock('@/src/features/auth/api/auth', () => ({
   login: loginRequestMock,
   register: registerRequestMock,
 }));

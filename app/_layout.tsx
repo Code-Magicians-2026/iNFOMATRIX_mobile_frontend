@@ -7,7 +7,7 @@ import 'react-native-reanimated';
 
 import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
-import { queryClient } from '@/src/api/queryClient';
+import { queryClient } from '@/src/features/auth/api/queryClient';
 
 export default function RootLayout() {
   const theme = useThemeStore((s) => s.theme);

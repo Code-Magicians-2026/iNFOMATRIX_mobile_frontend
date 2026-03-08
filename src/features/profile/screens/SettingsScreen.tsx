@@ -2,7 +2,7 @@ import React from 'react';
 import { SafeAreaView, Switch, Text, View } from 'react-native';
 
 import useThemeStore from '@/context/Theme-store';
-import { getStyles } from '@/src/screens/styles';
+import { getStyles } from '@/src/features/profile/styles/settings.styles';
 
 const SettingsScreen = () => {
   const isDark = useThemeStore((s) => s.isDark);

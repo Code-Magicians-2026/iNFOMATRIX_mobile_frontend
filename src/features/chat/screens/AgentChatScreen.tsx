@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 import useThemeStore from '@/context/Theme-store';
-import styles from '@/src/screens/AgentChatScreen.styles';
+import styles from './AgentChatScreen.styles';
 
 type ChatThread = {
   id: string;
