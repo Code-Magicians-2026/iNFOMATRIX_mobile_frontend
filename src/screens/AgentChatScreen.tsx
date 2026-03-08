@@ -1,8 +1,9 @@
 import React from 'react';
 import {
+  FlatList,
+  ListRenderItem,
   Pressable,
   SafeAreaView,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -102,6 +103,60 @@ const AgentChatScreen = () => {
     setInputText('');
   };
 
+  const renderChatMenuItem: ListRenderItem<ChatThread> = React.useCallback(
+    ({ item }) => {
+      const isSelected = item.id === activeChatId;
+
+      return (
+        <Pressable
+          onPress={() => handleSelectChat(item.id)}
+          style={[
+            styles.chatMenuItem,
+            {
+              borderColor: isSelected ? '#0077b6' : colors.border,
+              backgroundColor: isSelected ? '#0077b6' : colors.background,
+            },
+          ]}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+        >
+          <Text style={[styles.chatMenuTitle, { color: isSelected ? '#ffffff' : colors.text }]}>
+            {item.title}
+          </Text>
+          <Text
+            style={[styles.chatMenuPreview, { color: isSelected ? '#cfe9ff' : colors.textSecondary }]}
+            numberOfLines={1}
+          >
+            {item.preview}
+          </Text>
+        </Pressable>
+      );
+    },
+    [activeChatId, colors.background, colors.border, colors.text, colors.textSecondary],
+  );
+
+  const renderMessageItem: ListRenderItem<ChatMessage> = React.useCallback(
+    ({ item }) => (
+      <View
+        style={[
+          styles.messageBubble,
+          item.role === 'user'
+            ? [styles.userBubble, { backgroundColor: '#0077b6' }]
+            : [styles.agentBubble, { backgroundColor: colors.background }],
+        ]}
+      >
+        <Text
+          style={[
+            styles.messageText,
+            { color: item.role === 'user' ? '#ffffff' : colors.text },
+          ]}
+        >
+          {item.text}
+        </Text>
+      </View>
+    ),
+    [colors.background, colors.text],
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.topBar}>
@@ -129,68 +184,37 @@ const AgentChatScreen = () => {
 
       {hasMultipleChats && isChatMenuOpen ? (
         <View style={[styles.chatMenu, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <ScrollView contentContainerStyle={styles.chatMenuContent}>
-            {chats.map((chat) => {
-              const isSelected = chat.id === activeChatId;
-              return (
-                <Pressable
-                  key={chat.id}
-                  onPress={() => handleSelectChat(chat.id)}
-                  style={[
-                    styles.chatMenuItem,
-                    {
-                      borderColor: isSelected ? '#0077b6' : colors.border,
-                      backgroundColor: isSelected ? '#0077b6' : colors.background,
-                    },
-                  ]}
-                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                >
-                  <Text style={[styles.chatMenuTitle, { color: isSelected ? '#ffffff' : colors.text }]}>
-                    {chat.title}
-                  </Text>
-                  <Text
-                    style={[styles.chatMenuPreview, { color: isSelected ? '#cfe9ff' : colors.textSecondary }]}
-                    numberOfLines={1}
-                  >
-                    {chat.preview}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <FlatList
+            data={chats}
+            keyExtractor={(item) => item.id}
+            renderItem={renderChatMenuItem}
+            contentContainerStyle={styles.chatMenuContent}
+            initialNumToRender={8}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            showsVerticalScrollIndicator={false}
+          />
         </View>
       ) : null}
 
       {isChatMenuOpen ? null : (
         <View style={[styles.chatBox, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <ScrollView contentContainerStyle={styles.messagesContent}>
-            {activeMessages.length === 0 ? (
+          <FlatList
+            data={activeMessages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessageItem}
+            contentContainerStyle={styles.messagesContent}
+            ListEmptyComponent={
               <Text style={[styles.emptyMessage, { color: colors.textSecondary }]}>
                 Напишіть перше повідомлення.
               </Text>
-            ) : (
-              activeMessages.map((message) => (
-                <View
-                  key={message.id}
-                  style={[
-                    styles.messageBubble,
-                    message.role === 'user'
-                      ? [styles.userBubble, { backgroundColor: '#0077b6' }]
-                      : [styles.agentBubble, { backgroundColor: colors.background }],
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.messageText,
-                      { color: message.role === 'user' ? '#ffffff' : colors.text },
-                    ]}
-                  >
-                    {message.text}
-                  </Text>
-                </View>
-              ))
-            )}
-          </ScrollView>
+            }
+            initialNumToRender={12}
+            maxToRenderPerBatch={20}
+            windowSize={10}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          />
         </View>
       )}
 

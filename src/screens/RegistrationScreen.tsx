@@ -1,4 +1,5 @@
 import React from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -35,7 +36,11 @@ const RegistrationScreen = () => {
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const registerMutation = useMutation({
+    mutationKey: ['auth', 'register'],
+    mutationFn: ({ email, password }: { email: string; password: string }) =>
+      register(email, password),
+  });
 
   const onRegisterPress = async () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -55,15 +60,12 @@ const RegistrationScreen = () => {
     }
 
     setError(null);
-    setIsSubmitting(true);
 
     try {
-      await register(normalizedEmail, password);
+      await registerMutation.mutateAsync({ email: normalizedEmail, password });
       navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
     } catch (registrationError) {
       setError(getApiErrorMessage(registrationError, 'Не вдалося зареєструватися.'));
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -88,7 +90,7 @@ const RegistrationScreen = () => {
               autoCorrect={false}
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
-              editable={!isSubmitting}
+              editable={!registerMutation.isPending}
             />
           </View>
 
@@ -101,7 +103,7 @@ const RegistrationScreen = () => {
               secureTextEntry
               placeholder="Мінімум 6 символів"
               placeholderTextColor={colors.textSecondary}
-              editable={!isSubmitting}
+              editable={!registerMutation.isPending}
             />
           </View>
 
@@ -114,7 +116,7 @@ const RegistrationScreen = () => {
               secureTextEntry
               placeholder="Повторіть пароль"
               placeholderTextColor={colors.textSecondary}
-              editable={!isSubmitting}
+              editable={!registerMutation.isPending}
             />
           </View>
 
@@ -124,11 +126,11 @@ const RegistrationScreen = () => {
             onPress={() => {
               void onRegisterPress();
             }}
-            disabled={isSubmitting}
+            disabled={registerMutation.isPending}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           >
-            {isSubmitting ? (
+            {registerMutation.isPending ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryButtonText}>Зареєструватися</Text>
@@ -142,7 +144,7 @@ const RegistrationScreen = () => {
                 redirectTo: route.params?.redirectTo ?? 'Profile',
               })
             }
-            disabled={isSubmitting}
+            disabled={registerMutation.isPending}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           >

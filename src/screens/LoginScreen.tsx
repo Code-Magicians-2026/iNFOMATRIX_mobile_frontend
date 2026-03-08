@@ -1,4 +1,5 @@
 import React from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -34,7 +35,11 @@ const LoginScreen = () => {
   const [email, setEmail] = React.useState(route.params?.initialEmail ?? '');
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const loginMutation = useMutation({
+    mutationKey: ['auth', 'login'],
+    mutationFn: ({ email, password }: { email: string; password: string }) =>
+      login(email, password),
+  });
 
   const onLoginPress = async () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -49,15 +54,12 @@ const LoginScreen = () => {
     }
 
     setError(null);
-    setIsSubmitting(true);
 
     try {
-      await login(normalizedEmail, password);
+      await loginMutation.mutateAsync({ email: normalizedEmail, password });
       navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
     } catch (loginError) {
       setError(getApiErrorMessage(loginError, 'Не вдалося увійти.'));
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -82,7 +84,7 @@ const LoginScreen = () => {
               autoCorrect={false}
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
-              editable={!isSubmitting}
+              editable={!loginMutation.isPending}
             />
           </View>
 
@@ -95,7 +97,7 @@ const LoginScreen = () => {
               secureTextEntry
               placeholder="Введіть пароль"
               placeholderTextColor={colors.textSecondary}
-              editable={!isSubmitting}
+              editable={!loginMutation.isPending}
             />
           </View>
 
@@ -105,11 +107,11 @@ const LoginScreen = () => {
             onPress={() => {
               void onLoginPress();
             }}
-            disabled={isSubmitting}
+            disabled={loginMutation.isPending}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           >
-            {isSubmitting ? (
+            {loginMutation.isPending ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryButtonText}>Увійти</Text>
@@ -122,7 +124,7 @@ const LoginScreen = () => {
                 redirectTo: route.params?.redirectTo ?? 'Profile',
               })
             }
-            disabled={isSubmitting}
+            disabled={loginMutation.isPending}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           >
