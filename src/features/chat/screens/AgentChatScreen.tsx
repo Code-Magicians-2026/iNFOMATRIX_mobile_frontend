@@ -10,14 +10,20 @@ import {
 } from 'react-native';
 
 import useThemeStore from '@/context/Theme-store';
+import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import type { ChatMessage, ChatThread } from '@/src/features/chat/models/chat.model';
-import styles from './AgentChatScreen.styles';
+import getStyles from './AgentChatScreen.styles';
 
 const DRAFT_CHAT_ID = 'draft-agent-chat';
 const AGENT_REPLY = 'Привіт, чекаємо на бекенд)';
 
 const AgentChatScreen = () => {
   const colors = useThemeStore((s) => s.colors);
+  const { isLandscape, isTablet, spacing } = useResponsiveLayout();
+  const styles = React.useMemo(
+    () => getStyles(spacing, isTablet, isLandscape),
+    [isLandscape, isTablet, spacing],
+  );
   const [chats, setChats] = React.useState<ChatThread[]>([]);
   const [selectedChatId, setSelectedChatId] = React.useState<string>(DRAFT_CHAT_ID);
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, ChatMessage[]>>({});
@@ -119,7 +125,7 @@ const AgentChatScreen = () => {
         </Pressable>
       );
     },
-    [activeChatId, colors.background, colors.border, colors.text, colors.textSecondary],
+    [activeChatId, colors.background, colors.border, colors.text, colors.textSecondary, styles],
   );
 
   const renderMessageItem: ListRenderItem<ChatMessage> = React.useCallback(
@@ -142,7 +148,7 @@ const AgentChatScreen = () => {
         </Text>
       </View>
     ),
-    [colors.background, colors.text],
+    [colors.background, colors.text, styles],
   );
 
   return (

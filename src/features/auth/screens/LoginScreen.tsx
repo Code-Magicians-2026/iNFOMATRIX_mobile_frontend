@@ -16,6 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
+import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import type { ThemeColors } from '@/shared/styles/theme';
@@ -27,7 +28,11 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const LoginScreen = () => {
   const colors = useThemeStore((s) => s.colors);
-  const styles = React.useMemo(() => getStyles(colors), [colors]);
+  const { cardMaxWidth, isLandscape, isTablet, spacing } = useResponsiveLayout();
+  const styles = React.useMemo(
+    () => getStyles(colors, spacing, cardMaxWidth, isTablet, isLandscape),
+    [cardMaxWidth, colors, isLandscape, isTablet, spacing],
+  );
   const login = useAuthStore((s) => s.login);
   const navigation = useNavigation<LoginNavigation>();
   const route = useRoute<LoginRoute>();
@@ -136,7 +141,13 @@ const LoginScreen = () => {
   );
 };
 
-const getStyles = (colors: ThemeColors) =>
+const getStyles = (
+  colors: ThemeColors,
+  spacing: number,
+  cardMaxWidth: number,
+  isTablet: boolean,
+  isLandscape: boolean,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -145,16 +156,20 @@ const getStyles = (colors: ThemeColors) =>
     keyboardWrapper: {
       flex: 1,
       justifyContent: 'center',
-      paddingHorizontal: 20,
+      alignItems: 'center',
+      paddingHorizontal: spacing,
+      paddingVertical: isLandscape ? spacing * 0.5 : spacing * 0.35,
     },
     card: {
+      width: '100%',
+      maxWidth: isLandscape ? cardMaxWidth + 60 : cardMaxWidth,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 16,
-      padding: 18,
+      borderRadius: isTablet ? 18 : 16,
+      padding: isTablet ? spacing * 0.75 : spacing * 0.7,
       elevation: 2,
-      gap: 14,
+      gap: isTablet ? 16 : 14,
     },
     title: {
       fontSize: 24,

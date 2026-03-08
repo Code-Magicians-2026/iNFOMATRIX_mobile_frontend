@@ -2,13 +2,18 @@ import React from 'react';
 import { SafeAreaView, Switch, Text, View } from 'react-native';
 
 import useThemeStore from '@/context/Theme-store';
+import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import { getStyles } from '@/src/features/profile/styles/settings.styles';
 
 const SettingsScreen = () => {
   const isDark = useThemeStore((s) => s.isDark);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const colors = useThemeStore((s) => s.colors);
-  const styles = React.useMemo(() => getStyles(colors), [colors]);
+  const { isLandscape, isTablet, spacing } = useResponsiveLayout();
+  const styles = React.useMemo(
+    () => getStyles(colors, spacing, isTablet, isLandscape),
+    [colors, isLandscape, isTablet, spacing],
+  );
 
   return (
     <SafeAreaView style={styles.container}>

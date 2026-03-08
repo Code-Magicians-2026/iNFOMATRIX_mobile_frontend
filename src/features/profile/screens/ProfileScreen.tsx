@@ -7,6 +7,7 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import { ThemeColors } from '@/shared/styles/theme';
 import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
+import useResponsiveLayout from '@/hooks/use-responsive-layout';
 
 type ProfileNavigation = NativeStackNavigationProp<AppStackParamList, 'Profile'>;
 
@@ -14,9 +15,13 @@ const ProfileScreen = () => {
   const navigation = useNavigation<ProfileNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const isDark = useThemeStore((s) => s.isDark);
+  const { cardMaxWidth, isLandscape, isTablet, spacing } = useResponsiveLayout();
   const session = useAuthStore((s) => s.session);
   const logout = useAuthStore((s) => s.logout);
-  const styles = React.useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+  const styles = React.useMemo(
+    () => getStyles(colors, isDark, spacing, cardMaxWidth, isTablet, isLandscape),
+    [cardMaxWidth, colors, isDark, isLandscape, isTablet, spacing],
+  );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const onLogoutPress = async () => {
@@ -89,7 +94,14 @@ const ProfileScreen = () => {
   );
 };
 
-const getStyles = (colors: ThemeColors, isDark: boolean) =>
+const getStyles = (
+  colors: ThemeColors,
+  isDark: boolean,
+  spacing: number,
+  cardMaxWidth: number,
+  isTablet: boolean,
+  isLandscape: boolean,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -100,17 +112,17 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 14,
-      paddingHorizontal: 24,
+      paddingHorizontal: spacing,
     },
     accountCard: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 14,
+      borderRadius: isTablet ? 14 : 12,
+      paddingVertical: isTablet ? 18 : 16,
+      paddingHorizontal: isTablet ? 16 : 14,
       gap: 6,
       elevation: 1,
     },
@@ -127,7 +139,7 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     primaryButton: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: '#ff2d55',
       paddingVertical: 14,
       borderRadius: 10,
@@ -143,7 +155,7 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     secondaryButton: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
@@ -159,7 +171,7 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     tertiaryButton: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: isDark ? '#2f2f31' : '#e9e9ee',
       paddingVertical: 14,
       borderRadius: 10,
