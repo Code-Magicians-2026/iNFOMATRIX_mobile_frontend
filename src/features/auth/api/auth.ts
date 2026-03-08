@@ -1,33 +1,13 @@
 import { request } from './client';
+import type { EmailDto, LoginRequestDto, RegisterRequestDto, TokenDto } from '../dto/auth.dto';
 
-export interface RegisterRequest {
-  email: string;
-  password: string;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface EmailDto {
-  email: string | null;
-}
-
-export interface TokenDto {
-  accessToken: string | null;
-  refreshToken: string | null;
-  expiresIn: number;
-  tokenType: string | null;
-}
-
-export const register = async (payload: RegisterRequest): Promise<EmailDto> =>
+export const register = async (payload: RegisterRequestDto): Promise<EmailDto> =>
   request<EmailDto>('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 
-export const login = async (payload: LoginRequest): Promise<TokenDto> =>
+export const login = async (payload: LoginRequestDto): Promise<TokenDto> =>
   request<TokenDto>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify(payload),

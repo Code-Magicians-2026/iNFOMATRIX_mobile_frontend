@@ -10,20 +10,8 @@ import {
 } from 'react-native';
 
 import useThemeStore from '@/context/Theme-store';
+import type { ChatMessage, ChatThread } from '@/src/features/chat/models/chat.model';
 import styles from './AgentChatScreen.styles';
-
-type ChatThread = {
-  id: string;
-  title: string;
-  preview: string;
-  updatedAt: number;
-};
-
-type ChatMessage = {
-  id: string;
-  role: 'user' | 'agent';
-  text: string;
-};
 
 const DRAFT_CHAT_ID = 'draft-agent-chat';
 const AGENT_REPLY = 'Привіт, чекаємо на бекенд)';

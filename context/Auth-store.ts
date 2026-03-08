@@ -2,14 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 import { login as loginRequest, register as registerRequest } from '@/src/features/auth/api/auth';
-
-interface AuthSession {
-  email: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  tokenType: string;
-}
+import type { AuthSession } from '@/src/features/auth/models/auth-session.model';
 
 interface AuthState {
   session: AuthSession | null;
