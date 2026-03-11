@@ -1,26 +1,47 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-import { login as loginRequest, register as registerRequest } from '@/src/api/auth';
-
-interface AuthSession {
-  email: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  tokenType: string;
-}
+import {
+  confirmEmail as confirmEmailRequest,
+  login as loginRequest,
+  register as registerRequest,
+  resetPassword as resetPasswordRequest,
+} from '@/src/features/auth/api/auth';
+import type { TokenDto } from '@/src/features/auth/dto/auth.dto';
+import type { AuthSession } from '@/src/features/auth/models/auth-session.model';
 
 interface AuthState {
   session: AuthSession | null;
   isHydrated: boolean;
   hydrate: () => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (fullName: string, email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  confirmEmail: (email: string, token: string) => Promise<void>;
+  completePasswordReset: (email: string, newPassword: string) => Promise<void>;
+  createSessionFromToken: (token: TokenDto, fallbackEmail?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const STORAGE_KEY = 'AUTH_SESSION';
+
+const buildSessionFromToken = (token: TokenDto, fallbackEmail?: string): AuthSession => {
+  if (!token.accessToken || !token.refreshToken) {
+    throw new Error('Сервер не повернув токени доступу.');
+  }
+
+  const email = token.email ?? fallbackEmail ?? null;
+  if (!email) {
+    throw new Error('Сервер не повернув email користувача.');
+  }
+
+  return {
+    email,
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
+    expiresIn: token.expiresIn,
+    tokenType: token.tokenType ?? 'Bearer',
+  };
+};
 
 const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
@@ -46,8 +67,8 @@ const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (email: string, password: string) => {
-    await registerRequest({ email, password });
+  register: async (fullName: string, email: string, password: string) => {
+    await registerRequest({ fullName, email, password });
     try {
       await get().login(email, password);
     } catch {
@@ -57,19 +78,21 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
   login: async (email: string, password: string) => {
     const token = await loginRequest({ email, password });
+    await get().createSessionFromToken(token, email);
+  },
 
-    if (!token.accessToken || !token.refreshToken) {
-      throw new Error('Сервер не повернув токени доступу.');
-    }
+  confirmEmail: async (email: string, token: string) => {
+    const response = await confirmEmailRequest({ email, token });
+    await get().createSessionFromToken(response, email);
+  },
 
-    const session: AuthSession = {
-      email,
-      accessToken: token.accessToken,
-      refreshToken: token.refreshToken,
-      expiresIn: token.expiresIn,
-      tokenType: token.tokenType ?? 'Bearer',
-    };
+  completePasswordReset: async (email: string, newPassword: string) => {
+    const response = await resetPasswordRequest({ email, newPassword });
+    await get().createSessionFromToken(response, email);
+  },
 
+  createSessionFromToken: async (token: TokenDto, fallbackEmail?: string) => {
+    const session = buildSessionFromToken(token, fallbackEmail);
     set({ session });
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(session));

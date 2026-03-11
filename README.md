@@ -48,3 +48,19 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Building APK
+
+To generate the Android APK file use Expo EAS Build.
+
+### 1. Install EAS CLI
+
+```bash
+npm install -g eas-cli
+
+eas login
+
+eas build:configure
+
+eas build -p android --profile preview
+```
