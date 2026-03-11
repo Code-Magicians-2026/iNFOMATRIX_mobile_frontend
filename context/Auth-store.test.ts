@@ -6,12 +6,16 @@ const {
   removeItemMock,
   loginRequestMock,
   registerRequestMock,
+  confirmEmailRequestMock,
+  resetPasswordRequestMock,
 } = vi.hoisted(() => ({
   getItemMock: vi.fn(),
   setItemMock: vi.fn(),
   removeItemMock: vi.fn(),
   loginRequestMock: vi.fn(),
   registerRequestMock: vi.fn(),
+  confirmEmailRequestMock: vi.fn(),
+  resetPasswordRequestMock: vi.fn(),
 }));
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -25,6 +29,8 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 vi.mock('@/src/features/auth/api/auth', () => ({
   login: loginRequestMock,
   register: registerRequestMock,
+  confirmEmail: confirmEmailRequestMock,
+  resetPassword: resetPasswordRequestMock,
 }));
 
 import useAuthStore from '@/context/Auth-store';
@@ -95,13 +101,67 @@ describe('Auth store', () => {
     );
   });
 
+  it('register performs auto-login and stores session', async () => {
+    registerRequestMock.mockResolvedValue({ email: 'user@example.com' });
+    loginRequestMock.mockResolvedValue({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresIn: 3600,
+      tokenType: null,
+    });
+
+    await useAuthStore.getState().register('User Name', 'user@example.com', 'secret');
+    expect(registerRequestMock).toHaveBeenCalledWith({
+      fullName: 'User Name',
+      email: 'user@example.com',
+      password: 'secret',
+    });
+    expect(loginRequestMock).toHaveBeenCalledWith({ email: 'user@example.com', password: 'secret' });
+    expect(useAuthStore.getState().session?.accessToken).toBe('access');
+    expect(setItemMock).toHaveBeenCalledTimes(1);
+  });
+
   it('register throws localized message when auto-login fails', async () => {
     registerRequestMock.mockResolvedValue({ email: 'user@example.com' });
     loginRequestMock.mockRejectedValue(new Error('Bad credentials'));
 
-    await expect(useAuthStore.getState().register('user@example.com', 'secret')).rejects.toThrow(
-      'Акаунт створено, але автовхід не вдався. Увійдіть вручну.',
-    );
+    await expect(
+      useAuthStore.getState().register('User Name', 'user@example.com', 'secret'),
+    ).rejects.toThrow('Акаунт створено, але автовхід не вдався. Увійдіть вручну.');
+  });
+
+  it('confirmEmail stores session using provided email fallback', async () => {
+    confirmEmailRequestMock.mockResolvedValue({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresIn: 3600,
+      email: null,
+    });
+
+    await useAuthStore.getState().confirmEmail('user@example.com', '123456');
+
+    expect(useAuthStore.getState().session).toEqual({
+      email: 'user@example.com',
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresIn: 3600,
+      tokenType: 'Bearer',
+    });
+    expect(setItemMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('completePasswordReset stores session using API email', async () => {
+    resetPasswordRequestMock.mockResolvedValue({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresIn: 3600,
+      email: 'reset@example.com',
+    });
+
+    await useAuthStore.getState().completePasswordReset('user@example.com', 'new-password');
+
+    expect(useAuthStore.getState().session?.email).toBe('reset@example.com');
+    expect(setItemMock).toHaveBeenCalledTimes(1);
   });
 
   it('logout clears session and removes persisted key', async () => {

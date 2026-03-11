@@ -4,7 +4,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import TabNavigator from '@/src/navigation/TabNavigator';
 import Header from '@/modules/Header/Header';
+import ConfirmEmailScreen from '@/src/features/auth/screens/ConfirmEmailScreen';
 import LoginScreen from '@/src/features/auth/screens/LoginScreen';
+import ResetPasswordScreen from '@/src/features/auth/screens/ResetPasswordScreen';
 import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
 import AgentChatScreen from '@/src/features/chat/screens/AgentChatScreen';
 import ProfileScreen from '@/src/features/profile/screens/ProfileScreen';
@@ -22,6 +24,8 @@ export type AppStackParamList = {
   Settings: undefined;
   Login: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
   Registration: { redirectTo?: 'Settings' | 'Profile' } | undefined;
+  ConfirmEmail: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
+  ResetPassword: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
 };
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -115,6 +119,32 @@ export default function AppNavigator() {
           header: () => (
             <Header
               title="Реєстрація"
+              showBackButton
+              onBackPress={() => navigation.goBack()}
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="ConfirmEmail"
+        component={ConfirmEmailScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <Header
+              title="Підтвердження пошти"
+              showBackButton
+              onBackPress={() => navigation.goBack()}
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="ResetPassword"
+        component={ResetPasswordScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <Header
+              title="Відновлення пароля"
               showBackButton
               onBackPress={() => navigation.goBack()}
             />

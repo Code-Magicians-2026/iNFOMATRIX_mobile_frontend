@@ -172,6 +172,27 @@ const LoginScreen = () => {
               Створити акаунт
             </Text>
           </Pressable>
+
+          <Pressable
+            onPress={() =>
+              navigation.navigate('ResetPassword', {
+                initialEmail: email.trim().toLowerCase(),
+                redirectTo: route.params?.redirectTo ?? 'Profile',
+              })
+            }
+            disabled={loginMutation.isPending}
+            style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            accessibilityRole="button"
+            accessibilityLabel="Забули пароль"
+            accessibilityHint="Відкриває покрокове відновлення пароля"
+            accessibilityState={{ disabled: loginMutation.isPending }}
+            importantForAccessibility="yes"
+          >
+            <Text style={styles.linkButtonText} allowFontScaling>
+              Забули пароль?
+            </Text>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -266,6 +287,18 @@ const getStyles = (
     secondaryButtonText: {
       color: colors.text,
       fontSize: 15,
+      fontWeight: '600',
+    },
+    linkButton: {
+      borderRadius: 8,
+      minHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 0,
+    },
+    linkButtonText: {
+      color: '#ff2d55',
+      fontSize: 14,
       fontWeight: '600',
     },
     pressed: {

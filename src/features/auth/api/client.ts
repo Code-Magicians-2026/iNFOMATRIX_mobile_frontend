@@ -1,4 +1,5 @@
 const API_BASE_URL = 'https://infomatrix-api.azurewebsites.net';
+const REQUEST_TIMEOUT_MS = 20000;
 
 interface ApiProblemDetails {
   title?: string;
@@ -70,10 +71,40 @@ export const request = async <T>(path: string, options: RequestInit = {}): Promi
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const parentSignal = options.signal;
+
+  const onParentAbort = () => {
+    controller.abort();
+  };
+
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      controller.abort();
+    } else {
+      parentSignal.addEventListener('abort', onParentAbort);
+    }
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError('Request timed out', 504);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    parentSignal?.removeEventListener('abort', onParentAbort);
+  }
 
   if (!response.ok) {
     const message = await parseApiErrorMessage(response);
@@ -94,6 +125,14 @@ export const request = async <T>(path: string, options: RequestInit = {}): Promi
 
 export const getApiErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof ApiError) {
+    if (error.status === 504 || error.status === 408) {
+      return 'Сервер не відповідає вчасно. Спробуйте ще раз через 10-30 секунд.';
+    }
+
+    if (error.status === 502 || error.status === 503) {
+      return 'Сервер тимчасово недоступний. Спробуйте пізніше.';
+    }
+
     return error.message;
   }
 
