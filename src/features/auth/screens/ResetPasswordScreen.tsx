@@ -18,7 +18,7 @@ import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import { requestResetPassword, verifyOtp } from '@/src/features/auth/api/auth';
-import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import type { ThemeColors } from '@/shared/styles/theme';
 
@@ -27,6 +27,7 @@ type ResetPasswordRoute = RouteProp<AppStackParamList, 'ResetPassword'>;
 type ResetStep = 'request' | 'verify' | 'reset';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RESEND_COOLDOWN_SECONDS = 60;
 
 const ResetPasswordScreen = () => {
   const colors = useThemeStore((s) => s.colors);
@@ -46,6 +47,7 @@ const ResetPasswordScreen = () => {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
+  const [cooldownLeft, setCooldownLeft] = React.useState(0);
 
   const requestResetMutation = useMutation({
     mutationKey: ['auth', 'request-reset-password'],
@@ -63,9 +65,33 @@ const ResetPasswordScreen = () => {
 
   const isAnyPending =
     requestResetMutation.isPending || verifyOtpMutation.isPending || resetPasswordMutation.isPending;
+  const isRequestBlockedByCooldown = step === 'request' && cooldownLeft > 0;
+  const isResendBlockedByCooldown = step === 'verify' && cooldownLeft > 0;
+
+  React.useEffect(() => {
+    if (cooldownLeft <= 0) {
+      return;
+    }
+
+    const timerId = setInterval(() => {
+      setCooldownLeft((current) => (current <= 1 ? 0 : current - 1));
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, [cooldownLeft]);
+
+  const startCooldown = (seconds = RESEND_COOLDOWN_SECONDS) => {
+    setCooldownLeft((current) => (current > seconds ? current : seconds));
+  };
 
   const onRequestResetPress = async () => {
     const normalizedEmail = email.trim().toLowerCase();
+
+    if (cooldownLeft > 0) {
+      setError(`Повторний запит буде доступний через ${cooldownLeft} с.`);
+      return;
+    }
+
     if (!emailPattern.test(normalizedEmail)) {
       setError('Введіть коректну електронну пошту.');
       return;
@@ -77,9 +103,16 @@ const ResetPasswordScreen = () => {
     try {
       const response = await requestResetMutation.mutateAsync({ email: normalizedEmail });
       setEmail(response.email ?? normalizedEmail);
+      startCooldown();
       setStep('verify');
       setInfo('Код надіслано на вашу пошту. Введіть його для продовження.');
     } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 429) {
+        startCooldown();
+        setError(`Забагато запитів на email. Спробуйте знову через ${RESEND_COOLDOWN_SECONDS} с.`);
+        return;
+      }
+
       setError(getApiErrorMessage(requestError, 'Не вдалося надіслати код відновлення.'));
     }
   };
@@ -173,6 +206,10 @@ const ResetPasswordScreen = () => {
     verify: 'Підтвердити OTP',
     reset: 'Оновити пароль',
   };
+  const primaryButtonText =
+    step === 'request' && cooldownLeft > 0
+      ? `Надіслати код (${cooldownLeft}с)`
+      : primaryButtonTextByStep[step];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -287,20 +324,20 @@ const ResetPasswordScreen = () => {
 
           <Pressable
             onPress={onPrimaryPress}
-            disabled={isAnyPending}
+            disabled={isAnyPending || isRequestBlockedByCooldown}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
             accessibilityLabel="Основна дія відновлення пароля"
             accessibilityHint="Виконує поточний крок відновлення"
-            accessibilityState={{ disabled: isAnyPending }}
+            accessibilityState={{ disabled: isAnyPending || isRequestBlockedByCooldown }}
             importantForAccessibility="yes"
           >
             {isAnyPending ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryButtonText} allowFontScaling>
-                {primaryButtonTextByStep[step]}
+                {primaryButtonText}
               </Text>
             )}
           </Pressable>
@@ -310,17 +347,17 @@ const ResetPasswordScreen = () => {
               onPress={() => {
                 void onRequestResetPress();
               }}
-              disabled={isAnyPending}
+              disabled={isAnyPending || isResendBlockedByCooldown}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               accessibilityRole="button"
               accessibilityLabel="Надіслати код повторно"
               accessibilityHint="Повторно надсилає OTP-код на email"
-              accessibilityState={{ disabled: isAnyPending }}
+              accessibilityState={{ disabled: isAnyPending || isResendBlockedByCooldown }}
               importantForAccessibility="yes"
             >
               <Text style={styles.secondaryButtonText} allowFontScaling>
-                Надіслати код ще раз
+                {cooldownLeft > 0 ? `Надіслати код ще раз (${cooldownLeft}с)` : 'Надіслати код ще раз'}
               </Text>
             </Pressable>
           ) : null}

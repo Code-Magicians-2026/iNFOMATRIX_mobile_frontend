@@ -105,6 +105,12 @@ describe('getApiErrorMessage', () => {
     );
   });
 
+  it('maps too many requests ApiError to localized message', () => {
+    expect(getApiErrorMessage(new ApiError('Auth Too Many Requests', 429), 'Fallback')).toBe(
+      'Забагато запитів на email. Зачекайте трохи та спробуйте знову.',
+    );
+  });
+
   it('returns fallback for unknown errors', () => {
     expect(getApiErrorMessage({ reason: 'unknown' }, 'Fallback')).toBe('Fallback');
   });

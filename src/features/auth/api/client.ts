@@ -125,6 +125,10 @@ export const request = async <T>(path: string, options: RequestInit = {}): Promi
 
 export const getApiErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof ApiError) {
+    if (error.status === 429) {
+      return 'Забагато запитів на email. Зачекайте трохи та спробуйте знову.';
+    }
+
     if (error.status === 504 || error.status === 408) {
       return 'Сервер не відповідає вчасно. Спробуйте ще раз через 10-30 секунд.';
     }
