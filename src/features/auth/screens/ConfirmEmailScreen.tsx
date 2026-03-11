@@ -17,79 +17,60 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import type { ThemeColors } from '@/shared/styles/theme';
 
-type RegistrationNavigation = NativeStackNavigationProp<AppStackParamList, 'Registration'>;
-type RegistrationRoute = RouteProp<AppStackParamList, 'Registration'>;
+type ConfirmEmailNavigation = NativeStackNavigationProp<AppStackParamList, 'ConfirmEmail'>;
+type ConfirmEmailRoute = RouteProp<AppStackParamList, 'ConfirmEmail'>;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const RegistrationScreen = () => {
+const ConfirmEmailScreen = () => {
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isLandscape, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(
     () => getStyles(colors, spacing, cardMaxWidth, isTablet, isLandscape),
     [cardMaxWidth, colors, isLandscape, isTablet, spacing],
   );
-  const register = useAuthStore((s) => s.register);
-  const navigation = useNavigation<RegistrationNavigation>();
-  const route = useRoute<RegistrationRoute>();
+  const confirmEmail = useAuthStore((s) => s.confirmEmail);
+  const navigation = useNavigation<ConfirmEmailNavigation>();
+  const route = useRoute<ConfirmEmailRoute>();
 
-  const [fullName, setFullName] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [email, setEmail] = React.useState(route.params?.initialEmail ?? '');
+  const [token, setToken] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
-  const registerMutation = useMutation({
-    mutationKey: ['auth', 'register'],
-    mutationFn: ({
-      fullName,
-      email,
-      password,
-    }: {
-      fullName: string;
-      email: string;
-      password: string;
-    }) => register(fullName, email, password),
+
+  const confirmEmailMutation = useMutation({
+    mutationKey: ['auth', 'confirm-email'],
+    mutationFn: ({ email, token: code }: { email: string; token: string }) =>
+      confirmEmail(email, code),
   });
 
-  const onRegisterPress = async () => {
-    const normalizedFullName = fullName.trim();
+  const onConfirmPress = async () => {
     const normalizedEmail = email.trim().toLowerCase();
-
-    if (normalizedFullName.length < 2) {
-      setError("Введіть повне ім'я (мінімум 2 символи).");
-      return;
-    }
+    const normalizedToken = token.trim();
 
     if (!emailPattern.test(normalizedEmail)) {
       setError('Введіть коректну електронну пошту.');
       return;
     }
 
-    if (password.length < 6) {
-      setError('Пароль має містити щонайменше 6 символів.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Паролі не співпадають.');
+    if (!normalizedToken) {
+      setError('Введіть код підтвердження з листа.');
       return;
     }
 
     setError(null);
 
     try {
-      await registerMutation.mutateAsync({
-        fullName: normalizedFullName,
+      await confirmEmailMutation.mutateAsync({
         email: normalizedEmail,
-        password,
+        token: normalizedToken,
       });
       navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
-    } catch (registrationError) {
-      setError(getApiErrorMessage(registrationError, 'Не вдалося зареєструватися.'));
+    } catch (confirmError) {
+      setError(getApiErrorMessage(confirmError, 'Не вдалося підтвердити пошту.'));
     }
   };
 
@@ -103,32 +84,14 @@ const RegistrationScreen = () => {
           style={styles.card}
           accessible
           importantForAccessibility="yes"
-          accessibilityLabel="Форма реєстрації"
+          accessibilityLabel="Форма підтвердження пошти"
         >
           <Text style={styles.title} allowFontScaling>
-            Реєстрація
+            Підтвердження пошти
           </Text>
           <Text style={styles.subtitle} allowFontScaling>
-            Створіть обліковий запис
+            Введіть email і код з листа для активації акаунта.
           </Text>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              {"Повне ім'я"}
-            </Text>
-            <TextInput
-              style={styles.input}
-              value={fullName}
-              onChangeText={setFullName}
-              autoCapitalize="words"
-              autoCorrect={false}
-              placeholder="Ім'я Прізвище"
-              placeholderTextColor={colors.textSecondary}
-              editable={!registerMutation.isPending}
-              accessibilityLabel="Повне ім'я"
-              accessibilityHint="Поле для введення повного імені"
-              importantForAccessibility="yes"
-            />
-          </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
@@ -143,45 +106,28 @@ const RegistrationScreen = () => {
               autoCorrect={false}
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
-              editable={!registerMutation.isPending}
+              editable={!confirmEmailMutation.isPending}
               accessibilityLabel="Електронна пошта"
-              accessibilityHint="Поле для введення електронної пошти"
+              accessibilityHint="Поле для email, який потрібно підтвердити"
               importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              Пароль
+              Код підтвердження
             </Text>
             <TextInput
               style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              placeholder="Мінімум 6 символів"
+              value={token}
+              onChangeText={setToken}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="Введіть код із листа"
               placeholderTextColor={colors.textSecondary}
-              editable={!registerMutation.isPending}
-              accessibilityLabel="Пароль"
-              accessibilityHint="Поле для введення паролю"
-              importantForAccessibility="yes"
-            />
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Підтвердження пароля
-            </Text>
-            <TextInput
-              style={styles.input}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              placeholder="Повторіть пароль"
-              placeholderTextColor={colors.textSecondary}
-              editable={!registerMutation.isPending}
-              accessibilityLabel="Підтвердження пароля"
-              accessibilityHint="Поле для повторного введення паролю"
+              editable={!confirmEmailMutation.isPending}
+              accessibilityLabel="Код підтвердження"
+              accessibilityHint="Поле для коду підтвердження email"
               importantForAccessibility="yes"
             />
           </View>
@@ -194,46 +140,44 @@ const RegistrationScreen = () => {
 
           <Pressable
             onPress={() => {
-              void onRegisterPress();
+              void onConfirmPress();
             }}
-            disabled={registerMutation.isPending}
+            disabled={confirmEmailMutation.isPending}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Кнопка реєстрації"
-            accessibilityHint="Створює новий акаунт"
-            accessibilityState={{ disabled: registerMutation.isPending }}
+            accessibilityLabel="Підтвердити пошту"
+            accessibilityHint="Надсилає код підтвердження"
+            accessibilityState={{ disabled: confirmEmailMutation.isPending }}
             importantForAccessibility="yes"
           >
-            {registerMutation.isPending ? (
+            {confirmEmailMutation.isPending ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryButtonText} allowFontScaling>
-                Зареєструватися
+                Підтвердити
               </Text>
             )}
           </Pressable>
 
           <Pressable
-            onPress={() => {
-              navigation.dispatch(
-                StackActions.replace('Login', {
-                  initialEmail: email.trim().toLowerCase(),
-                  redirectTo: route.params?.redirectTo ?? 'Profile',
-                }),
-              );
-            }}
-            disabled={registerMutation.isPending}
+            onPress={() =>
+              navigation.navigate('Login', {
+                initialEmail: email.trim().toLowerCase(),
+                redirectTo: route.params?.redirectTo ?? 'Profile',
+              })
+            }
+            disabled={confirmEmailMutation.isPending}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Кнопка входу"
+            accessibilityLabel="Повернутися до входу"
             accessibilityHint="Переходить на екран входу"
-            accessibilityState={{ disabled: registerMutation.isPending }}
+            accessibilityState={{ disabled: confirmEmailMutation.isPending }}
             importantForAccessibility="yes"
           >
             <Text style={styles.secondaryButtonText} allowFontScaling>
-              Вже є акаунт
+              До входу
             </Text>
           </Pressable>
         </View>
@@ -337,4 +281,4 @@ const getStyles = (
     },
   });
 
-export default RegistrationScreen;
+export default ConfirmEmailScreen;

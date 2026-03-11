@@ -74,6 +74,18 @@ describe('request', () => {
       }),
     );
   });
+
+  it('throws ApiError with timeout status when request is aborted', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+
+    await expect(request('/api/test')).rejects.toEqual(
+      expect.objectContaining({
+        name: 'ApiError',
+        status: 504,
+        message: 'Request timed out',
+      }),
+    );
+  });
 });
 
 describe('getApiErrorMessage', () => {
@@ -84,6 +96,18 @@ describe('getApiErrorMessage', () => {
   it('maps network error to localized message', () => {
     expect(getApiErrorMessage(new Error('Network request failed'), 'Fallback')).toBe(
       'Не вдалося підключитися до сервера.',
+    );
+  });
+
+  it('maps gateway timeout ApiError to localized message', () => {
+    expect(getApiErrorMessage(new ApiError('Gateway Timeout', 504), 'Fallback')).toBe(
+      'Сервер не відповідає вчасно. Спробуйте ще раз через 10-30 секунд.',
+    );
+  });
+
+  it('maps too many requests ApiError to localized message', () => {
+    expect(getApiErrorMessage(new ApiError('Auth Too Many Requests', 429), 'Fallback')).toBe(
+      'Забагато запитів на email. Зачекайте трохи та спробуйте знову.',
     );
   });
 
