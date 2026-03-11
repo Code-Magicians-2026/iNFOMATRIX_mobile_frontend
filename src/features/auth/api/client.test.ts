@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, getApiErrorMessage, request } from '@/src/api/client';
+import { ApiError, getApiErrorMessage, request } from './client';
 
 const createResponse = (status: number, body: unknown, contentType: string) =>
   new Response(typeof body === 'string' ? body : JSON.stringify(body), {

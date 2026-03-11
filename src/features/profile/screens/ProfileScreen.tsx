@@ -7,6 +7,7 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import { ThemeColors } from '@/shared/styles/theme';
 import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
+import useResponsiveLayout from '@/hooks/use-responsive-layout';
 
 type ProfileNavigation = NativeStackNavigationProp<AppStackParamList, 'Profile'>;
 
@@ -14,9 +15,13 @@ const ProfileScreen = () => {
   const navigation = useNavigation<ProfileNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const isDark = useThemeStore((s) => s.isDark);
+  const { cardMaxWidth, isLandscape, isTablet, spacing } = useResponsiveLayout();
   const session = useAuthStore((s) => s.session);
   const logout = useAuthStore((s) => s.logout);
-  const styles = React.useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+  const styles = React.useMemo(
+    () => getStyles(colors, isDark, spacing, cardMaxWidth, isTablet, isLandscape),
+    [cardMaxWidth, colors, isDark, isLandscape, isTablet, spacing],
+  );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const onLogoutPress = async () => {
@@ -32,9 +37,18 @@ const ProfileScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {session ? (
-          <View style={styles.accountCard}>
-            <Text style={styles.accountLabel}>Ви увійшли як</Text>
-            <Text style={styles.accountEmail}>{session.email}</Text>
+          <View
+            style={styles.accountCard}
+            accessible
+            importantForAccessibility="yes"
+            accessibilityLabel={`Поточний користувач ${session.email}`}
+          >
+            <Text style={styles.accountLabel} allowFontScaling>
+              Ви увійшли як
+            </Text>
+            <Text style={styles.accountEmail} allowFontScaling>
+              {session.email}
+            </Text>
           </View>
         ) : null}
 
@@ -46,11 +60,18 @@ const ProfileScreen = () => {
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel="Вийти з акаунта"
+            accessibilityHint="Завершує поточну сесію користувача"
+            accessibilityState={{ disabled: isSubmitting }}
+            importantForAccessibility="yes"
           >
             {isSubmitting ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.primaryButtonText}>Вийти</Text>
+              <Text style={styles.primaryButtonText} allowFontScaling>
+                Вийти
+              </Text>
             )}
           </Pressable>
         ) : (
@@ -59,8 +80,14 @@ const ProfileScreen = () => {
               onPress={() => navigation.navigate('Login', { redirectTo: 'Profile' })}
               style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              accessibilityRole="button"
+              accessibilityLabel="Увійти"
+              accessibilityHint="Відкриває екран входу"
+              importantForAccessibility="yes"
             >
-              <Text style={styles.primaryButtonText}>Увійти</Text>
+              <Text style={styles.primaryButtonText} allowFontScaling>
+                Увійти
+              </Text>
             </Pressable>
 
             <Pressable
@@ -71,8 +98,14 @@ const ProfileScreen = () => {
               }
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              accessibilityRole="button"
+              accessibilityLabel="Реєстрація"
+              accessibilityHint="Відкриває екран реєстрації"
+              importantForAccessibility="yes"
             >
-              <Text style={styles.secondaryButtonText}>Реєстрація</Text>
+              <Text style={styles.secondaryButtonText} allowFontScaling>
+                Реєстрація
+              </Text>
             </Pressable>
           </>
         )}
@@ -81,15 +114,28 @@ const ProfileScreen = () => {
           onPress={() => navigation.navigate('Settings')}
           style={({ pressed }) => [styles.tertiaryButton, pressed && styles.pressed]}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="Налаштування"
+          accessibilityHint="Відкриває екран налаштувань"
+          importantForAccessibility="yes"
         >
-          <Text style={styles.tertiaryButtonText}>Налаштування</Text>
+          <Text style={styles.tertiaryButtonText} allowFontScaling>
+            Налаштування
+          </Text>
         </Pressable>
       </View>
     </SafeAreaView>
   );
 };
 
-const getStyles = (colors: ThemeColors, isDark: boolean) =>
+const getStyles = (
+  colors: ThemeColors,
+  isDark: boolean,
+  spacing: number,
+  cardMaxWidth: number,
+  isTablet: boolean,
+  isLandscape: boolean,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -100,17 +146,17 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 14,
-      paddingHorizontal: 24,
+      paddingHorizontal: spacing,
     },
     accountCard: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 14,
+      borderRadius: isTablet ? 14 : 12,
+      paddingVertical: isTablet ? 18 : 16,
+      paddingHorizontal: isTablet ? 16 : 14,
       gap: 6,
       elevation: 1,
     },
@@ -127,7 +173,7 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     primaryButton: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: '#ff2d55',
       paddingVertical: 14,
       borderRadius: 10,
@@ -143,7 +189,7 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     secondaryButton: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
@@ -159,7 +205,7 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     tertiaryButton: {
       width: '100%',
-      maxWidth: 280,
+      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
       backgroundColor: isDark ? '#2f2f31' : '#e9e9ee',
       paddingVertical: 14,
       borderRadius: 10,
