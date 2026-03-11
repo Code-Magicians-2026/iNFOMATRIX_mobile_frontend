@@ -4,10 +4,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import TabNavigator from '@/src/navigation/TabNavigator';
 import Header from '@/modules/Header/Header';
-import ProfileScreen from '@/src/screens/ProfileScreen';
-import SettingsScreen from '@/src/screens/SettingsScreen';
-import LoginScreen from '@/src/screens/LoginScreen';
-import RegistrationScreen from '@/src/screens/RegistrationScreen';
+import LoginScreen from '@/src/features/auth/screens/LoginScreen';
+import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
+import AgentChatScreen from '@/src/features/chat/screens/AgentChatScreen';
+import ProfileScreen from '@/src/features/profile/screens/ProfileScreen';
+import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
 
 export type TabParamList = {
   Main: undefined;
@@ -16,6 +17,7 @@ export type TabParamList = {
 
 export type AppStackParamList = {
   MainTabs: undefined;
+  AgentChat: undefined;
   Profile: undefined;
   Settings: undefined;
   Login: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
@@ -47,6 +49,21 @@ export default function AppNavigator() {
           header: () => (
             <Header
               title={getMainHeaderTitle(route)}
+              onAiPress={() => navigation.navigate('AgentChat')}
+              onProfilePress={() => navigation.navigate('Profile')}
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="AgentChat"
+        component={AgentChatScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <Header
+              title="AI Chat"
+              showBackButton
+              onBackPress={() => navigation.goBack()}
               onProfilePress={() => navigation.navigate('Profile')}
             />
           ),

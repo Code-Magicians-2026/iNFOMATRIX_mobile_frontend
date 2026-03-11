@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { getStyles } from './style';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -8,11 +8,18 @@ import useAuthStore from '@/context/Auth-store';
 type HeaderProps = {
   title: string;
   onProfilePress?: () => void;
+  onAiPress?: () => void;
   showBackButton?: boolean;
   onBackPress?: () => void;
 };
 
-const Header = ({ title, onProfilePress, showBackButton = false, onBackPress }: HeaderProps) => {
+const Header = ({
+  title,
+  onProfilePress,
+  onAiPress,
+  showBackButton = false,
+  onBackPress,
+}: HeaderProps) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const isAuthenticated = useAuthStore((s) => Boolean(s.session?.accessToken));
@@ -27,24 +34,55 @@ const Header = ({ title, onProfilePress, showBackButton = false, onBackPress }: 
   }, [sessionEmail]);
 
   return (
-    <View style={styles.header}>
+    <View style={styles.header} importantForAccessibility="yes">
       {showBackButton ? (
-        <TouchableOpacity onPress={onBackPress} style={styles.sideButton}>
-          <Text style={styles.sideButtonText}>{'<'}</Text>
-        </TouchableOpacity>
+        <Pressable
+          onPress={onBackPress}
+          style={styles.sideButton}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="Назад"
+          accessibilityHint="Повертає на попередній екран"
+        >
+          <Text style={styles.sideButtonText} allowFontScaling>
+            {'<'}
+          </Text>
+        </Pressable>
+      ) : onAiPress ? (
+        <Pressable
+          onPress={onAiPress}
+          style={styles.aiButton}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="AI чат"
+          accessibilityHint="Відкриває екран чату з агентом"
+        >
+          <Text style={styles.aiButtonText} allowFontScaling>
+            AI
+          </Text>
+        </Pressable>
       ) : (
         <View style={styles.sideButtonPlaceholder} />
       )}
 
-      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.title} allowFontScaling>
+        {title}
+      </Text>
 
-      <TouchableOpacity
+      <Pressable
         onPress={onProfilePress}
         disabled={!onProfilePress}
         style={styles.profileButton}
+        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+        accessibilityRole="button"
+        accessibilityLabel="Профіль"
+        accessibilityHint="Відкриває екран профілю"
+        accessibilityState={{ disabled: !onProfilePress }}
       >
-        <Text style={styles.profileButtonText}>{profileInitial}</Text>
-      </TouchableOpacity>
+        <Text style={styles.profileButtonText} allowFontScaling>
+          {profileInitial}
+        </Text>
+      </Pressable>
     </View>
   );
 };
