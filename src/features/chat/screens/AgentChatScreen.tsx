@@ -18,7 +18,7 @@ import type { ChatMessage, ChatThread } from '@/src/features/chat/models/chat.mo
 import getStyles from './AgentChatScreen.styles';
 
 const DRAFT_CHAT_ID = 'draft-agent-chat';
-const AGENT_TYPING_PREVIEW = 'Агент друкує...';
+const AGENT_TYPING_PREVIEW = 'Агент думає...';
 const AGENT_ERROR_FALLBACK = 'Не вдалося отримати відповідь від агента.';
 const AGENT_AUTH_REQUIRED = 'Щоб спілкуватися з агентом, увійдіть у свій акаунт.';
 
@@ -91,6 +91,7 @@ const AgentChatScreen = () => {
 
     let targetChatId = activeChatId;
     const sentAt = Date.now();
+    const typingMessageId = `agent-typing-${sentAt}`;
 
     if (activeChatId === DRAFT_CHAT_ID) {
       targetChatId = `chat-${sentAt}`;
@@ -123,6 +124,7 @@ const AgentChatScreen = () => {
         [targetChatId]: [
           ...existingMessages,
           { id: `user-${sentAt}`, role: 'user', text: normalizedText },
+          { id: typingMessageId, role: 'agent', text: AGENT_TYPING_PREVIEW },
         ],
       };
     });
@@ -135,15 +137,19 @@ const AgentChatScreen = () => {
       const authHeader = session?.accessToken ? `${tokenType} ${session.accessToken}` : undefined;
       const agentReply = await sendPromptToAgent(normalizedText, authHeader);
       const repliedAt = Date.now();
+      const agentMessage: ChatMessage = { id: `agent-${repliedAt}`, role: 'agent', text: agentReply };
 
       setMessagesByChat((prev) => {
         const existingMessages = prev[targetChatId] ?? [];
+        const nextMessages = existingMessages.some((message) => message.id === typingMessageId)
+          ? existingMessages.map((message) =>
+              message.id === typingMessageId ? agentMessage : message,
+            )
+          : [...existingMessages, agentMessage];
+
         return {
           ...prev,
-          [targetChatId]: [
-            ...existingMessages,
-            { id: `agent-${repliedAt}`, role: 'agent', text: agentReply },
-          ],
+          [targetChatId]: nextMessages,
         };
       });
       setChats((prev) =>
@@ -158,15 +164,23 @@ const AgentChatScreen = () => {
     } catch (error) {
       const failedAt = Date.now();
       const errorMessage = getApiErrorMessage(error, AGENT_ERROR_FALLBACK);
+      const errorMessagePayload: ChatMessage = {
+        id: `agent-error-${failedAt}`,
+        role: 'agent',
+        text: errorMessage,
+      };
 
       setMessagesByChat((prev) => {
         const existingMessages = prev[targetChatId] ?? [];
+        const nextMessages = existingMessages.some((message) => message.id === typingMessageId)
+          ? existingMessages.map((message) =>
+              message.id === typingMessageId ? errorMessagePayload : message,
+            )
+          : [...existingMessages, errorMessagePayload];
+
         return {
           ...prev,
-          [targetChatId]: [
-            ...existingMessages,
-            { id: `agent-error-${failedAt}`, role: 'agent', text: errorMessage },
-          ],
+          [targetChatId]: nextMessages,
         };
       });
       setChats((prev) =>
