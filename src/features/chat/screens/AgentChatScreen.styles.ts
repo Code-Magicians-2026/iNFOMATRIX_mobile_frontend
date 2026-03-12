@@ -132,6 +132,9 @@ const getStyles = (spacing: number, isTablet: boolean, isLandscape: boolean) =>
       justifyContent: 'center',
       elevation: 2,
     },
+    sendButtonDisabled: {
+      opacity: 0.6,
+    },
     sendButtonText: {
       color: '#ffffff',
       fontSize: 14,

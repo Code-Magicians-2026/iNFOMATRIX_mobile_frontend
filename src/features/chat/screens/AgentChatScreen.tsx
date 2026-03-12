@@ -11,14 +11,20 @@ import {
 
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import useAuthStore from '@/context/Auth-store';
+import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import { sendPromptToAgent } from '@/src/features/chat/api/agent';
 import type { ChatMessage, ChatThread } from '@/src/features/chat/models/chat.model';
 import getStyles from './AgentChatScreen.styles';
 
 const DRAFT_CHAT_ID = 'draft-agent-chat';
-const AGENT_REPLY = 'Привіт, чекаємо на бекенд)';
+const AGENT_TYPING_PREVIEW = 'Агент думає...';
+const AGENT_ERROR_FALLBACK = 'Не вдалося отримати відповідь від агента.';
+const AGENT_AUTH_REQUIRED = 'Щоб спілкуватися з агентом, увійдіть у свій акаунт.';
 
 const AgentChatScreen = () => {
   const colors = useThemeStore((s) => s.colors);
+  const session = useAuthStore((s) => s.session);
   const { isLandscape, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(
     () => getStyles(spacing, isTablet, isLandscape),
@@ -29,6 +35,8 @@ const AgentChatScreen = () => {
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, ChatMessage[]>>({});
   const [inputText, setInputText] = React.useState('');
   const [isChatMenuOpen, setIsChatMenuOpen] = React.useState(false);
+  const [isSending, setIsSending] = React.useState(false);
+  const isAuthenticated = Boolean(session?.accessToken?.trim());
 
   const hasMultipleChats = chats.length >= 2;
   const activeChatId = selectedChatId;
@@ -49,22 +57,50 @@ const AgentChatScreen = () => {
     setIsChatMenuOpen(false);
   };
 
-  const handleSend = () => {
+  const handleSend = React.useCallback(async () => {
+    if (isSending) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      const failedAt = Date.now();
+
+      setMessagesByChat((prev) => {
+        const existingMessages = prev[activeChatId] ?? [];
+        const hasAuthNotice = existingMessages.some((msg) => msg.text === AGENT_AUTH_REQUIRED);
+        if (hasAuthNotice) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          [activeChatId]: [
+            ...existingMessages,
+            { id: `agent-auth-${failedAt}`, role: 'agent', text: AGENT_AUTH_REQUIRED },
+          ],
+        };
+      });
+
+      return;
+    }
+
     const normalizedText = inputText.trim();
     if (!normalizedText) {
       return;
     }
 
     let targetChatId = activeChatId;
+    const sentAt = Date.now();
+    const typingMessageId = `agent-typing-${sentAt}`;
 
     if (activeChatId === DRAFT_CHAT_ID) {
-      targetChatId = `chat-${Date.now()}`;
+      targetChatId = `chat-${sentAt}`;
       setChats((prev) => [
         {
           id: targetChatId,
           title: `Чат ${prev.length + 1}`,
-          preview: AGENT_REPLY,
-          updatedAt: Date.now(),
+          preview: AGENT_TYPING_PREVIEW,
+          updatedAt: sentAt,
         },
         ...prev,
       ]);
@@ -74,28 +110,92 @@ const AgentChatScreen = () => {
         prev
           .map((chat) =>
             chat.id === targetChatId
-              ? { ...chat, preview: AGENT_REPLY, updatedAt: Date.now() }
+              ? { ...chat, preview: AGENT_TYPING_PREVIEW, updatedAt: sentAt }
               : chat,
           )
           .sort((a, b) => b.updatedAt - a.updatedAt),
       );
     }
 
-    const timestamp = Date.now();
     setMessagesByChat((prev) => {
       const existingMessages = prev[targetChatId] ?? [];
       return {
         ...prev,
         [targetChatId]: [
           ...existingMessages,
-          { id: `user-${timestamp}`, role: 'user', text: normalizedText },
-          { id: `agent-${timestamp + 1}`, role: 'agent', text: AGENT_REPLY },
+          { id: `user-${sentAt}`, role: 'user', text: normalizedText },
+          { id: typingMessageId, role: 'agent', text: AGENT_TYPING_PREVIEW },
         ],
       };
     });
 
     setInputText('');
-  };
+    setIsSending(true);
+
+    try {
+      const tokenType = session?.tokenType?.trim() || 'Bearer';
+      const authHeader = session?.accessToken ? `${tokenType} ${session.accessToken}` : undefined;
+      const agentReply = await sendPromptToAgent(normalizedText, authHeader);
+      const repliedAt = Date.now();
+      const agentMessage: ChatMessage = { id: `agent-${repliedAt}`, role: 'agent', text: agentReply };
+
+      setMessagesByChat((prev) => {
+        const existingMessages = prev[targetChatId] ?? [];
+        const nextMessages = existingMessages.some((message) => message.id === typingMessageId)
+          ? existingMessages.map((message) =>
+              message.id === typingMessageId ? agentMessage : message,
+            )
+          : [...existingMessages, agentMessage];
+
+        return {
+          ...prev,
+          [targetChatId]: nextMessages,
+        };
+      });
+      setChats((prev) =>
+        prev
+          .map((chat) =>
+            chat.id === targetChatId
+              ? { ...chat, preview: agentReply, updatedAt: repliedAt }
+              : chat,
+          )
+          .sort((a, b) => b.updatedAt - a.updatedAt),
+      );
+    } catch (error) {
+      const failedAt = Date.now();
+      const errorMessage = getApiErrorMessage(error, AGENT_ERROR_FALLBACK);
+      const errorMessagePayload: ChatMessage = {
+        id: `agent-error-${failedAt}`,
+        role: 'agent',
+        text: errorMessage,
+      };
+
+      setMessagesByChat((prev) => {
+        const existingMessages = prev[targetChatId] ?? [];
+        const nextMessages = existingMessages.some((message) => message.id === typingMessageId)
+          ? existingMessages.map((message) =>
+              message.id === typingMessageId ? errorMessagePayload : message,
+            )
+          : [...existingMessages, errorMessagePayload];
+
+        return {
+          ...prev,
+          [targetChatId]: nextMessages,
+        };
+      });
+      setChats((prev) =>
+        prev
+          .map((chat) =>
+            chat.id === targetChatId
+              ? { ...chat, preview: errorMessage, updatedAt: failedAt }
+              : chat,
+          )
+          .sort((a, b) => b.updatedAt - a.updatedAt),
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }, [activeChatId, inputText, isAuthenticated, isSending, session?.accessToken, session?.tokenType]);
 
   const renderChatMenuItem: ListRenderItem<ChatThread> = React.useCallback(
     ({ item }) => {
@@ -240,8 +340,9 @@ const AgentChatScreen = () => {
           <TextInput
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Напишіть повідомлення..."
+            placeholder={isAuthenticated ? 'Напишіть повідомлення...' : 'Увійдіть, щоб писати агенту'}
             placeholderTextColor={colors.textSecondary}
+            editable={!isSending && isAuthenticated}
             accessibilityLabel="Поле повідомлення"
             accessibilityHint="Введіть текст повідомлення для чату"
             importantForAccessibility="yes"
@@ -255,16 +356,29 @@ const AgentChatScreen = () => {
             ]}
           />
           <Pressable
-            onPress={handleSend}
-            style={[styles.sendButton, { backgroundColor: '#0077b6' }]}
+            onPress={() => {
+              void handleSend();
+            }}
+            disabled={isSending || !isAuthenticated}
+            style={[
+              styles.sendButton,
+              { backgroundColor: '#0077b6' },
+              isSending || !isAuthenticated ? styles.sendButtonDisabled : null,
+            ]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
             accessibilityLabel="Надіслати повідомлення"
-            accessibilityHint="Надсилає поточне повідомлення в чат"
+            accessibilityHint={
+              !isAuthenticated
+                ? 'Увійдіть у акаунт, щоб надсилати повідомлення'
+                : isSending
+                ? 'Очікуйте, триває відправка повідомлення'
+                : 'Надсилає поточне повідомлення в чат'
+            }
             importantForAccessibility="yes"
           >
             <Text style={styles.sendButtonText} allowFontScaling>
-              Надіслати
+              {isSending ? 'Надсилання...' : 'Надіслати'}
             </Text>
           </Pressable>
         </View>
