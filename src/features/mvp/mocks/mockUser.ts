@@ -2,7 +2,9 @@ import type { AvatarStats, UserProfile } from '@/shared/models/mvp-contracts.mod
 
 export const mockUserProfile: UserProfile = {
   id: 'user-1',
-  name: 'Alex Infomatrix',
+  fullName: 'Alex Infomatrix',
+  email: 'alex@infomatrix.app',
+  role: 'adult',
   level: 4,
   xp: 860,
   streak: 6,

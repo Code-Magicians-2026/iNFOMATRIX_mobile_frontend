@@ -176,11 +176,11 @@ const applyQuestReward = (quest: Quest) => {
   if (existingUser) {
     existingUser.xp = userState.xp;
     existingUser.fairScore = fairScore;
-    existingUser.name = userState.name;
+    existingUser.name = userState.fullName;
   } else {
     leaderboardState.push({
       userId: userState.id,
-      name: userState.name,
+      name: userState.fullName,
       rank: leaderboardState.length + 1,
       xp: userState.xp,
       fairScore,
@@ -210,11 +210,13 @@ const createGeneratedQuest = (input: GenerateQuestInput): Quest => {
 
   return {
     id: `quest-generated-${Date.now()}-${generatedQuestCount}`,
+    assignedToUserId: userState.id,
     title: buildQuestTitle(normalizedTask),
     originalTask: normalizedTask,
     description: buildQuestDescription(input),
     difficulty,
     rewardXp,
+    estimatedMinutes: input.durationMinutes ?? 30,
     status: 'draft',
     category,
     createdAt: new Date().toISOString(),
@@ -226,7 +228,7 @@ export const getHomeSummaryMock = async (): Promise<HomeSummaryMock> => {
 
   const today = todayIsoDate();
   const todayCompleted = questsState.filter(
-    (quest) => quest.status === 'completed' && quest.createdAt.slice(0, 10) === today,
+    (quest) => quest.status === 'completed' && quest.createdAt?.slice(0, 10) === today,
   );
 
   const summary: HomeSummaryMock = {
@@ -245,7 +247,7 @@ export const getQuestsMock = async (): Promise<Quest[]> => {
   await wait(MOCK_DELAY_MS);
 
   return [...questsState]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a, b) => (b.createdAt ? new Date(b.createdAt).getTime() : 0) - (a.createdAt ? new Date(a.createdAt).getTime() : 0))
     .map(cloneQuest);
 };
 
