@@ -15,6 +15,7 @@ import useAuthStore from '@/context/Auth-store';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import { sendPromptToAgent } from '@/src/features/chat/api/agent';
 import type { ChatMessage, ChatThread } from '@/src/features/chat/models/chat.model';
+import { EmptyState } from '@/shared/components/ui';
 import getStyles from './AgentChatScreen.styles';
 
 const DRAFT_CHAT_ID = 'draft-agent-chat';
@@ -342,11 +343,7 @@ const AgentChatScreen = () => {
             keyExtractor={(item) => item.id}
             renderItem={renderMessageItem}
             contentContainerStyle={styles.messagesContent}
-            ListEmptyComponent={
-              <Text style={[styles.emptyMessage, { color: colors.textSecondary }]} allowFontScaling>
-                Напишіть перше повідомлення.
-              </Text>
-            }
+            ListEmptyComponent={<EmptyState title="Напишіть перше повідомлення." />}
             initialNumToRender={12}
             maxToRenderPerBatch={20}
             windowSize={10}
