@@ -76,7 +76,12 @@ const AgentChatScreen = () => {
           ...prev,
           [activeChatId]: [
             ...existingMessages,
-            { id: `agent-auth-${failedAt}`, role: 'agent', text: AGENT_AUTH_REQUIRED },
+            {
+              id: `agent-auth-${failedAt}`,
+              role: 'agent',
+              text: AGENT_AUTH_REQUIRED,
+              createdAt: new Date(failedAt).toISOString(),
+            },
           ],
         };
       });
@@ -123,8 +128,18 @@ const AgentChatScreen = () => {
         ...prev,
         [targetChatId]: [
           ...existingMessages,
-          { id: `user-${sentAt}`, role: 'user', text: normalizedText },
-          { id: typingMessageId, role: 'agent', text: AGENT_TYPING_PREVIEW },
+          {
+            id: `user-${sentAt}`,
+            role: 'user',
+            text: normalizedText,
+            createdAt: new Date(sentAt).toISOString(),
+          },
+          {
+            id: typingMessageId,
+            role: 'agent',
+            text: AGENT_TYPING_PREVIEW,
+            createdAt: new Date(sentAt).toISOString(),
+          },
         ],
       };
     });
@@ -137,7 +152,12 @@ const AgentChatScreen = () => {
       const authHeader = session?.accessToken ? `${tokenType} ${session.accessToken}` : undefined;
       const agentReply = await sendPromptToAgent(normalizedText, authHeader);
       const repliedAt = Date.now();
-      const agentMessage: ChatMessage = { id: `agent-${repliedAt}`, role: 'agent', text: agentReply };
+      const agentMessage: ChatMessage = {
+        id: `agent-${repliedAt}`,
+        role: 'agent',
+        text: agentReply,
+        createdAt: new Date(repliedAt).toISOString(),
+      };
 
       setMessagesByChat((prev) => {
         const existingMessages = prev[targetChatId] ?? [];
@@ -168,6 +188,7 @@ const AgentChatScreen = () => {
         id: `agent-error-${failedAt}`,
         role: 'agent',
         text: errorMessage,
+        createdAt: new Date(failedAt).toISOString(),
       };
 
       setMessagesByChat((prev) => {

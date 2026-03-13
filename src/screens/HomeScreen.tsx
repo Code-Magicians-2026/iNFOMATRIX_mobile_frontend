@@ -16,7 +16,7 @@ const HomeScreen = () => {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.progressCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.text }]} allowFontScaling>
-          Today's Progress
+          {"Today's Progress"}
         </Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]} allowFontScaling>
           Welcome back, {userEmail}
