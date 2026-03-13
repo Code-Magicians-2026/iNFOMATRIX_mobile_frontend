@@ -75,8 +75,6 @@ const isQuestDone = (quest: Quest) => {
 type CompletionFeedback = {
   questTitle: string;
   rewardXp: number;
-  category: string;
-  categoryValue: number;
   totalXp: number;
   streak: number;
 };
@@ -283,8 +281,6 @@ const QuestsScreen = () => {
         setCompletionFeedback({
           questTitle: updatedQuest.title,
           rewardXp: updatedQuest.rewardXp,
-          category: updatedQuest.category,
-          categoryValue: refreshedProgress.stats[updatedQuest.category] ?? 0,
           totalXp: refreshedProgress.xp,
           streak: refreshedProgress.streak,
         });
@@ -501,7 +497,7 @@ const QuestsScreen = () => {
                   All steps completed
                 </Text>
                 <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-                  Quest moved to Archive, {completionFeedback.category} stat is now {completionFeedback.categoryValue}
+                  Quest moved to Archive
                 </Text>
                 <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
                   Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}

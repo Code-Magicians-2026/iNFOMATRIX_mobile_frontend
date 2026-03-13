@@ -39,7 +39,7 @@ export interface CreateChildMockInput {
 export interface GeneratePlanMockInput {
   targetUserId: string;
   prompt: string;
-  category: string;
+  category?: string;
   intensity: string;
   photo?: CapturedPhoto;
 }
@@ -209,7 +209,7 @@ const buildStatsFromCompletedQuests = (quests: Quest[]) => {
       return;
     }
 
-    stats[quest.category] = (stats[quest.category] ?? 0) + 1;
+    stats.quests = (stats.quests ?? 0) + 1;
   });
 
   return stats;
@@ -329,12 +329,11 @@ const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] 
   const baseReward = intensity === 'high' ? 90 : intensity === 'low' ? 50 : 70;
   const baseDuration = intensity === 'high' ? 35 : intensity === 'low' ? 20 : 28;
   const difficulty = intensity === 'high' ? 'hard' : intensity === 'low' ? 'easy' : 'medium';
-  const category = input.category.trim().toLowerCase() || 'productivity';
   const nowMs = Date.now();
 
   return Array.from({ length: questCount }, (_, index) => {
     const questId = `${planId}-quest-${index + 1}`;
-    const title = `${category[0].toUpperCase()}${category.slice(1)} Mission ${index + 1}`;
+    const title = `Mission ${index + 1}`;
     const description = `${input.prompt.trim()} Step ${index + 1}: keep focus and complete with quality.`;
 
     return normalizeQuest({
@@ -342,7 +341,6 @@ const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] 
       assignedToUserId: input.targetUserId,
       title,
       description,
-      category,
       difficulty,
       rewardXp: baseReward + index * 10,
       estimatedMinutes: baseDuration + index * 5,
@@ -514,7 +512,7 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
     id: `plan-request-${Date.now()}-${planRequestCounter}`,
     targetUserId: input.targetUserId,
     prompt: input.prompt.trim(),
-    category: input.category.trim() || 'general',
+    category: input.category?.trim() || undefined,
     intensity: input.intensity.trim() || 'medium',
     photo: normalizedPhoto,
     status: 'generated',
@@ -529,7 +527,7 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
   const generatedPlan: GeneratedPlan = {
     id: planId,
     title: `${targetUser.fullName}: AI Plan`,
-    summary: `Generated ${quests.length} quests for ${request.category} with ${request.intensity} intensity${normalizedPhoto ? ' using camera context.' : '.'}`,
+    summary: `Generated ${quests.length} quests with ${request.intensity} intensity${normalizedPhoto ? ' using camera context.' : '.'}`,
     childMessage: `You can do this, ${targetUser.fullName}. Start with one quest and keep going.`,
     quests,
     totalEstimatedMinutes: quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0),
@@ -635,7 +633,7 @@ const applyQuestCompletionReward = (quest: Quest) => {
   progress.streak += 1;
   progress.stats = {
     ...progress.stats,
-    [quest.category]: (progress.stats[quest.category] ?? 0) + 1,
+    quests: (progress.stats.quests ?? 0) + 1,
   };
 
   refreshProgressCounters(quest.assignedToUserId);

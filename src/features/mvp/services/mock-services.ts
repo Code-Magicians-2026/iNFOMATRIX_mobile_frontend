@@ -11,15 +11,6 @@ import { mockQuests } from '@/src/features/mvp/mocks/mockQuests';
 const MOCK_DELAY_MS = 220;
 const XP_PER_LEVEL = 300;
 
-type CategoryStatMap = Record<string, keyof AvatarStats>;
-
-const categoryToStat: CategoryStatMap = {
-  study: 'study',
-  sport: 'sport',
-  productivity: 'productivity',
-  health: 'health',
-};
-
 export interface HomeSummaryMock {
   user: UserProfile;
   avatarStats: AvatarStats;
@@ -38,7 +29,6 @@ export interface ProfileMock {
 
 export interface GenerateQuestInput {
   taskText: string;
-  category?: string;
   durationMinutes?: number;
 }
 
@@ -80,7 +70,6 @@ const normalizeGenerateInput = (input: string | GenerateQuestInput): GenerateQue
 
   return {
     taskText: input.taskText,
-    category: input.category,
     durationMinutes: input.durationMinutes,
   };
 };
@@ -98,33 +87,6 @@ const getDifficultyAndReward = (taskText: string, durationMinutes?: number) => {
   }
 
   return { difficulty: 'easy', rewardXp: 60 };
-};
-
-const inferCategory = (taskText: string, category?: string) => {
-  if (category && category.trim()) {
-    return category.trim().toLowerCase();
-  }
-
-  const normalized = taskText.toLowerCase();
-
-  if (normalized.includes('run') || normalized.includes('workout') || normalized.includes('gym')) {
-    return 'sport';
-  }
-
-  if (
-    normalized.includes('learn') ||
-    normalized.includes('study') ||
-    normalized.includes('read') ||
-    normalized.includes('course')
-  ) {
-    return 'study';
-  }
-
-  if (normalized.includes('sleep') || normalized.includes('rest') || normalized.includes('water')) {
-    return 'health';
-  }
-
-  return 'productivity';
 };
 
 const buildQuestTitle = (taskText: string) => {
@@ -161,12 +123,12 @@ const applyQuestReward = (quest: Quest) => {
     level: recalcLevelFromXp(nextXp),
   };
 
-  const targetStat = categoryToStat[quest.category] ?? 'productivity';
+  const targetStat: keyof AvatarStats = 'productivity';
   const statIncrease = Math.max(1, Math.round(quest.rewardXp / 20));
 
   avatarStatsState = {
     ...avatarStatsState,
-    health: Math.min(100, avatarStatsState.health + (quest.category === 'health' ? statIncrease : 1)),
+    health: Math.min(100, avatarStatsState.health + 1),
     [targetStat]: Math.min(100, avatarStatsState[targetStat] + statIncrease),
   };
 
@@ -206,7 +168,6 @@ const createGeneratedQuest = (input: GenerateQuestInput): Quest => {
 
   const normalizedTask = input.taskText.trim();
   const { difficulty, rewardXp } = getDifficultyAndReward(normalizedTask, input.durationMinutes);
-  const category = inferCategory(normalizedTask, input.category);
 
   return {
     id: `quest-generated-${Date.now()}-${generatedQuestCount}`,
@@ -218,7 +179,6 @@ const createGeneratedQuest = (input: GenerateQuestInput): Quest => {
     rewardXp,
     estimatedMinutes: input.durationMinutes ?? 30,
     status: 'draft',
-    category,
     createdAt: new Date().toISOString(),
   };
 };

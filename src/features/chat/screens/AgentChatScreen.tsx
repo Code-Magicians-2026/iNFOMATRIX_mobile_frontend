@@ -39,7 +39,6 @@ const QUICK_PROMPTS = [
   'Make homework feel like a game',
 ] as const;
 
-const CATEGORY_OPTIONS = ['study', 'routine', 'household', 'health'] as const;
 const INTENSITY_OPTIONS = ['low', 'medium', 'high'] as const;
 
 type TargetMode = 'myself' | 'child';
@@ -98,7 +97,6 @@ const AgentChatScreen = () => {
   );
 
   const [prompt, setPrompt] = React.useState('');
-  const [category, setCategory] = React.useState<string>('study');
   const [intensity, setIntensity] = React.useState<string>('medium');
   const [capturedPhoto, setCapturedPhoto] = React.useState<CapturedPhoto | null>(null);
   const [cameraPermissionState, setCameraPermissionState] =
@@ -340,7 +338,6 @@ const AgentChatScreen = () => {
       const request: GeneratePlanInput = {
         targetUserId,
         prompt: normalizedPrompt,
-        category,
         intensity,
         photo: capturedPhoto,
       };
@@ -667,35 +664,6 @@ const AgentChatScreen = () => {
               },
             ]}
           />
-        </StatCard>
-
-        <StatCard title="Category" subtitle="Plan focus" style={styles.card}>
-          <View style={styles.optionRow}>
-            {CATEGORY_OPTIONS.map((item) => {
-              const isSelected = category === item;
-              return (
-                <Pressable
-                  key={item}
-                  onPress={() => setCategory(item)}
-                  style={[
-                    styles.optionChip,
-                    {
-                      borderColor: isSelected ? '#ff2d55' : colors.border,
-                      backgroundColor: isSelected ? '#ff2d55' : colors.background,
-                    },
-                  ]}
-                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                >
-                  <Text
-                    style={[styles.optionChipLabel, { color: isSelected ? '#ffffff' : colors.text }]}
-                    allowFontScaling
-                  >
-                    {item}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
         </StatCard>
 
         <StatCard title="Intensity" subtitle="How demanding the plan should be" style={styles.card}>

@@ -138,7 +138,7 @@ describe('mock-layer-services', () => {
     expect(progressAfter.streak).toBe(progressBefore.streak + 1);
     expect(progressAfter.completedQuestsCount).toBeGreaterThanOrEqual(progressBefore.completedQuestsCount);
     expect(progressAfter.activeQuestsCount).toBeLessThanOrEqual(progressBefore.activeQuestsCount);
-    expect(progressAfter.stats[completedQuest.category]).toBeGreaterThan(0);
+    expect(progressAfter.stats.quests).toBeGreaterThan(0);
   });
 
   it('archives quest only after all steps are completed', async () => {

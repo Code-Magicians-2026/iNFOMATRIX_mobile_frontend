@@ -39,7 +39,7 @@ export interface PlanRequest {
   id: string;
   targetUserId: string;
   prompt: string;
-  category: string;
+  category?: string;
   intensity: string;
   photo?: CapturedPhoto;
   status: string;
@@ -64,7 +64,8 @@ export interface Quest {
   assignedToUserId: string;
   title: string;
   description: string;
-  category: string;
+  // Legacy field kept optional for old mock payload compatibility.
+  category?: string;
   difficulty: string;
   rewardXp: number;
   estimatedMinutes: number;

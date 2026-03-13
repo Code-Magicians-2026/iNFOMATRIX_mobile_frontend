@@ -6,11 +6,10 @@ Prefer short, actionable quests with clear reward XP and estimated minutes.`;
 
 export const PLAN_BUILDER_INPUT_SCHEMA = {
   type: 'object',
-  required: ['targetUserId', 'prompt', 'category', 'intensity'],
+  required: ['targetUserId', 'prompt', 'intensity'],
   properties: {
     targetUserId: { type: 'string', description: 'Child or user id to assign quests' },
     prompt: { type: 'string', minLength: 3, maxLength: 500 },
-    category: { type: 'string', enum: ['study', 'routine', 'household', 'health'] },
     intensity: { type: 'string', enum: ['low', 'medium', 'high'] },
   },
 } as const;
@@ -29,7 +28,6 @@ export const PLAN_BUILDER_OUTPUT_SCHEMA = {
         required: [
           'title',
           'description',
-          'category',
           'difficulty',
           'rewardXp',
           'estimatedMinutes',
