@@ -41,12 +41,30 @@ export const buildGeneratePlanFormData = (input: GeneratePlanInput): FormData =>
   return formData;
 };
 
+const postPlanGenerationMultipart = async (
+  formData: FormData,
+  input: GeneratePlanInput,
+): Promise<GeneratedPlan> => {
+  // API endpoint integration point: submit multipart/form-data here when backend is wired.
+  void formData;
+  return generatePlanMock(input);
+};
+
 export const plansService = {
   getPlans: async (input: GetPlansInput = {}): Promise<GeneratedPlan[]> =>
     getPlansMock(input),
 
   generatePlan: async (input: GeneratePlanInput): Promise<GeneratedPlan> =>
     generatePlanMock(input),
+
+  uploadPhotoAndGenerate: async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
+    if (!input.photo?.uri) {
+      throw new Error('Photo is required for uploadPhotoAndGenerate.');
+    }
+
+    const formData = buildGeneratePlanFormData(input);
+    return postPlanGenerationMultipart(formData, input);
+  },
 
   approvePlan: async (planId: string): Promise<GeneratedPlan> =>
     approvePlanMock(planId),

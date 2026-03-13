@@ -1,4 +1,5 @@
 export { authService } from './authService';
+export { cameraService } from './cameraService';
 export { userService } from './userService';
 export { childrenService } from './childrenService';
 export { plansService } from './plansService';

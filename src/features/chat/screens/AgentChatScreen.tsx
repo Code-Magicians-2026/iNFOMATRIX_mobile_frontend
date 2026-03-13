@@ -2,7 +2,6 @@ import React from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import * as ImagePicker from 'expo-image-picker';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -28,7 +27,7 @@ import {
   PLAN_BUILDER_SYSTEM_PROMPT,
   PLAN_BUILDER_TONE_RULES,
 } from '@/src/features/chat/config/ai-transparency';
-import { childrenService, plansService, userService } from '@/src/integration/services';
+import { cameraService, childrenService, plansService, userService } from '@/src/integration/services';
 import type { GeneratePlanInput } from '@/src/integration/services';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
@@ -57,16 +56,6 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
 
   return 'child-1';
 };
-
-const mapAssetToCapturedPhoto = (asset: ImagePicker.ImagePickerAsset): CapturedPhoto => ({
-  uri: asset.uri,
-  width: asset.width,
-  height: asset.height,
-  fileName: asset.fileName ?? undefined,
-  mimeType: asset.mimeType ?? undefined,
-  fileSize: asset.fileSize ?? undefined,
-  previewUri: asset.uri,
-});
 
 const AgentChatScreen = () => {
   const navigation = useNavigation<ChatNavigation>();
@@ -179,37 +168,42 @@ const AgentChatScreen = () => {
     targetMode === 'child' && canUseChildTarget && !selectedChild;
   const isGenerateDisabled = isGenerating || prompt.trim().length === 0 || !capturedPhoto?.uri;
 
+  const assignPreparedPhoto = async (photo: CapturedPhoto | null) => {
+    if (!photo) {
+      return;
+    }
+
+    const preparedPhoto = await cameraService.preparePhoto(photo);
+    setCapturedPhoto(preparedPhoto);
+  };
+
   const handleCapturePhoto = async () => {
     try {
       setGenerationError(null);
-
-      const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!cameraPermission.granted) {
-        setGenerationError('Camera permission is required to add room photo.');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 0.9,
-        base64: false,
-        exif: false,
-      });
-
-      if (result.canceled) {
-        return;
-      }
-
-      const asset = result.assets[0];
-      if (!asset?.uri) {
-        setGenerationError('Captured photo is unavailable. Please retake.');
-        return;
-      }
-
-      setCapturedPhoto(mapAssetToCapturedPhoto(asset));
+      const photo = await cameraService.openCamera();
+      await assignPreparedPhoto(photo);
     } catch {
       setGenerationError('Failed to capture photo. Please try again.');
+    }
+  };
+
+  const handlePickFromGallery = async () => {
+    try {
+      setGenerationError(null);
+      const photo = await cameraService.openGallery();
+      await assignPreparedPhoto(photo);
+    } catch {
+      setGenerationError('Failed to pick photo from gallery.');
+    }
+  };
+
+  const handleUseProjectPhoto = async () => {
+    try {
+      setGenerationError(null);
+      const photo = await cameraService.openProjectPhoto();
+      await assignPreparedPhoto(photo);
+    } catch {
+      setGenerationError('Failed to load project photo.');
     }
   };
 
@@ -243,7 +237,7 @@ const AgentChatScreen = () => {
         photo: capturedPhoto,
       };
 
-      const generatedPlan = await plansService.generatePlan(request);
+      const generatedPlan = await plansService.uploadPhotoAndGenerate(request);
 
       navigation.navigate('PlanPreview', {
         plan: generatedPlan,
@@ -435,16 +429,38 @@ const AgentChatScreen = () => {
                 {capturedPhoto ? 'Retake photo' : 'Take photo'}
               </Text>
             </Pressable>
+            <Pressable
+              onPress={() => {
+                void handlePickFromGallery();
+              }}
+              style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            >
+              <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                Gallery
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void handleUseProjectPhoto();
+              }}
+              style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            >
+              <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                From project
+              </Text>
+            </Pressable>
             {capturedPhoto ? (
               <Pressable
                 onPress={() => {
                   setCapturedPhoto(null);
                   setGenerationError(null);
                 }}
-                style={[styles.removePhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
                 android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               >
-                <Text style={[styles.removePhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
                   Remove photo
                 </Text>
               </Pressable>
@@ -713,11 +729,12 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     photoActions: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 8,
       marginTop: 10,
     },
     cameraButton: {
-      flex: 1,
+      minWidth: isTablet ? 150 : 132,
       minHeight: 44,
       borderRadius: 10,
       backgroundColor: '#ff2d55',
@@ -731,7 +748,7 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontSize: isTablet ? 15 : 14,
       fontWeight: '700',
     },
-    removePhotoButton: {
+    secondaryPhotoButton: {
       minWidth: isTablet ? 132 : 118,
       minHeight: 44,
       borderWidth: 1,
@@ -741,7 +758,7 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       overflow: 'hidden',
       elevation: 1,
     },
-    removePhotoButtonLabel: {
+    secondaryPhotoButtonLabel: {
       fontSize: isTablet ? 14 : 13,
       fontWeight: '700',
     },
