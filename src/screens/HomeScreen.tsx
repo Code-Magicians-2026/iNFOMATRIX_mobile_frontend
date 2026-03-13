@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -78,6 +78,13 @@ const HomeScreen = () => {
   const [isCreatingChild, setIsCreatingChild] = React.useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = React.useState(false);
   const [approvingPlanId, setApprovingPlanId] = React.useState<string | null>(null);
+
+  const [isCreateChildModalVisible, setIsCreateChildModalVisible] = React.useState(false);
+  const [childFullName, setChildFullName] = React.useState('');
+  const [childAge, setChildAge] = React.useState('');
+  const [childInterests, setChildInterests] = React.useState('');
+  const [childNotes, setChildNotes] = React.useState('');
+  const [createChildError, setCreateChildError] = React.useState<string | null>(null);
 
   const effectiveRole: UserRole = role ?? 'child';
 
@@ -184,21 +191,61 @@ const HomeScreen = () => {
     Math.min(100, Math.round(((totalXp - levelStartXp) / XP_PER_LEVEL) * 100)),
   );
 
+  const resetCreateChildForm = () => {
+    setChildFullName('');
+    setChildAge('');
+    setChildInterests('');
+    setChildNotes('');
+    setCreateChildError(null);
+  };
+
+  const openCreateChildModal = () => {
+    resetCreateChildForm();
+    setIsCreateChildModalVisible(true);
+  };
+
+  const closeCreateChildModal = () => {
+    if (isCreatingChild) {
+      return;
+    }
+
+    setIsCreateChildModalVisible(false);
+  };
+
   const handleCreateChild = async () => {
+    const fullName = childFullName.trim();
+    if (!fullName) {
+      setCreateChildError('Name is required.');
+      return;
+    }
+
+    const parsedAge = Number(childAge.trim());
+    if (!Number.isFinite(parsedAge) || parsedAge < 3 || parsedAge > 18) {
+      setCreateChildError('Age must be between 3 and 18.');
+      return;
+    }
+
+    const interests = childInterests
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
     setIsCreatingChild(true);
+    setCreateChildError(null);
     try {
-      const childIndex = children.length + 1;
       const createdChild = await createChildMock({
-        fullName: `Child ${childIndex}`,
-        age: Math.min(16, 8 + (childIndex % 7)),
-        interests: ['focus', 'learning'],
-        notes: 'Created from Home dashboard.',
+        fullName,
+        age: Math.round(parsedAge),
+        interests: interests.length > 0 ? interests : undefined,
+        notes: childNotes.trim() || undefined,
       });
 
       await setSelectedChildId(createdChild.id);
+      setIsCreateChildModalVisible(false);
+      resetCreateChildForm();
       await loadDashboard(false);
     } catch {
-      setScreenError('Failed to create child profile.');
+      setCreateChildError('Failed to create child profile. Please try again.');
     } finally {
       setIsCreatingChild(false);
     }
@@ -263,7 +310,7 @@ const HomeScreen = () => {
         }
       />
 
-      <View style={[styles.roleSwitcher, { borderColor: colors.border, backgroundColor: colors.card }]}>
+      <View style={[styles.roleSwitcher, { borderColor: colors.border, backgroundColor: colors.card }]}> 
         <Pressable
           onPress={() => {
             void setRole('adult');
@@ -379,11 +426,8 @@ const HomeScreen = () => {
               <View style={styles.actionButtonsWrap}>
                 <PrimaryButton
                   label="Create child"
-                  onPress={() => {
-                    void handleCreateChild();
-                  }}
+                  onPress={openCreateChildModal}
                   variant="secondary"
-                  loading={isCreatingChild}
                   style={styles.actionButton}
                 />
                 <PrimaryButton
@@ -407,7 +451,7 @@ const HomeScreen = () => {
                   );
 
                   return (
-                    <View key={plan.id} style={[styles.planItem, { borderColor: colors.border }]}>
+                    <View key={plan.id} style={[styles.planItem, { borderColor: colors.border }]}> 
                       <Text style={[styles.planTitle, { color: colors.text }]} allowFontScaling>
                         {plan.title}
                       </Text>
@@ -453,7 +497,7 @@ const HomeScreen = () => {
             <StatCard title="Today Quests" subtitle="Preview" style={styles.card}>
               {todayQuests.length > 0 ? (
                 todayQuests.map((quest) => (
-                  <View key={quest.id} style={[styles.questItem, { borderColor: colors.border }]}>
+                  <View key={quest.id} style={[styles.questItem, { borderColor: colors.border }]}> 
                     <Text style={[styles.questTitle, { color: colors.text }]} allowFontScaling>
                       {quest.title}
                     </Text>
@@ -481,7 +525,7 @@ const HomeScreen = () => {
                 Level: {level}
               </Text>
 
-              <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View style={[styles.progressTrack, { backgroundColor: colors.border }]}> 
                 <View
                   style={[
                     styles.progressFill,
@@ -510,6 +554,121 @@ const HomeScreen = () => {
           style={[styles.card, styles.refreshButton]}
         />
       </ScrollView>
+
+      <Modal
+        visible={isCreateChildModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCreateChildModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+            <Text style={[styles.modalTitle, { color: colors.text }]} allowFontScaling>
+              Create Child
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]} allowFontScaling>
+              Add profile and set active target for planning.
+            </Text>
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Name
+            </Text>
+            <TextInput
+              value={childFullName}
+              onChangeText={setChildFullName}
+              placeholder="Child full name"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              editable={!isCreatingChild}
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Age
+            </Text>
+            <TextInput
+              value={childAge}
+              onChangeText={setChildAge}
+              placeholder="3-18"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              keyboardType="number-pad"
+              editable={!isCreatingChild}
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Interests
+            </Text>
+            <TextInput
+              value={childInterests}
+              onChangeText={setChildInterests}
+              placeholder="math, science, reading"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              editable={!isCreatingChild}
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Notes
+            </Text>
+            <TextInput
+              value={childNotes}
+              onChangeText={setChildNotes}
+              placeholder="Any useful note for planning"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, styles.notesInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              editable={!isCreatingChild}
+            />
+
+            {createChildError ? (
+              <Text style={styles.errorText} allowFontScaling>
+                {createChildError}
+              </Text>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={closeCreateChildModal}
+                disabled={isCreatingChild}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.modalButtonSecondary,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                    opacity: pressed && !isCreatingChild ? 0.9 : 1,
+                  },
+                ]}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              >
+                <Text style={[styles.modalButtonLabel, { color: colors.text }]} allowFontScaling>
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  void handleCreateChild();
+                }}
+                disabled={isCreatingChild}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.modalButtonPrimary,
+                  isCreatingChild && styles.modalButtonDisabled,
+                  { opacity: pressed && !isCreatingChild ? 0.9 : 1 },
+                ]}
+                android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+              >
+                <Text style={[styles.modalButtonLabel, styles.modalButtonLabelPrimary]} allowFontScaling>
+                  {isCreatingChild ? 'Saving...' : 'Save child'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 };
@@ -639,6 +798,84 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     refreshButton: {
       marginTop: 2,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.42)',
+      paddingHorizontal: spacing,
+      justifyContent: 'center',
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: cardMaxWidth,
+      alignSelf: 'center',
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: isTablet ? 18 : 14,
+      gap: 8,
+      elevation: 8,
+    },
+    modalTitle: {
+      fontSize: isTablet ? 20 : 18,
+      fontWeight: '700',
+    },
+    modalSubtitle: {
+      fontSize: isTablet ? 14 : 13,
+      marginBottom: 2,
+    },
+    fieldLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '600',
+      marginTop: 4,
+    },
+    input: {
+      minHeight: 42,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      fontSize: isTablet ? 15 : 14,
+    },
+    notesInput: {
+      minHeight: 84,
+    },
+    errorText: {
+      color: '#d93a5a',
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '600',
+      marginTop: 2,
+    },
+    modalActions: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 8,
+    },
+    modalButton: {
+      flex: 1,
+      minHeight: 42,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      borderWidth: 1,
+      elevation: 2,
+    },
+    modalButtonPrimary: {
+      backgroundColor: '#ff2d55',
+      borderColor: '#ff2d55',
+    },
+    modalButtonSecondary: {
+      borderWidth: 1,
+    },
+    modalButtonDisabled: {
+      opacity: 0.7,
+    },
+    modalButtonLabel: {
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+    },
+    modalButtonLabelPrimary: {
+      color: '#ffffff',
     },
   });
 
