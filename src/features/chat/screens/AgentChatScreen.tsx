@@ -315,17 +315,6 @@ const AgentChatScreen = () => {
     }
   };
 
-  const handleUseProjectPhoto = async () => {
-    try {
-      setGenerationError(null);
-      const photo = await cameraService.openProjectPhoto();
-      await assignPreparedPhoto(photo);
-      await refreshPermissionsState();
-    } catch {
-      setGenerationError('Failed to load project photo.');
-    }
-  };
-
   const handleGeneratePlan = async () => {
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt) {
@@ -609,12 +598,12 @@ const AgentChatScreen = () => {
             />
           )}
 
-          <View style={styles.photoActions}>
+          <View style={styles.photoPrimaryActions}>
             <Pressable
               onPress={() => {
                 void handleCapturePhoto();
               }}
-              style={styles.cameraButton}
+              style={[styles.cameraButton, styles.photoHalfButton]}
               android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
             >
               <Text style={styles.cameraButtonLabel} allowFontScaling>
@@ -625,25 +614,20 @@ const AgentChatScreen = () => {
               onPress={() => {
                 void handlePickFromGallery();
               }}
-              style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+              style={[
+                styles.secondaryPhotoButton,
+                styles.photoHalfButton,
+                { borderColor: colors.border, backgroundColor: colors.background },
+              ]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             >
               <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
                 {capturedPhoto ? 'Replace from gallery' : 'Choose from gallery'}
               </Text>
             </Pressable>
-            <Pressable
-              onPress={() => {
-                void handleUseProjectPhoto();
-              }}
-              style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-            >
-              <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
-                From project
-              </Text>
-            </Pressable>
-            {capturedPhoto ? (
+          </View>
+          {capturedPhoto ? (
+            <View style={styles.photoSecondaryActions}>
               <Pressable
                 onPress={() => {
                   setCapturedPhoto(null);
@@ -656,8 +640,8 @@ const AgentChatScreen = () => {
                   Remove photo
                 </Text>
               </Pressable>
-            ) : null}
-          </View>
+            </View>
+          ) : null}
         </StatCard>
 
         <StatCard title="Prompt" subtitle="Describe the plan you want" style={styles.card}>
@@ -952,6 +936,18 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       flexWrap: 'wrap',
       gap: 8,
       marginTop: 10,
+    },
+    photoPrimaryActions: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 10,
+    },
+    photoSecondaryActions: {
+      marginTop: 8,
+    },
+    photoHalfButton: {
+      flex: 1,
+      minWidth: 0,
     },
     cameraButton: {
       minWidth: isTablet ? 150 : 132,

@@ -1,10 +1,8 @@
-import { Asset } from 'expo-asset';
 import * as ImagePicker from 'expo-image-picker';
 
 import type { CapturedPhoto } from '@/shared/models/mvp-contracts.model';
 
 const DEFAULT_CAPTURE_QUALITY = 0.8;
-const PROJECT_SAMPLE_PHOTO = require('../../../assets/images/react-logo.png');
 
 export type MediaPermissionState = 'granted' | 'denied' | 'blocked' | 'undetermined';
 
@@ -168,28 +166,4 @@ export const cameraService = {
 
   preparePhoto: async (photo: CapturedPhoto): Promise<CapturedPhoto> =>
     normalizePhoto(photo, `photo-${Date.now()}.jpg`),
-
-  openProjectPhoto: async (): Promise<CapturedPhoto> => {
-    const asset = Asset.fromModule(PROJECT_SAMPLE_PHOTO);
-    if (!asset.localUri) {
-      await asset.downloadAsync();
-    }
-
-    const resolvedUri = asset.localUri ?? asset.uri;
-    if (!resolvedUri) {
-      throw new Error('Project sample photo is unavailable.');
-    }
-
-    return normalizePhoto(
-      {
-        uri: resolvedUri,
-        width: asset.width ?? undefined,
-        height: asset.height ?? undefined,
-        fileName: 'project-sample-react-logo.png',
-        mimeType: 'image/png',
-        previewUri: resolvedUri,
-      },
-      'project-sample-react-logo.png',
-    );
-  },
 };
