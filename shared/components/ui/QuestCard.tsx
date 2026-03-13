@@ -55,13 +55,23 @@ const QuestCard = ({ quest, onComplete, onViewDetails, isCompleting = false }: Q
       </View>
 
       {isCompleted ? (
-        <View style={styles.completedBox}>
-          <Text style={styles.completedBadge} allowFontScaling>
-            COMPLETED
-          </Text>
-          <Text style={[styles.earnedXp, { color: colors.text }]} allowFontScaling>
-            Earned XP: +{quest.rewardXp}
-          </Text>
+        <View style={styles.completedWrap}>
+          <View style={styles.completedBox}>
+            <Text style={styles.completedBadge} allowFontScaling>
+              COMPLETED
+            </Text>
+            <Text style={[styles.earnedXp, { color: colors.text }]} allowFontScaling>
+              Earned XP: +{quest.rewardXp}
+            </Text>
+          </View>
+          {canViewDetails ? (
+            <PrimaryButton
+              label="View details"
+              variant="secondary"
+              onPress={() => onViewDetails(quest)}
+              style={styles.completedDetailsButton}
+            />
+          ) : null}
         </View>
       ) : canComplete || canViewDetails ? (
         <View style={styles.actionsRow}>
@@ -122,6 +132,9 @@ const getStyles = (isTablet: boolean) =>
       flex: 1,
       minHeight: 44,
     },
+    completedWrap: {
+      gap: 10,
+    },
     completedBox: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -141,6 +154,9 @@ const getStyles = (isTablet: boolean) =>
     earnedXp: {
       fontSize: isTablet ? 15 : 13,
       fontWeight: '700',
+    },
+    completedDetailsButton: {
+      minHeight: 40,
     },
   });
 

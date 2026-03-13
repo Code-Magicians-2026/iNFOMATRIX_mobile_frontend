@@ -83,6 +83,8 @@ const QuestsScreen = () => {
   const [completingQuestId, setCompletingQuestId] = React.useState<string | null>(null);
   const [detailsQuest, setDetailsQuest] = React.useState<Quest | null>(null);
   const [completionFeedback, setCompletionFeedback] = React.useState<CompletionFeedback | null>(null);
+  const [showScrollTop, setShowScrollTop] = React.useState(false);
+  const scrollRef = React.useRef<ScrollView | null>(null);
 
   React.useEffect(() => {
     if (!role) {
@@ -273,177 +275,210 @@ const QuestsScreen = () => {
 
   return (
     <ScreenContainer contentStyle={styles.container}>
-      <SectionHeader
-        title="Quests"
-        subtitle={
-          isChildExecutionMode
-            ? 'Execution mode: complete assigned quests and earn XP'
-            : 'Review mode: view assigned quests for selected child'
-        }
-      />
-
-      {effectiveRole === 'adult' ? (
-        <StatCard title="Target Child" subtitle="Quests are tied to selected profile">
-          {children.length > 0 ? (
-            <View style={styles.childList}>
-              {!targetUserId ? (
-                <EmptyState
-                  title="No active child selected"
-                  description="Choose a child to preview their assigned quests."
-                />
-              ) : null}
-              {children.map((child) => {
-                const isSelected = child.id === targetUserId;
-                return (
-                  <Pressable
-                    key={child.id}
-                    onPress={() => {
-                      void handleSelectChild(child.id);
-                    }}
-                    style={[
-                      styles.childRow,
-                      {
-                        borderColor: isSelected ? '#ff2d55' : colors.border,
-                        backgroundColor: isSelected ? '#ff2d55' : colors.background,
-                      },
-                    ]}
-                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                  >
-                    <Text style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
-                      {child.fullName}
-                    </Text>
-                    <Text
-                      style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
-                      allowFontScaling
-                    >
-                      Age {child.age} | Level {child.level}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : (
-            <EmptyState title="No child profiles" description="Create child from Home to assign quests." />
-          )}
-        </StatCard>
-      ) : null}
-
-      <StatCard
-        title="Quest Progress"
-        subtitle={isChildExecutionMode ? 'Execution metrics' : `Target: ${targetLabel}`}
-      >
-        {!isChildExecutionMode ? (
-          <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
-            Adult mode is read-only. Completion is available in child mode.
-          </Text>
-        ) : null}
-        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          Active quests: {activeQuests.length}
-        </Text>
-        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          Completed today: {completedToday}
-        </Text>
-        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          XP earned today: {xpToday}
-        </Text>
-        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          Total XP: {progress?.xp ?? 0}
-        </Text>
-        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          Streak: {progress?.streak ?? 0}
-        </Text>
-      </StatCard>
-
-      {isChildExecutionMode && completionFeedback ? (
-        <StatCard title="Quest completed" subtitle={completionFeedback.questTitle}>
-          <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
-            +{completionFeedback.rewardXp} XP
-          </Text>
-          <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-            Quest completed
-          </Text>
-          <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-            {completionFeedback.category} stat increased to {completionFeedback.categoryValue}
-          </Text>
-          <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
-            Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}
-          </Text>
-        </StatCard>
-      ) : null}
-
-      <PrimaryButton
-        label={isRefreshing ? 'Refreshing...' : 'Refresh quests'}
-        disabled={isRefreshing}
-        onPress={() => {
-          void refreshData(false);
-        }}
-      />
-
-      {screenError ? <EmptyState title="Quest flow error" description={screenError} /> : null}
-
       {isLoading ? (
         <LoadingState label="Loading assigned quests..." />
       ) : (
-        <View style={styles.listArea}>
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.sectionBlock}>
-              <SectionHeader title="Active Quests" />
-              {targetUserId ? (
-                activeQuests.length > 0 ? (
-                  activeQuests.map((quest) => (
-                    <QuestCard
-                      key={quest.id}
-                      quest={quest}
-                      onComplete={isChildExecutionMode ? handleCompleteQuest : undefined}
-                      onViewDetails={setDetailsQuest}
-                      isCompleting={completingQuestId === quest.id}
-                    />
-                  ))
-                ) : (
-                  <EmptyState
-                    title="No active quests"
-                    description="Approve an AI plan to move quests into active state."
-                  />
-                )
-              ) : (
-                <EmptyState
-                  title="No target selected"
-                  description="Select child profile to load assigned quests."
-                />
-              )}
-            </View>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScroll={(event) => {
+            const y = event.nativeEvent.contentOffset.y;
+            if (y > 260 && !showScrollTop) {
+              setShowScrollTop(true);
+            } else if (y <= 260 && showScrollTop) {
+              setShowScrollTop(false);
+            }
+          }}
+          scrollEventThrottle={16}
+        >
+          <SectionHeader
+            title="Quests"
+            subtitle={
+              isChildExecutionMode
+                ? 'Execution mode: complete assigned quests and earn XP'
+                : 'Review mode: view assigned quests for selected child'
+            }
+          />
 
-            <View style={styles.sectionBlock}>
-              <SectionHeader title="Completed Quests" />
-              {targetUserId ? (
-                completedQuests.length > 0 ? (
-                  completedQuests.map((quest) => (
-                    <QuestCard key={quest.id} quest={quest} onViewDetails={setDetailsQuest} />
-                  ))
-                ) : (
-                  <EmptyState
-                    title="No completed quests yet"
-                    description={
-                      isChildExecutionMode
-                        ? 'Complete active quests to move them here.'
-                        : 'Child has no completed quests yet.'
-                    }
+          {effectiveRole === 'adult' ? (
+            <StatCard title="Target Child" subtitle="Quests are tied to selected profile">
+              {children.length > 0 ? (
+                <View style={styles.childList}>
+                  {!targetUserId ? (
+                    <View style={styles.noChildSelectedWrap}>
+                      <EmptyState
+                        title="No active child selected"
+                        description="Choose a child to preview their assigned quests."
+                      />
+                      <PrimaryButton
+                        label="Select first child"
+                        variant="secondary"
+                        onPress={() => {
+                          const firstChild = children[0];
+                          if (firstChild) {
+                            void handleSelectChild(firstChild.id);
+                          }
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                  {children.map((child) => {
+                    const isSelected = child.id === targetUserId;
+                    return (
+                      <Pressable
+                        key={child.id}
+                        onPress={() => {
+                          void handleSelectChild(child.id);
+                        }}
+                        style={[
+                          styles.childRow,
+                          {
+                            borderColor: isSelected ? '#ff2d55' : colors.border,
+                            backgroundColor: isSelected ? '#ff2d55' : colors.background,
+                          },
+                        ]}
+                        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                      >
+                        <Text style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
+                          {child.fullName}
+                        </Text>
+                        <Text
+                          style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
+                          allowFontScaling
+                        >
+                          Age {child.age} | Level {child.level}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : (
+                <EmptyState title="No child profiles" description="Create child from Home to assign quests." />
+              )}
+            </StatCard>
+          ) : null}
+
+          <StatCard
+            title="Quest Progress"
+            subtitle={isChildExecutionMode ? 'Execution metrics' : `Target: ${targetLabel}`}
+          >
+            {!isChildExecutionMode ? (
+              <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
+                Adult mode is read-only. Completion is available in child mode.
+              </Text>
+            ) : null}
+            <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+              Active quests: {activeQuests.length}
+            </Text>
+            <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+              Completed today: {completedToday}
+            </Text>
+            <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+              XP earned today: {xpToday}
+            </Text>
+            <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+              Total XP: {progress?.xp ?? 0}
+            </Text>
+            <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+              Streak: {progress?.streak ?? 0}
+            </Text>
+          </StatCard>
+
+          {isChildExecutionMode && completionFeedback ? (
+            <StatCard title="Quest completed" subtitle={completionFeedback.questTitle}>
+              <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
+                +{completionFeedback.rewardXp} XP
+              </Text>
+              <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+                Quest completed
+              </Text>
+              <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+                {completionFeedback.category} stat increased to {completionFeedback.categoryValue}
+              </Text>
+              <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
+                Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}
+              </Text>
+            </StatCard>
+          ) : null}
+
+          <PrimaryButton
+            label={isRefreshing ? 'Refreshing...' : 'Refresh quests'}
+            disabled={isRefreshing}
+            onPress={() => {
+              void refreshData(false);
+            }}
+          />
+
+          {screenError ? <EmptyState title="Quest flow error" description={screenError} /> : null}
+
+          <View style={styles.sectionBlock}>
+            <SectionHeader title="Active Quests" />
+            {targetUserId ? (
+              activeQuests.length > 0 ? (
+                activeQuests.map((quest) => (
+                  <QuestCard
+                    key={quest.id}
+                    quest={quest}
+                    onComplete={isChildExecutionMode ? handleCompleteQuest : undefined}
+                    onViewDetails={setDetailsQuest}
+                    isCompleting={completingQuestId === quest.id}
                   />
-                )
+                ))
               ) : (
                 <EmptyState
-                  title="No completed quests"
-                  description="Create child profile and approve a plan first."
+                  title="No active quests"
+                  description="Approve an AI plan to move quests into active state."
                 />
-              )}
-            </View>
-          </ScrollView>
-        </View>
+              )
+            ) : (
+              <EmptyState
+                title="No target selected"
+                description="Select child profile to load assigned quests."
+              />
+            )}
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <SectionHeader title="Completed Quests" />
+            {targetUserId ? (
+              completedQuests.length > 0 ? (
+                completedQuests.map((quest) => (
+                  <QuestCard key={quest.id} quest={quest} onViewDetails={setDetailsQuest} />
+                ))
+              ) : (
+                <EmptyState
+                  title="No completed quests yet"
+                  description={
+                    isChildExecutionMode
+                      ? 'Complete active quests to move them here.'
+                      : 'Child has no completed quests yet.'
+                  }
+                />
+              )
+            ) : (
+              <EmptyState
+                title="No completed quests"
+                description="Create child profile and approve a plan first."
+              />
+            )}
+          </View>
+        </ScrollView>
       )}
+
+      {showScrollTop && !isLoading ? (
+        <Pressable
+          onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          style={styles.scrollTopButton}
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+        >
+          <Text style={styles.scrollTopLabel} allowFontScaling>
+            Up
+          </Text>
+        </Pressable>
+      ) : null}
 
       <Modal
         visible={Boolean(detailsQuest)}
@@ -491,7 +526,7 @@ const QuestsScreen = () => {
 const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
   StyleSheet.create({
     container: {
-      gap: 14,
+      flex: 1,
     },
     progressText: {
       fontSize: isTablet ? 16 : 14,
@@ -502,6 +537,9 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontWeight: '800',
     },
     childList: {
+      gap: 8,
+    },
+    noChildSelectedWrap: {
       gap: 8,
     },
     childRow: {
@@ -521,15 +559,31 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
     },
-    listArea: {
-      flex: 1,
-    },
     scrollView: {
       flex: 1,
     },
     scrollContent: {
       gap: 18,
-      paddingBottom: spacing,
+      paddingBottom: Math.max(120, spacing + 88),
+    },
+    scrollTopButton: {
+      position: 'absolute',
+      right: spacing,
+      bottom: Math.max(90, spacing + 58),
+      minHeight: 42,
+      minWidth: 64,
+      borderRadius: 999,
+      backgroundColor: '#ff2d55',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      elevation: 4,
+      paddingHorizontal: 14,
+    },
+    scrollTopLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
     },
     sectionBlock: {
       gap: 10,
