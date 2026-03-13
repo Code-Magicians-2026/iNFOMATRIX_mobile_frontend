@@ -181,7 +181,7 @@ const HomeScreen = () => {
   );
 
   const completedToday = React.useMemo(
-    () => todayQuests.filter((quest) => quest.status === 'completed').length,
+    () => todayQuests.filter((quest) => quest.status === 'archived' || quest.status === 'completed').length,
     [todayQuests],
   );
 

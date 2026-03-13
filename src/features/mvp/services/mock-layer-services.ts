@@ -5,6 +5,8 @@ import type {
   PlanRequest,
   ProgressSummary,
   Quest,
+  QuestStatus,
+  QuestStep,
   UserProfile,
 } from '@/shared/models/mvp-contracts.model';
 import { mockChildren } from '@/src/features/mvp/mocks/mockChildren';
@@ -49,7 +51,96 @@ export interface GetPlansMockInput {
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const cloneQuest = (quest: Quest): Quest => ({ ...quest });
+const nowIso = () => new Date().toISOString();
+
+const isArchivedQuestStatus = (status: QuestStatus) => status === 'archived' || status === 'completed';
+
+const cloneQuestStep = (step: QuestStep): QuestStep => ({ ...step });
+
+const buildDefaultStepsForQuest = (quest: Pick<Quest, 'id' | 'title' | 'description'>): QuestStep[] => [
+  {
+    id: `${quest.id}-step-1`,
+    questId: quest.id,
+    title: `Start: ${quest.title}`,
+    description: 'Understand what needs to be done.',
+    order: 1,
+    status: 'pending',
+  },
+  {
+    id: `${quest.id}-step-2`,
+    questId: quest.id,
+    title: 'Complete main task',
+    description: quest.description,
+    order: 2,
+    status: 'pending',
+  },
+  {
+    id: `${quest.id}-step-3`,
+    questId: quest.id,
+    title: 'Final check',
+    description: 'Check quality and mark quest as done.',
+    order: 3,
+    status: 'pending',
+  },
+];
+
+const normalizeQuest = (quest: Quest): Quest => {
+  const createdAt = quest.createdAt ?? nowIso();
+  const incomingStatus: QuestStatus = quest.status ?? 'draft';
+  const statusFromLegacy: QuestStatus = incomingStatus === 'completed' ? 'archived' : incomingStatus;
+  const sourceSteps =
+    quest.steps && quest.steps.length > 0 ? [...quest.steps] : buildDefaultStepsForQuest(quest);
+  const forceCompleted = isArchivedQuestStatus(statusFromLegacy);
+
+  const normalizedSteps = sourceSteps
+    .sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
+    .map((step, index) => {
+      const isCompleted = forceCompleted || step.status === 'completed';
+
+      return {
+        id: step.id?.trim() || `${quest.id}-step-${index + 1}`,
+        questId: quest.id,
+        title: step.title?.trim() || `Step ${index + 1}`,
+        description: step.description?.trim() || undefined,
+        order: Number.isFinite(step.order) ? step.order : index + 1,
+        status: isCompleted ? 'completed' : 'pending',
+        completedAt: isCompleted ? step.completedAt ?? quest.completedAt ?? quest.archivedAt ?? createdAt : undefined,
+      } satisfies QuestStep;
+    });
+
+  const stepsCount = normalizedSteps.length;
+  const completedStepsCount = normalizedSteps.filter((step) => step.status === 'completed').length;
+
+  let normalizedStatus: QuestStatus = statusFromLegacy;
+  let completedAt = quest.completedAt;
+  let archivedAt = quest.archivedAt;
+
+  if (normalizedStatus === 'active' && stepsCount > 0 && completedStepsCount === stepsCount) {
+    normalizedStatus = 'archived';
+  }
+
+  if (normalizedStatus === 'archived') {
+    const resolvedDoneAt = completedAt ?? archivedAt ?? createdAt;
+    completedAt = resolvedDoneAt;
+    archivedAt = archivedAt ?? resolvedDoneAt;
+  }
+
+  return {
+    ...quest,
+    createdAt,
+    status: normalizedStatus,
+    steps: normalizedSteps,
+    stepsCount,
+    completedStepsCount,
+    completedAt,
+    archivedAt,
+  };
+};
+
+const cloneQuest = (quest: Quest): Quest => ({
+  ...quest,
+  steps: quest.steps?.map(cloneQuestStep),
+});
 
 const cloneCapturedPhoto = (photo: CapturedPhoto): CapturedPhoto => ({ ...photo });
 
@@ -68,6 +159,11 @@ const clonePlan = (plan: GeneratedPlan): GeneratedPlan => ({
   quests: plan.quests.map(cloneQuest),
 });
 
+const normalizePlan = (plan: GeneratedPlan): GeneratedPlan => ({
+  ...plan,
+  quests: plan.quests.map(normalizeQuest),
+});
+
 const cloneChild = (child: ChildProfile): ChildProfile => ({
   ...child,
   interests: child.interests ? [...child.interests] : undefined,
@@ -82,8 +178,8 @@ const createInitialState = (): MockState => ({
   users: mockUsers.map(cloneUser),
   children: mockChildren.map(cloneChild),
   planRequests: mockPlanRequests.map(clonePlanRequest),
-  plans: mockPlans.map(clonePlan),
-  quests: mockQuests.map(cloneQuest),
+  plans: mockPlans.map(normalizePlan),
+  quests: mockQuests.map(normalizeQuest),
   progress: mockProgress.map(cloneProgress),
 });
 
@@ -109,7 +205,7 @@ const buildStatsFromCompletedQuests = (quests: Quest[]) => {
   const stats: Record<string, number> = {};
 
   quests.forEach((quest) => {
-    if (quest.status !== 'completed') {
+    if (!isArchivedQuestStatus(quest.status)) {
       return;
     }
 
@@ -125,7 +221,7 @@ const summarizeQuestsForUser = (userId: string) => {
   return {
     quests: userQuests,
     activeCount: userQuests.filter((quest) => quest.status === 'active').length,
-    completedCount: userQuests.filter((quest) => quest.status === 'completed').length,
+    completedCount: userQuests.filter((quest) => isArchivedQuestStatus(quest.status)).length,
   };
 };
 
@@ -181,6 +277,7 @@ const sortQuests = (quests: Quest[]) => {
   const statusRank: Record<string, number> = {
     active: 0,
     draft: 1,
+    archived: 2,
     completed: 2,
   };
 
@@ -192,8 +289,16 @@ const sortQuests = (quests: Quest[]) => {
       return leftRank - rightRank;
     }
 
-    const rightCreated = right.createdAt ? new Date(right.createdAt).getTime() : 0;
-    const leftCreated = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightCreated = right.archivedAt
+      ? new Date(right.archivedAt).getTime()
+      : right.createdAt
+        ? new Date(right.createdAt).getTime()
+        : 0;
+    const leftCreated = left.archivedAt
+      ? new Date(left.archivedAt).getTime()
+      : left.createdAt
+        ? new Date(left.createdAt).getTime()
+        : 0;
 
     return rightCreated - leftCreated;
   });
@@ -227,18 +332,50 @@ const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] 
   const category = input.category.trim().toLowerCase() || 'productivity';
   const nowMs = Date.now();
 
-  return Array.from({ length: questCount }, (_, index) => ({
-    id: `${planId}-quest-${index + 1}`,
-    assignedToUserId: input.targetUserId,
-    title: `${category[0].toUpperCase()}${category.slice(1)} Mission ${index + 1}`,
-    description: `${input.prompt.trim()} Step ${index + 1}: keep focus and complete with quality.`,
-    category,
-    difficulty,
-    rewardXp: baseReward + index * 10,
-    estimatedMinutes: baseDuration + index * 5,
-    status: 'draft',
-    createdAt: new Date(nowMs + index * 60_000).toISOString(),
-  }));
+  return Array.from({ length: questCount }, (_, index) => {
+    const questId = `${planId}-quest-${index + 1}`;
+    const title = `${category[0].toUpperCase()}${category.slice(1)} Mission ${index + 1}`;
+    const description = `${input.prompt.trim()} Step ${index + 1}: keep focus and complete with quality.`;
+
+    return normalizeQuest({
+      id: questId,
+      assignedToUserId: input.targetUserId,
+      title,
+      description,
+      category,
+      difficulty,
+      rewardXp: baseReward + index * 10,
+      estimatedMinutes: baseDuration + index * 5,
+      status: 'draft',
+      createdAt: new Date(nowMs + index * 60_000).toISOString(),
+      steps: [
+        {
+          id: `${questId}-step-1`,
+          questId,
+          title: 'Open quest and read mission',
+          description: 'Understand what should be done before starting.',
+          order: 1,
+          status: 'pending',
+        },
+        {
+          id: `${questId}-step-2`,
+          questId,
+          title: `Do mission task ${index + 1}`,
+          description: input.prompt.trim(),
+          order: 2,
+          status: 'pending',
+        },
+        {
+          id: `${questId}-step-3`,
+          questId,
+          title: 'Review result and finish',
+          description: 'Check quality and mark the quest complete.',
+          order: 3,
+          status: 'pending',
+        },
+      ],
+    });
+  });
 };
 
 export const resetMockLayerState = () => {
@@ -417,10 +554,19 @@ export const approvePlanMock = async (planId: string): Promise<GeneratedPlan> =>
     return clonePlan(currentPlan);
   }
 
-  const activatedQuests = currentPlan.quests.map((quest) => ({
-    ...quest,
-    status: quest.status === 'completed' ? 'completed' : 'active',
-  }));
+  const activatedQuests = currentPlan.quests.map((quest) => {
+    const normalized = normalizeQuest(quest);
+
+    if (normalized.status === 'draft') {
+      return normalizeQuest({ ...normalized, status: 'active' });
+    }
+
+    if (normalized.status === 'completed') {
+      return normalizeQuest({ ...normalized, status: 'archived' });
+    }
+
+    return normalized;
+  });
 
   const approvedPlan: GeneratedPlan = {
     ...currentPlan,
@@ -437,11 +583,11 @@ export const approvePlanMock = async (planId: string): Promise<GeneratedPlan> =>
   activatedQuests.forEach((quest) => {
     const existingQuestIndex = state.quests.findIndex((item) => item.id === quest.id);
     if (existingQuestIndex >= 0) {
-      state.quests[existingQuestIndex] = { ...state.quests[existingQuestIndex], ...quest };
+      state.quests[existingQuestIndex] = normalizeQuest({ ...state.quests[existingQuestIndex], ...quest });
       return;
     }
 
-    state.quests = [cloneQuest(quest), ...state.quests];
+    state.quests = [cloneQuest(normalizeQuest(quest)), ...state.quests];
   });
 
   const firstQuest = activatedQuests[0];
@@ -460,13 +606,117 @@ export const approvePlanMock = async (planId: string): Promise<GeneratedPlan> =>
     refreshProgressCounters(firstQuest.assignedToUserId);
   }
 
-  return clonePlan(approvedPlan);
+  return clonePlan(normalizePlan(approvedPlan));
 };
 
 export const getQuestsMock = async (userId: string): Promise<Quest[]> => {
   await wait(MOCK_DELAY_MS);
 
-  return sortQuests(state.quests.filter((quest) => quest.assignedToUserId === userId)).map(cloneQuest);
+  const userQuests = state.quests
+    .filter((quest) => quest.assignedToUserId === userId)
+    .map(normalizeQuest);
+
+  return sortQuests(userQuests).map(cloneQuest);
+};
+
+const syncQuestToPlans = (updatedQuest: Quest) => {
+  state.plans = state.plans.map((plan) => ({
+    ...plan,
+    quests: plan.quests.map((quest) =>
+      quest.id === updatedQuest.id ? normalizeQuest({ ...quest, ...updatedQuest }) : normalizeQuest(quest),
+    ),
+  }));
+};
+
+const applyQuestCompletionReward = (quest: Quest) => {
+  const progress = ensureProgressState(quest.assignedToUserId);
+  progress.xp += quest.rewardXp;
+  progress.level = recalcLevelFromXp(progress.xp);
+  progress.streak += 1;
+  progress.stats = {
+    ...progress.stats,
+    [quest.category]: (progress.stats[quest.category] ?? 0) + 1,
+  };
+
+  refreshProgressCounters(quest.assignedToUserId);
+  syncUserFromProgress(progress);
+};
+
+const archiveQuestWithCompletion = (quest: Quest): Quest => {
+  const doneAt = nowIso();
+  const completedSteps: QuestStep[] = (quest.steps ?? []).map((step) => ({
+    ...step,
+    status: 'completed',
+    completedAt: step.completedAt ?? doneAt,
+  }));
+
+  return normalizeQuest({
+    ...quest,
+    status: 'archived',
+    completedAt: quest.completedAt ?? doneAt,
+    archivedAt: quest.archivedAt ?? doneAt,
+    steps: completedSteps,
+  });
+};
+
+const persistQuest = (questIndex: number, updatedQuest: Quest) => {
+  state.quests = [
+    ...state.quests.slice(0, questIndex),
+    updatedQuest,
+    ...state.quests.slice(questIndex + 1),
+  ];
+
+  syncQuestToPlans(updatedQuest);
+};
+
+export const toggleQuestStepMock = async (questId: string, stepId: string): Promise<Quest> => {
+  await wait(MOCK_DELAY_MS);
+
+  const questIndex = state.quests.findIndex((quest) => quest.id === questId);
+  if (questIndex < 0) {
+    throw new Error(`Quest '${questId}' was not found.`);
+  }
+
+  const currentQuest = normalizeQuest(state.quests[questIndex]);
+  if (isArchivedQuestStatus(currentQuest.status)) {
+    return cloneQuest(currentQuest);
+  }
+
+  const steps = currentQuest.steps ?? [];
+  const stepIndex = steps.findIndex((step) => step.id === stepId);
+  if (stepIndex < 0) {
+    throw new Error(`Step '${stepId}' was not found for quest '${questId}'.`);
+  }
+
+  const step = steps[stepIndex];
+  const nextStatus = step.status === 'completed' ? 'pending' : 'completed';
+  const updatedStep: QuestStep = {
+    ...step,
+    status: nextStatus,
+    completedAt: nextStatus === 'completed' ? nowIso() : undefined,
+  };
+
+  const updatedSteps = [
+    ...steps.slice(0, stepIndex),
+    updatedStep,
+    ...steps.slice(stepIndex + 1),
+  ];
+
+  let updatedQuest = normalizeQuest({
+    ...currentQuest,
+    status: 'active',
+    steps: updatedSteps,
+  });
+
+  if (updatedQuest.stepsCount && updatedQuest.completedStepsCount === updatedQuest.stepsCount) {
+    updatedQuest = archiveQuestWithCompletion(updatedQuest);
+    applyQuestCompletionReward(updatedQuest);
+  }
+
+  persistQuest(questIndex, updatedQuest);
+  refreshProgressCounters(updatedQuest.assignedToUserId);
+
+  return cloneQuest(updatedQuest);
 };
 
 export const completeQuestMock = async (id: string): Promise<Quest> => {
@@ -477,38 +727,15 @@ export const completeQuestMock = async (id: string): Promise<Quest> => {
     throw new Error(`Quest '${id}' was not found.`);
   }
 
-  const currentQuest = state.quests[questIndex];
-  if (currentQuest.status === 'completed') {
+  const currentQuest = normalizeQuest(state.quests[questIndex]);
+  if (isArchivedQuestStatus(currentQuest.status)) {
     return cloneQuest(currentQuest);
   }
 
-  const completedQuest: Quest = {
-    ...currentQuest,
-    status: 'completed',
-  };
-
-  state.quests = [
-    ...state.quests.slice(0, questIndex),
-    completedQuest,
-    ...state.quests.slice(questIndex + 1),
-  ];
-
-  state.plans = state.plans.map((plan) => ({
-    ...plan,
-    quests: plan.quests.map((quest) => (quest.id === id ? { ...quest, status: 'completed' } : quest)),
-  }));
-
-  const progress = ensureProgressState(completedQuest.assignedToUserId);
-  progress.xp += completedQuest.rewardXp;
-  progress.level = recalcLevelFromXp(progress.xp);
-  progress.streak += 1;
-  progress.stats = {
-    ...progress.stats,
-    [completedQuest.category]: (progress.stats[completedQuest.category] ?? 0) + 1,
-  };
-
+  const completedQuest = archiveQuestWithCompletion(currentQuest);
+  persistQuest(questIndex, completedQuest);
+  applyQuestCompletionReward(completedQuest);
   refreshProgressCounters(completedQuest.assignedToUserId);
-  syncUserFromProgress(progress);
 
   return cloneQuest(completedQuest);
 };
@@ -542,8 +769,8 @@ const setScenarioState = (nextState: MockState, meId: string) => {
     users: nextState.users.map(cloneUser),
     children: nextState.children.map(cloneChild),
     planRequests: nextState.planRequests.map(clonePlanRequest),
-    plans: nextState.plans.map(clonePlan),
-    quests: nextState.quests.map(cloneQuest),
+    plans: nextState.plans.map(normalizePlan),
+    quests: nextState.quests.map(normalizeQuest),
     progress: nextState.progress.map(cloneProgress),
   };
   meIdState = meId;
