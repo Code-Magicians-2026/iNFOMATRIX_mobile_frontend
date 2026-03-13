@@ -50,6 +50,15 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
 
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 
+type CompletionFeedback = {
+  questTitle: string;
+  rewardXp: number;
+  category: string;
+  categoryValue: number;
+  totalXp: number;
+  streak: number;
+};
+
 const QuestsScreen = () => {
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
@@ -75,6 +84,7 @@ const QuestsScreen = () => {
   const [screenError, setScreenError] = React.useState<string | null>(null);
   const [completingQuestId, setCompletingQuestId] = React.useState<string | null>(null);
   const [detailsQuest, setDetailsQuest] = React.useState<Quest | null>(null);
+  const [completionFeedback, setCompletionFeedback] = React.useState<CompletionFeedback | null>(null);
 
   React.useEffect(() => {
     if (!role) {
@@ -108,7 +118,7 @@ const QuestsScreen = () => {
           setTargetLabel(meData.fullName);
           setQuests([]);
           setProgress(null);
-          return;
+          return null;
         }
 
         const selectedChildCandidate = preferredChildId ?? selectedChildId;
@@ -133,7 +143,7 @@ const QuestsScreen = () => {
         setQuests(questsData);
         setProgress(progressData);
 
-        return;
+        return progressData;
       }
 
       const meData = await getMeMock();
@@ -147,8 +157,10 @@ const QuestsScreen = () => {
       setTargetLabel(meData.fullName);
       setQuests(questsData);
       setProgress(progressData);
+      return progressData;
     } catch {
       setScreenError('Failed to load assigned quests. Please try again.');
+      return null;
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -192,18 +204,47 @@ const QuestsScreen = () => {
   }, [completedQuests]);
 
   const handleCompleteQuest = async (id: string) => {
+    const questToComplete = quests.find((quest) => quest.id === id);
+    if (!questToComplete) {
+      setScreenError('Selected quest was not found.');
+      return;
+    }
+
     setCompletingQuestId(id);
     setScreenError(null);
 
     try {
-      await completeQuestMock(id);
-      await refreshData(false);
+      const completedQuest = await completeQuestMock(id);
+      const refreshedProgress = await refreshData(false);
+
+      if (refreshedProgress) {
+        setCompletionFeedback({
+          questTitle: completedQuest.title,
+          rewardXp: completedQuest.rewardXp,
+          category: completedQuest.category,
+          categoryValue: refreshedProgress.stats[completedQuest.category] ?? 0,
+          totalXp: refreshedProgress.xp,
+          streak: refreshedProgress.streak,
+        });
+      }
     } catch {
       setScreenError('Could not complete quest. Please try again.');
     } finally {
       setCompletingQuestId(null);
     }
   };
+
+  React.useEffect(() => {
+    if (!completionFeedback) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setCompletionFeedback(null);
+    }, 4200);
+
+    return () => clearTimeout(timer);
+  }, [completionFeedback]);
 
   const handleSelectChild = async (childId: string) => {
     setScreenError(null);
@@ -291,6 +332,23 @@ const QuestsScreen = () => {
           Streak: {progress?.streak ?? 0}
         </Text>
       </StatCard>
+
+      {isChildExecutionMode && completionFeedback ? (
+        <StatCard title="Quest completed" subtitle={completionFeedback.questTitle}>
+          <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
+            +{completionFeedback.rewardXp} XP
+          </Text>
+          <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+            Quest completed
+          </Text>
+          <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+            {completionFeedback.category} stat increased to {completionFeedback.categoryValue}
+          </Text>
+          <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
+            Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}
+          </Text>
+        </StatCard>
+      ) : null}
 
       <PrimaryButton
         label={isRefreshing ? 'Refreshing...' : 'Refresh quests'}
@@ -417,6 +475,10 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     progressText: {
       fontSize: isTablet ? 16 : 14,
       fontWeight: '500',
+    },
+    successXp: {
+      fontSize: isTablet ? 24 : 21,
+      fontWeight: '800',
     },
     childList: {
       gap: 8,

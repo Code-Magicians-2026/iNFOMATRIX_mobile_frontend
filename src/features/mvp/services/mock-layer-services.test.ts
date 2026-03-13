@@ -102,7 +102,9 @@ describe('mock-layer-services', () => {
 
     expect(completedQuest.status).toBe('completed');
     expect(progressAfter.xp).toBe(progressBefore.xp + completedQuest.rewardXp);
+    expect(progressAfter.streak).toBe(progressBefore.streak + 1);
     expect(progressAfter.completedQuestsCount).toBeGreaterThanOrEqual(progressBefore.completedQuestsCount);
+    expect(progressAfter.activeQuestsCount).toBeLessThanOrEqual(progressBefore.activeQuestsCount);
     expect(progressAfter.stats[completedQuest.category]).toBeGreaterThan(0);
   });
 });
