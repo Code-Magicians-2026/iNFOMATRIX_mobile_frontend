@@ -6,6 +6,13 @@ import type { CapturedPhoto } from '@/shared/models/mvp-contracts.model';
 const DEFAULT_CAPTURE_QUALITY = 0.8;
 const PROJECT_SAMPLE_PHOTO = require('../../../assets/images/react-logo.png');
 
+export type MediaPermissionState = 'granted' | 'denied' | 'blocked' | 'undetermined';
+
+export interface MediaPermissionsStatus {
+  camera: MediaPermissionState;
+  gallery: MediaPermissionState;
+}
+
 const resolveMimeTypeFromUri = (uri: string): string => {
   const normalized = uri.toLowerCase();
   if (normalized.endsWith('.png')) {
@@ -23,6 +30,18 @@ const resolveFileNameFromUri = (uri: string, fallback: string) => {
   const cleanedUri = uri.split('?')[0] ?? uri;
   const fileName = cleanedUri.split('/').pop();
   return fileName && fileName.trim().length > 0 ? fileName : fallback;
+};
+
+const toPermissionState = (permission: ImagePicker.PermissionResponse): MediaPermissionState => {
+  if (permission.granted) {
+    return 'granted';
+  }
+
+  if (!permission.canAskAgain) {
+    return 'blocked';
+  }
+
+  return permission.status === 'undetermined' ? 'undetermined' : 'denied';
 };
 
 const normalizePhoto = (
@@ -78,20 +97,42 @@ const pickSingleImage = (result: ImagePicker.ImagePickerResult, fallbackFileName
 };
 
 export const cameraService = {
-  requestPermissions: async () => {
+  getPermissionsStatus: async (): Promise<MediaPermissionsStatus> => {
+    const [cameraPermission, mediaPermission] = await Promise.all([
+      ImagePicker.getCameraPermissionsAsync(),
+      ImagePicker.getMediaLibraryPermissionsAsync(),
+    ]);
+
+    return {
+      camera: toPermissionState(cameraPermission),
+      gallery: toPermissionState(mediaPermission),
+    };
+  },
+
+  requestCameraPermission: async (): Promise<MediaPermissionState> => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    return toPermissionState(permission);
+  },
+
+  requestGalleryPermission: async (): Promise<MediaPermissionState> => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    return toPermissionState(permission);
+  },
+
+  requestPermissions: async (): Promise<MediaPermissionsStatus> => {
     const [cameraPermission, mediaPermission] = await Promise.all([
       ImagePicker.requestCameraPermissionsAsync(),
       ImagePicker.requestMediaLibraryPermissionsAsync(),
     ]);
 
     return {
-      cameraGranted: cameraPermission.granted,
-      mediaLibraryGranted: mediaPermission.granted,
+      camera: toPermissionState(cameraPermission),
+      gallery: toPermissionState(mediaPermission),
     };
   },
 
   openCamera: async (): Promise<CapturedPhoto | null> => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    const permission = await ImagePicker.getCameraPermissionsAsync();
     if (!permission.granted) {
       throw new Error('Camera permission is required.');
     }
@@ -108,7 +149,7 @@ export const cameraService = {
   },
 
   openGallery: async (): Promise<CapturedPhoto | null> => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission = await ImagePicker.getMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       throw new Error('Gallery permission is required.');
     }
@@ -142,8 +183,8 @@ export const cameraService = {
     return normalizePhoto(
       {
         uri: resolvedUri,
-        width: asset.width,
-        height: asset.height,
+        width: asset.width ?? undefined,
+        height: asset.height ?? undefined,
         fileName: 'project-sample-react-logo.png',
         mimeType: 'image/png',
         previewUri: resolvedUri,
@@ -152,4 +193,3 @@ export const cameraService = {
     );
   },
 };
-
