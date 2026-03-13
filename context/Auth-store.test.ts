@@ -38,10 +38,16 @@ import useAuthStore from '@/context/Auth-store';
 describe('Auth store', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useAuthStore.setState({ session: null, isHydrated: false });
+    useAuthStore.setState({
+      session: null,
+      currentUser: null,
+      role: null,
+      selectedChildId: null,
+      isHydrated: false,
+    });
   });
 
-  it('hydrates valid session from storage', async () => {
+  it('hydrates legacy session payload and migrates it', async () => {
     getItemMock.mockResolvedValue(
       JSON.stringify({
         email: 'user@example.com',
@@ -55,19 +61,24 @@ describe('Auth store', () => {
     await useAuthStore.getState().hydrate();
 
     expect(useAuthStore.getState().session?.email).toBe('user@example.com');
+    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.email).toBe('user@example.com');
     expect(useAuthStore.getState().isHydrated).toBe(true);
+    expect(setItemMock).toHaveBeenCalledTimes(1);
   });
 
-  it('clears session when stored payload is invalid', async () => {
+  it('clears state when stored payload is invalid', async () => {
     getItemMock.mockResolvedValue(JSON.stringify({ email: 'x@example.com', accessToken: null }));
 
     await useAuthStore.getState().hydrate();
 
     expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().currentUser).toBeNull();
+    expect(useAuthStore.getState().role).toBeNull();
     expect(useAuthStore.getState().isHydrated).toBe(true);
   });
 
-  it('login stores session and persists it', async () => {
+  it('login stores session, role, currentUser and persists envelope', async () => {
     loginRequestMock.mockResolvedValue({
       accessToken: 'access',
       refreshToken: 'refresh',
@@ -85,7 +96,14 @@ describe('Auth store', () => {
       expiresIn: 3600,
       tokenType: 'Bearer',
     });
+    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.fullName).toBe('User');
     expect(setItemMock).toHaveBeenCalledTimes(1);
+
+    const [, persistedJson] = setItemMock.mock.calls[0] as [string, string];
+    const persisted = JSON.parse(persistedJson) as { role: string; currentUser: { email: string } };
+    expect(persisted.role).toBe('child');
+    expect(persisted.currentUser.email).toBe('user@example.com');
   });
 
   it('throws when login response has no tokens', async () => {
@@ -140,7 +158,21 @@ describe('Auth store', () => {
       expiresIn: 3600,
       tokenType: 'Bearer',
     });
+    expect(useAuthStore.getState().currentUser?.email).toBe('user@example.com');
     expect(setItemMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('supports role switch and child selection for adult flow', async () => {
+    await useAuthStore.getState().setRole('adult');
+
+    expect(useAuthStore.getState().role).toBe('adult');
+    expect(useAuthStore.getState().currentUser?.role).toBe('adult');
+
+    await useAuthStore.getState().setSelectedChildId('child-42');
+    expect(useAuthStore.getState().selectedChildId).toBe('child-42');
+
+    await useAuthStore.getState().setRole('child');
+    expect(useAuthStore.getState().selectedChildId).toBeNull();
   });
 
   it('completePasswordReset stores session using API email', async () => {
@@ -154,10 +186,11 @@ describe('Auth store', () => {
     await useAuthStore.getState().completePasswordReset('user@example.com', 'new-password');
 
     expect(useAuthStore.getState().session?.email).toBe('reset@example.com');
+    expect(useAuthStore.getState().currentUser?.email).toBe('reset@example.com');
     expect(setItemMock).toHaveBeenCalledTimes(1);
   });
 
-  it('logout clears session and removes persisted key', async () => {
+  it('logout clears all auth and role-based state', async () => {
     useAuthStore.setState({
       session: {
         email: 'user@example.com',
@@ -166,12 +199,28 @@ describe('Auth store', () => {
         expiresIn: 3600,
         tokenType: 'Bearer',
       },
+      currentUser: {
+        id: 'user-1',
+        fullName: 'User One',
+        email: 'user@example.com',
+        role: 'adult',
+        level: 2,
+        xp: 120,
+        streak: 3,
+        avatarType: 'mentor',
+      },
+      role: 'adult',
+      selectedChildId: 'child-7',
       isHydrated: true,
     });
 
     await useAuthStore.getState().logout();
 
     expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().currentUser).toBeNull();
+    expect(useAuthStore.getState().role).toBeNull();
+    expect(useAuthStore.getState().selectedChildId).toBeNull();
     expect(removeItemMock).toHaveBeenCalledTimes(1);
   });
 });
+
