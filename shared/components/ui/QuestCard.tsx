@@ -19,15 +19,19 @@ const QuestCard = ({ quest, onComplete, onViewDetails, isCompleting = false }: Q
   const styles = React.useMemo(() => getStyles(isTablet), [isTablet]);
 
   const isCompleted = quest.status === 'completed';
+  const canComplete = typeof onComplete === 'function';
+  const canViewDetails = typeof onViewDetails === 'function';
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Text style={[styles.title, { color: colors.text }]} allowFontScaling>
         {quest.title}
       </Text>
-      <Text style={[styles.originalTask, { color: colors.textSecondary }]} allowFontScaling>
-        Original task: {quest.originalTask}
-      </Text>
+      {quest.originalTask ? (
+        <Text style={[styles.originalTask, { color: colors.textSecondary }]} allowFontScaling>
+          Original task: {quest.originalTask}
+        </Text>
+      ) : null}
       <Text style={[styles.description, { color: colors.text }]} allowFontScaling>
         {quest.description}
       </Text>
@@ -43,6 +47,9 @@ const QuestCard = ({ quest, onComplete, onViewDetails, isCompleting = false }: Q
           Reward XP: {quest.rewardXp}
         </Text>
         <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
+          Estimated: {quest.estimatedMinutes} min
+        </Text>
+        <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
           Status: {quest.status}
         </Text>
       </View>
@@ -56,24 +63,26 @@ const QuestCard = ({ quest, onComplete, onViewDetails, isCompleting = false }: Q
             Earned XP: +{quest.rewardXp}
           </Text>
         </View>
-      ) : (
+      ) : canComplete || canViewDetails ? (
         <View style={styles.actionsRow}>
-          <PrimaryButton
-            label="Complete"
-            onPress={() => onComplete?.(quest.id)}
-            loading={isCompleting}
-            disabled={!onComplete}
-            style={styles.actionButton}
-          />
-          <PrimaryButton
-            label="View details"
-            variant="secondary"
-            onPress={() => onViewDetails?.(quest)}
-            disabled={!onViewDetails}
-            style={styles.actionButton}
-          />
+          {canComplete ? (
+            <PrimaryButton
+              label="Complete"
+              onPress={() => onComplete(quest.id)}
+              loading={isCompleting}
+              style={styles.actionButton}
+            />
+          ) : null}
+          {canViewDetails ? (
+            <PrimaryButton
+              label="View details"
+              variant={canComplete ? 'secondary' : 'tertiary'}
+              onPress={() => onViewDetails(quest)}
+              style={styles.actionButton}
+            />
+          ) : null}
         </View>
-      )}
+      ) : null}
     </View>
   );
 };

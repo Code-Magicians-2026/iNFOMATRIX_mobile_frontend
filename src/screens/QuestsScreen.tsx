@@ -62,6 +62,7 @@ const QuestsScreen = () => {
   const setRole = useAuthStore((s) => s.setRole);
 
   const effectiveRole: UserRole = role ?? 'child';
+  const isChildExecutionMode = effectiveRole === 'child';
 
   const [children, setChildren] = React.useState<ChildProfile[]>([]);
   const [targetUserId, setTargetUserId] = React.useState<string | null>(null);
@@ -219,9 +220,9 @@ const QuestsScreen = () => {
       <SectionHeader
         title="Quests"
         subtitle={
-          effectiveRole === 'adult'
-            ? 'Assigned quests for selected child'
-            : 'Your active and completed quests'
+          isChildExecutionMode
+            ? 'Execution mode: complete assigned quests and earn XP'
+            : 'Review mode: view assigned quests for selected child'
         }
       />
 
@@ -265,7 +266,15 @@ const QuestsScreen = () => {
         </StatCard>
       ) : null}
 
-      <StatCard title="Quest Progress" subtitle={`Target: ${targetLabel}`}>
+      <StatCard
+        title="Quest Progress"
+        subtitle={isChildExecutionMode ? 'Execution metrics' : `Target: ${targetLabel}`}
+      >
+        {!isChildExecutionMode ? (
+          <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
+            Adult mode is read-only. Completion is available in child mode.
+          </Text>
+        ) : null}
         <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
           Active quests: {activeQuests.length}
         </Text>
@@ -310,7 +319,7 @@ const QuestsScreen = () => {
                     <QuestCard
                       key={quest.id}
                       quest={quest}
-                      onComplete={handleCompleteQuest}
+                      onComplete={isChildExecutionMode ? handleCompleteQuest : undefined}
                       onViewDetails={setDetailsQuest}
                       isCompleting={completingQuestId === quest.id}
                     />
@@ -339,7 +348,11 @@ const QuestsScreen = () => {
                 ) : (
                   <EmptyState
                     title="No completed quests yet"
-                    description="Complete active quests to move them here."
+                    description={
+                      isChildExecutionMode
+                        ? 'Complete active quests to move them here.'
+                        : 'Child has no completed quests yet.'
+                    }
                   />
                 )
               ) : (
@@ -378,6 +391,9 @@ const QuestsScreen = () => {
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Reward XP: {detailsQuest.rewardXp}
+                </Text>
+                <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                  Estimated minutes: {detailsQuest.estimatedMinutes}
                 </Text>
                 <PrimaryButton
                   label="Close"
