@@ -1,0 +1,47 @@
+import type { UserProfile } from '@/shared/models/mvp-contracts.model';
+
+export const mockUsers: UserProfile[] = [
+  {
+    id: 'adult-1',
+    fullName: 'Olena Mentor',
+    email: 'olena.mentor@mock.infomatrix.app',
+    role: 'adult',
+    activeChildId: 'child-1',
+    level: 8,
+    xp: 2450,
+    streak: 15,
+    avatarType: 'mentor',
+  },
+  {
+    id: 'child-1',
+    fullName: 'Marta Horizon',
+    email: 'marta.horizon@mock.infomatrix.app',
+    role: 'child',
+    createdByAdultId: 'adult-1',
+    level: 3,
+    xp: 360,
+    streak: 4,
+    avatarType: 'adventurer',
+  },
+  {
+    id: 'child-2',
+    fullName: 'Oleh Quester',
+    email: 'oleh.quester@mock.infomatrix.app',
+    role: 'child',
+    createdByAdultId: 'adult-1',
+    level: 2,
+    xp: 190,
+    streak: 2,
+    avatarType: 'explorer',
+  },
+  {
+    id: 'adult-2',
+    fullName: 'Dmytro Guide',
+    email: 'dmytro.guide@mock.infomatrix.app',
+    role: 'adult',
+    level: 5,
+    xp: 1320,
+    streak: 7,
+    avatarType: 'coach',
+  },
+];

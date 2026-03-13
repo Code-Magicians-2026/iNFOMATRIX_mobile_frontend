@@ -1,0 +1,60 @@
+import type { GeneratedPlan } from '@/shared/models/mvp-contracts.model';
+
+export const mockPlans: GeneratedPlan[] = [
+  {
+    id: 'plan-1',
+    title: 'Marta Weekly Boost',
+    summary: 'Two focused quests to keep momentum after school.',
+    childMessage: 'Small daily wins build your superpower.',
+    quests: [
+      {
+        id: 'quest-plan-1-1',
+        assignedToUserId: 'child-1',
+        title: 'Math Sprint',
+        description: 'Solve 12 math tasks and explain 2 solutions.',
+        category: 'study',
+        difficulty: 'medium',
+        rewardXp: 80,
+        estimatedMinutes: 35,
+        status: 'active',
+        createdAt: '2026-03-13T09:20:00.000Z',
+      },
+      {
+        id: 'quest-plan-1-2',
+        assignedToUserId: 'child-1',
+        title: 'Movement Reset',
+        description: '20-minute walk and a short stretch routine.',
+        category: 'health',
+        difficulty: 'easy',
+        rewardXp: 45,
+        estimatedMinutes: 20,
+        status: 'active',
+        createdAt: '2026-03-13T09:40:00.000Z',
+      },
+    ],
+    totalEstimatedMinutes: 55,
+    status: 'approved',
+  },
+  {
+    id: 'plan-2',
+    title: 'Oleh Science Push',
+    summary: 'Draft plan awaiting adult approval.',
+    childMessage: 'You are ready for a bigger challenge this week.',
+    quests: [
+      {
+        id: 'quest-plan-2-1',
+        assignedToUserId: 'child-2',
+        title: 'Science Lab Notes',
+        description: 'Read one science chapter and write key findings.',
+        category: 'science',
+        difficulty: 'medium',
+        rewardXp: 75,
+        estimatedMinutes: 40,
+        status: 'draft',
+        createdAt: '2026-03-13T10:00:00.000Z',
+      },
+    ],
+    totalEstimatedMinutes: 40,
+    status: 'draft',
+  },
+];
