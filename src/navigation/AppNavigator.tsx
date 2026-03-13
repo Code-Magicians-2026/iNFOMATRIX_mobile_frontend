@@ -11,6 +11,7 @@ import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
 import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
 import PlanPreviewScreen from '@/src/features/chat/screens/PlanPreviewScreen';
 import type { GeneratedPlan } from '@/shared/models/mvp-contracts.model';
+import type { GeneratePlanInput } from '@/src/integration/services';
 
 export type TabParamList = {
   Home: undefined;
@@ -24,12 +25,7 @@ export type AppStackParamList = {
   Settings: undefined;
   PlanPreview: {
     plan: GeneratedPlan;
-    request: {
-      targetUserId: string;
-      prompt: string;
-      category: string;
-      intensity: string;
-    };
+    request: GeneratePlanInput;
     targetLabel: string;
   };
   Login: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;

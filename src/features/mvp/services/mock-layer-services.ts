@@ -1,4 +1,5 @@
 import type {
+  CapturedPhoto,
   ChildProfile,
   GeneratedPlan,
   PlanRequest,
@@ -38,6 +39,7 @@ export interface GeneratePlanMockInput {
   prompt: string;
   category: string;
   intensity: string;
+  photo?: CapturedPhoto;
 }
 
 export interface GetPlansMockInput {
@@ -49,7 +51,12 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 
 const cloneQuest = (quest: Quest): Quest => ({ ...quest });
 
-const clonePlanRequest = (request: PlanRequest): PlanRequest => ({ ...request });
+const cloneCapturedPhoto = (photo: CapturedPhoto): CapturedPhoto => ({ ...photo });
+
+const clonePlanRequest = (request: PlanRequest): PlanRequest => ({
+  ...request,
+  photo: request.photo ? cloneCapturedPhoto(request.photo) : undefined,
+});
 
 const cloneProgress = (summary: ProgressSummary): ProgressSummary => ({
   ...summary,
@@ -193,6 +200,22 @@ const sortQuests = (quests: Quest[]) => {
 };
 
 const normalizeIntensity = (value: string) => value.trim().toLowerCase();
+
+const normalizeCapturedPhoto = (photo?: CapturedPhoto): CapturedPhoto | undefined => {
+  if (!photo?.uri.trim()) {
+    return undefined;
+  }
+
+  return {
+    uri: photo.uri.trim(),
+    width: photo.width,
+    height: photo.height,
+    fileName: photo.fileName,
+    mimeType: photo.mimeType,
+    fileSize: photo.fileSize,
+    previewUri: photo.previewUri ?? photo.uri.trim(),
+  };
+};
 
 const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] => {
   const intensity = normalizeIntensity(input.intensity);
@@ -347,6 +370,8 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
     throw new Error('Plan prompt is required.');
   }
 
+  const normalizedPhoto = normalizeCapturedPhoto(input.photo);
+
   planRequestCounter += 1;
   const request: PlanRequest = {
     id: `plan-request-${Date.now()}-${planRequestCounter}`,
@@ -354,6 +379,7 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
     prompt: input.prompt.trim(),
     category: input.category.trim() || 'general',
     intensity: input.intensity.trim() || 'medium',
+    photo: normalizedPhoto,
     status: 'generated',
   };
 
@@ -366,7 +392,7 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
   const generatedPlan: GeneratedPlan = {
     id: planId,
     title: `${targetUser.fullName}: AI Plan`,
-    summary: `Generated ${quests.length} quests for ${request.category} with ${request.intensity} intensity.`,
+    summary: `Generated ${quests.length} quests for ${request.category} with ${request.intensity} intensity${normalizedPhoto ? ' using camera context.' : '.'}`,
     childMessage: `You can do this, ${targetUser.fullName}. Start with one quest and keep going.`,
     quests,
     totalEstimatedMinutes: quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0),
@@ -920,6 +946,15 @@ export const applyDemoScenarioMock = async (
     prompt: 'Create an after-school plan with study and room cleanup quests.',
     category: 'routine',
     intensity: 'medium',
+    photo: {
+      uri: 'file:///demo/room-scene.jpg',
+      width: 1080,
+      height: 1440,
+      fileName: 'room-scene.jpg',
+      mimeType: 'image/jpeg',
+      fileSize: 240000,
+      previewUri: 'file:///demo/room-scene.jpg',
+    },
   };
 
   const previewPlan: GeneratedPlan = {
@@ -942,6 +977,7 @@ export const applyDemoScenarioMock = async (
         prompt: previewRequest.prompt,
         category: previewRequest.category,
         intensity: previewRequest.intensity,
+        photo: previewRequest.photo,
         status: 'generated',
       },
     ],

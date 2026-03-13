@@ -1,12 +1,17 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import type { ChildProfile, UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
+import type {
+  CapturedPhoto,
+  ChildProfile,
+  UserProfile,
+  UserRole,
+} from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
   LoadingState,
@@ -22,7 +27,9 @@ import {
   PLAN_BUILDER_SYSTEM_PROMPT,
   PLAN_BUILDER_TONE_RULES,
 } from '@/src/features/chat/config/ai-transparency';
-import { childrenService, plansService, userService } from '@/src/integration/services';
+import { cameraService, childrenService, plansService, userService } from '@/src/integration/services';
+import type { GeneratePlanInput } from '@/src/integration/services';
+import type { MediaPermissionState } from '@/src/integration/services/cameraService';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const QUICK_PROMPTS = [
@@ -38,6 +45,22 @@ const INTENSITY_OPTIONS = ['low', 'medium', 'high'] as const;
 type TargetMode = 'myself' | 'child';
 
 type ChatNavigation = NativeStackNavigationProp<AppStackParamList>;
+
+const resolvePermissionDescription = (state: MediaPermissionState, source: 'camera' | 'gallery') => {
+  if (state === 'granted') {
+    return `${source === 'camera' ? 'Camera' : 'Gallery'} access granted.`;
+  }
+
+  if (state === 'blocked') {
+    return `${source === 'camera' ? 'Camera' : 'Gallery'} access blocked. Open device settings.`;
+  }
+
+  if (state === 'undetermined') {
+    return `${source === 'camera' ? 'Camera' : 'Gallery'} access not requested yet.`;
+  }
+
+  return `${source === 'camera' ? 'Camera' : 'Gallery'} access denied.`;
+};
 
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
@@ -77,6 +100,11 @@ const AgentChatScreen = () => {
   const [prompt, setPrompt] = React.useState('');
   const [category, setCategory] = React.useState<string>('study');
   const [intensity, setIntensity] = React.useState<string>('medium');
+  const [capturedPhoto, setCapturedPhoto] = React.useState<CapturedPhoto | null>(null);
+  const [cameraPermissionState, setCameraPermissionState] =
+    React.useState<MediaPermissionState>('undetermined');
+  const [galleryPermissionState, setGalleryPermissionState] =
+    React.useState<MediaPermissionState>('undetermined');
 
   const [isLoading, setIsLoading] = React.useState(true);
   const [isGenerating, setIsGenerating] = React.useState(false);
@@ -98,6 +126,16 @@ const AgentChatScreen = () => {
       void setRole('child');
     }
   }, [role, setRole]);
+
+  const refreshPermissionsState = React.useCallback(async () => {
+    const status = await cameraService.getPermissionsStatus();
+    setCameraPermissionState(status.camera);
+    setGalleryPermissionState(status.gallery);
+  }, []);
+
+  React.useEffect(() => {
+    void refreshPermissionsState();
+  }, [refreshPermissionsState]);
 
   const loadBuilderContext = React.useCallback(async () => {
     setIsLoading(true);
@@ -159,11 +197,133 @@ const AgentChatScreen = () => {
     : selectedChild?.fullName ?? 'No active child';
   const isChildTargetWithoutSelection =
     targetMode === 'child' && canUseChildTarget && !selectedChild;
+  const isGenerateDisabled = isGenerating || prompt.trim().length === 0 || !capturedPhoto?.uri;
+  const isCameraBlocked = cameraPermissionState === 'blocked';
+  const isGalleryBlocked = galleryPermissionState === 'blocked';
+  const shouldShowPermissionHelp =
+    cameraPermissionState !== 'granted' || galleryPermissionState !== 'granted';
+
+  const assignPreparedPhoto = async (photo: CapturedPhoto | null) => {
+    if (!photo) {
+      return;
+    }
+
+    const preparedPhoto = await cameraService.preparePhoto(photo);
+    setCapturedPhoto(preparedPhoto);
+  };
+
+  const handleAllowCameraAccess = async () => {
+    try {
+      const permissionState = await cameraService.requestCameraPermission();
+      setCameraPermissionState(permissionState);
+
+      if (permissionState === 'granted') {
+        setGenerationError(null);
+        return;
+      }
+
+      if (permissionState === 'blocked') {
+        setGenerationError('Camera permission is blocked. Open settings to enable it.');
+        return;
+      }
+
+      setGenerationError('Camera permission was denied. You can continue with gallery.');
+    } catch {
+      setGenerationError('Failed to request camera permission.');
+    }
+  };
+
+  const handleAllowGalleryAccess = async () => {
+    try {
+      const permissionState = await cameraService.requestGalleryPermission();
+      setGalleryPermissionState(permissionState);
+
+      if (permissionState === 'granted') {
+        setGenerationError(null);
+        return;
+      }
+
+      if (permissionState === 'blocked') {
+        setGenerationError('Gallery permission is blocked. Open settings to enable it.');
+        return;
+      }
+
+      setGenerationError('Gallery permission was denied.');
+    } catch {
+      setGenerationError('Failed to request gallery permission.');
+    }
+  };
+
+  const handleOpenSettings = async () => {
+    try {
+      await Linking.openSettings();
+      await refreshPermissionsState();
+    } catch {
+      setGenerationError('Failed to open settings.');
+    }
+  };
+
+  const handleCapturePhoto = async () => {
+    try {
+      setGenerationError(null);
+      if (cameraPermissionState !== 'granted') {
+        const permissionState = await cameraService.requestCameraPermission();
+        setCameraPermissionState(permissionState);
+
+        if (permissionState !== 'granted') {
+          if (permissionState === 'blocked') {
+            setGenerationError('Camera permission is blocked. Use gallery or open settings.');
+            return;
+          }
+
+          setGenerationError('Camera permission is required. You can fallback to gallery.');
+          return;
+        }
+      }
+
+      const photo = await cameraService.openCamera();
+      await assignPreparedPhoto(photo);
+      await refreshPermissionsState();
+    } catch {
+      setGenerationError('Failed to capture photo. Please try again.');
+    }
+  };
+
+  const handlePickFromGallery = async () => {
+    try {
+      setGenerationError(null);
+      if (galleryPermissionState !== 'granted') {
+        const permissionState = await cameraService.requestGalleryPermission();
+        setGalleryPermissionState(permissionState);
+
+        if (permissionState !== 'granted') {
+          if (permissionState === 'blocked') {
+            setGenerationError('Gallery permission is blocked. Open settings to enable it.');
+            return;
+          }
+
+          setGenerationError('Gallery permission is required to choose photo.');
+          return;
+        }
+      }
+
+      const photo = await cameraService.openGallery();
+      await assignPreparedPhoto(photo);
+      await refreshPermissionsState();
+    } catch {
+      setGenerationError('Failed to pick photo from gallery.');
+    }
+  };
 
   const handleGeneratePlan = async () => {
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt) {
       setGenerationError('Prompt is required to generate a plan.');
+      return;
+    }
+
+    if (!capturedPhoto?.uri) {
+      setGenerationError('Add one room/situation photo before generating a plan.');
       return;
     }
 
@@ -177,14 +337,15 @@ const AgentChatScreen = () => {
     try {
       setGenerationError(null);
 
-      const request = {
+      const request: GeneratePlanInput = {
         targetUserId,
         prompt: normalizedPrompt,
         category,
         intensity,
+        photo: capturedPhoto,
       };
 
-      const generatedPlan = await plansService.generatePlan(request);
+      const generatedPlan = await plansService.uploadPhotoAndGenerate(request);
 
       navigation.navigate('PlanPreview', {
         plan: generatedPlan,
@@ -210,7 +371,7 @@ const AgentChatScreen = () => {
     <ScreenContainer>
       <SectionHeader
         title="AI Plan Builder"
-        subtitle="Create structured plans instead of free-form chat"
+        subtitle="Capture one photo, add prompt, and generate a structured AI plan"
       />
 
       {contextError ? <EmptyState title="Builder error" description={contextError} /> : null}
@@ -222,7 +383,7 @@ const AgentChatScreen = () => {
             onPress={() => {
               void handleGeneratePlan();
             }}
-            disabled={isGenerating || prompt.trim().length === 0}
+            disabled={isGenerateDisabled}
             style={styles.retryButton}
           />
         </View>
@@ -308,10 +469,10 @@ const AgentChatScreen = () => {
                     return (
                       <Pressable
                         key={child.id}
-                      onPress={() => {
-                        void setSelectedChildId(child.id);
-                        setGenerationError(null);
-                      }}
+                        onPress={() => {
+                          void setSelectedChildId(child.id);
+                          setGenerationError(null);
+                        }}
                         style={[
                           styles.childRow,
                           {
@@ -338,6 +499,148 @@ const AgentChatScreen = () => {
             ) : (
               <EmptyState title="No child profiles" description="Create child profile from Home first." />
             )
+          ) : null}
+        </StatCard>
+
+        <StatCard title="Room / Situation Photo" subtitle="Photo is AI context for plan generation" style={styles.card}>
+          <Text style={[styles.photoHintText, { color: colors.textSecondary }]} allowFontScaling>
+            Add one photo so AI can understand the current room/situation before generating the plan.
+          </Text>
+
+          {shouldShowPermissionHelp ? (
+            <View style={[styles.permissionCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <Text style={[styles.permissionStatusText, { color: colors.textSecondary }]} allowFontScaling>
+                {resolvePermissionDescription(cameraPermissionState, 'camera')}
+              </Text>
+              <Text style={[styles.permissionStatusText, { color: colors.textSecondary }]} allowFontScaling>
+                {resolvePermissionDescription(galleryPermissionState, 'gallery')}
+              </Text>
+
+              <View style={styles.photoActions}>
+                <Pressable
+                  onPress={() => {
+                    void handleAllowCameraAccess();
+                  }}
+                  style={styles.cameraButton}
+                  android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+                >
+                  <Text style={styles.cameraButtonLabel} allowFontScaling>
+                    Allow camera access
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    void handlePickFromGallery();
+                  }}
+                  style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                >
+                  <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                    Choose from gallery
+                  </Text>
+                </Pressable>
+
+                {galleryPermissionState !== 'granted' ? (
+                  <Pressable
+                    onPress={() => {
+                      void handleAllowGalleryAccess();
+                    }}
+                    style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                  >
+                    <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                      Allow gallery access
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                {isCameraBlocked || isGalleryBlocked ? (
+                  <Pressable
+                    onPress={() => {
+                      void handleOpenSettings();
+                    }}
+                    style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                  >
+                    <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                      Open settings
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+
+          {capturedPhoto ? (
+            <View style={styles.photoContainer}>
+              <View style={styles.photoPreviewRow}>
+                <Image
+                  source={{ uri: capturedPhoto.previewUri ?? capturedPhoto.uri }}
+                  style={styles.photoThumbnail}
+                />
+                <View style={styles.photoMetaBlock}>
+                  <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Resolution: {capturedPhoto.width ?? '?'} x {capturedPhoto.height ?? '?'}
+                  </Text>
+                  {capturedPhoto.fileSize ? (
+                    <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
+                      Size: {(capturedPhoto.fileSize / 1024 / 1024).toFixed(2)} MB
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+          ) : (
+            <EmptyState
+              title="No photo attached"
+              description="Use Take photo or Choose from gallery to add AI context."
+            />
+          )}
+
+          <View style={styles.photoPrimaryActions}>
+            <Pressable
+              onPress={() => {
+                void handleCapturePhoto();
+              }}
+              style={[styles.cameraButton, styles.photoHalfButton]}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+            >
+              <Text style={styles.cameraButtonLabel} allowFontScaling>
+                {capturedPhoto ? 'Replace from camera' : 'Take photo'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void handlePickFromGallery();
+              }}
+              style={[
+                styles.secondaryPhotoButton,
+                styles.photoHalfButton,
+                { borderColor: colors.border, backgroundColor: colors.background },
+              ]}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            >
+              <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                {capturedPhoto ? 'Replace from gallery' : 'Choose from gallery'}
+              </Text>
+            </Pressable>
+          </View>
+          {capturedPhoto ? (
+            <View style={styles.photoSecondaryActions}>
+              <Pressable
+                onPress={() => {
+                  setCapturedPhoto(null);
+                  setGenerationError(null);
+                }}
+                style={[styles.secondaryPhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              >
+                <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                  Remove photo
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
         </StatCard>
 
@@ -452,8 +755,8 @@ const AgentChatScreen = () => {
           onPress={() => {
             void handleGeneratePlan();
           }}
-          disabled={isGenerating}
-          style={[styles.generateButton, isGenerating && styles.generateButtonDisabled]}
+          disabled={isGenerateDisabled}
+          style={[styles.generateButton, isGenerateDisabled && styles.generateButtonDisabled]}
           android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
         >
           <Text style={styles.generateButtonLabel} allowFontScaling>
@@ -585,6 +888,95 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     childMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
+    },
+    photoHintText: {
+      fontSize: isTablet ? 14 : 13,
+      lineHeight: isTablet ? 20 : 18,
+      fontWeight: '500',
+    },
+    permissionCard: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 6,
+      marginTop: 8,
+      elevation: 1,
+    },
+    permissionStatusText: {
+      fontSize: isTablet ? 13 : 12,
+      lineHeight: isTablet ? 18 : 16,
+      fontWeight: '500',
+    },
+    photoContainer: {
+      gap: 6,
+      marginTop: 2,
+    },
+    photoPreviewRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    photoThumbnail: {
+      width: isTablet ? 124 : 108,
+      height: isTablet ? 124 : 108,
+      borderRadius: 10,
+      backgroundColor: '#101214',
+    },
+    photoMetaBlock: {
+      flex: 1,
+      gap: 4,
+    },
+    photoMeta: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '500',
+    },
+    photoActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 10,
+    },
+    photoPrimaryActions: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 10,
+    },
+    photoSecondaryActions: {
+      marginTop: 8,
+    },
+    photoHalfButton: {
+      flex: 1,
+      minWidth: 0,
+    },
+    cameraButton: {
+      minWidth: isTablet ? 150 : 132,
+      minHeight: 44,
+      borderRadius: 10,
+      backgroundColor: '#ff2d55',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      elevation: 2,
+    },
+    cameraButtonLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+    },
+    secondaryPhotoButton: {
+      minWidth: isTablet ? 132 : 118,
+      minHeight: 44,
+      borderWidth: 1,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      elevation: 1,
+    },
+    secondaryPhotoButtonLabel: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
     },
     promptInput: {
       borderWidth: 1,
