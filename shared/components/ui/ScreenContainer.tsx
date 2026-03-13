@@ -16,7 +16,7 @@ const ScreenContainer = ({ children, centered = false, contentStyle }: ScreenCon
   const styles = React.useMemo(() => getStyles(spacing), [spacing]);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}> 
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <View style={[styles.content, centered && styles.centered, contentStyle]}>{children}</View>
     </SafeAreaView>
   );

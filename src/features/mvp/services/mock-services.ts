@@ -36,11 +36,11 @@ export interface ProfileMock {
   completedQuests: number;
 }
 
-let userState: UserProfile = cloneUser(mockUserProfile);
-let avatarStatsState: AvatarStats = cloneAvatarStats(mockAvatarStats);
-let questsState: Quest[] = mockQuests.map(cloneQuest);
-let leaderboardState: LeaderboardItem[] = normalizeLeaderboard(mockLeaderboard.map(cloneLeaderboardItem));
-let generatedQuestCount = 0;
+export interface GenerateQuestInput {
+  taskText: string;
+  category?: string;
+  durationMinutes?: number;
+}
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -65,19 +65,46 @@ const normalizeLeaderboard = (items: LeaderboardItem[]): LeaderboardItem[] =>
       rank: index + 1,
     }));
 
-const getDifficultyAndReward = (taskText: string) => {
-  if (taskText.length > 120) {
+let userState: UserProfile = cloneUser(mockUserProfile);
+let avatarStatsState: AvatarStats = cloneAvatarStats(mockAvatarStats);
+let questsState: Quest[] = mockQuests.map(cloneQuest);
+let leaderboardState: LeaderboardItem[] = normalizeLeaderboard(
+  mockLeaderboard.map(cloneLeaderboardItem),
+);
+let generatedQuestCount = 0;
+
+const normalizeGenerateInput = (input: string | GenerateQuestInput): GenerateQuestInput => {
+  if (typeof input === 'string') {
+    return { taskText: input };
+  }
+
+  return {
+    taskText: input.taskText,
+    category: input.category,
+    durationMinutes: input.durationMinutes,
+  };
+};
+
+const getDifficultyAndReward = (taskText: string, durationMinutes?: number) => {
+  const durationFactor = durationMinutes ?? 0;
+  const complexityScore = taskText.length + durationFactor;
+
+  if (complexityScore > 140) {
     return { difficulty: 'hard', rewardXp: 130 };
   }
 
-  if (taskText.length > 60) {
+  if (complexityScore > 70) {
     return { difficulty: 'medium', rewardXp: 90 };
   }
 
   return { difficulty: 'easy', rewardXp: 60 };
 };
 
-const inferCategory = (taskText: string) => {
+const inferCategory = (taskText: string, category?: string) => {
+  if (category && category.trim()) {
+    return category.trim().toLowerCase();
+  }
+
   const normalized = taskText.toLowerCase();
 
   if (normalized.includes('run') || normalized.includes('workout') || normalized.includes('gym')) {
@@ -109,6 +136,14 @@ const buildQuestTitle = (taskText: string) => {
   return `${trimmed.slice(0, 29)}...`;
 };
 
+const buildQuestDescription = (input: GenerateQuestInput) => {
+  const durationPart = input.durationMinutes
+    ? `Target duration: ${input.durationMinutes} min.`
+    : 'No fixed duration.';
+
+  return `${durationPart} Focus on completion quality and consistency.`;
+};
+
 const recalcLevelFromXp = (xp: number) => Math.max(1, Math.floor(xp / XP_PER_LEVEL) + 1);
 
 const recalcFairScore = (stats: AvatarStats) => {
@@ -117,11 +152,13 @@ const recalcFairScore = (stats: AvatarStats) => {
 };
 
 const applyQuestReward = (quest: Quest) => {
+  const nextXp = userState.xp + quest.rewardXp;
+
   userState = {
     ...userState,
-    xp: userState.xp + quest.rewardXp,
+    xp: nextXp,
     streak: userState.streak + 1,
-    level: recalcLevelFromXp(userState.xp + quest.rewardXp),
+    level: recalcLevelFromXp(nextXp),
   };
 
   const targetStat = categoryToStat[quest.category] ?? 'productivity';
@@ -164,6 +201,26 @@ const cloneHomeSummary = (summary: HomeSummaryMock): HomeSummaryMock => ({
   leaderboardTop: summary.leaderboardTop.map(cloneLeaderboardItem),
 });
 
+const createGeneratedQuest = (input: GenerateQuestInput): Quest => {
+  generatedQuestCount += 1;
+
+  const normalizedTask = input.taskText.trim();
+  const { difficulty, rewardXp } = getDifficultyAndReward(normalizedTask, input.durationMinutes);
+  const category = inferCategory(normalizedTask, input.category);
+
+  return {
+    id: `quest-generated-${Date.now()}-${generatedQuestCount}`,
+    title: buildQuestTitle(normalizedTask),
+    originalTask: normalizedTask,
+    description: buildQuestDescription(input),
+    difficulty,
+    rewardXp,
+    status: 'draft',
+    category,
+    createdAt: new Date().toISOString(),
+  };
+};
+
 export const getHomeSummaryMock = async (): Promise<HomeSummaryMock> => {
   await wait(MOCK_DELAY_MS);
 
@@ -192,35 +249,31 @@ export const getQuestsMock = async (): Promise<Quest[]> => {
     .map(cloneQuest);
 };
 
-export const generateQuestMock = async (taskText: string): Promise<Quest> => {
+export const generateQuestMock = async (input: string | GenerateQuestInput): Promise<Quest> => {
   await wait(MOCK_DELAY_MS);
 
-  const normalizedTask = taskText.trim();
-  if (!normalizedTask) {
+  const normalizedInput = normalizeGenerateInput(input);
+  if (!normalizedInput.taskText.trim()) {
     throw new Error('Task text is required to generate a quest.');
   }
 
-  generatedQuestCount += 1;
+  return createGeneratedQuest(normalizedInput);
+};
 
-  const { difficulty, rewardXp } = getDifficultyAndReward(normalizedTask);
-  const createdAt = new Date().toISOString();
-  const category = inferCategory(normalizedTask);
+export const acceptGeneratedQuestMock = async (quest: Quest): Promise<Quest> => {
+  await wait(MOCK_DELAY_MS);
 
-  const newQuest: Quest = {
-    id: `quest-generated-${Date.now()}-${generatedQuestCount}`,
-    title: buildQuestTitle(normalizedTask),
-    originalTask: normalizedTask,
-    description: `Complete task: ${normalizedTask}`,
-    difficulty,
-    rewardXp,
+  const acceptedQuest: Quest = {
+    ...quest,
     status: 'active',
-    category,
-    createdAt,
   };
 
-  questsState = [newQuest, ...questsState];
+  const existingQuest = questsState.find((item) => item.id === acceptedQuest.id);
+  if (!existingQuest) {
+    questsState = [acceptedQuest, ...questsState];
+  }
 
-  return cloneQuest(newQuest);
+  return cloneQuest(acceptedQuest);
 };
 
 export const completeQuestMock = async (id: string): Promise<Quest> => {
@@ -232,23 +285,20 @@ export const completeQuestMock = async (id: string): Promise<Quest> => {
   }
 
   const currentQuest = questsState[questIndex];
-  if (currentQuest.status !== 'completed') {
-    const completedQuest: Quest = {
-      ...currentQuest,
-      status: 'completed',
-    };
-
-    questsState = [
-      ...questsState.slice(0, questIndex),
-      completedQuest,
-      ...questsState.slice(questIndex + 1),
-    ];
-
-    applyQuestReward(completedQuest);
-    return cloneQuest(completedQuest);
+  if (currentQuest.status === 'completed') {
+    return cloneQuest(currentQuest);
   }
 
-  return cloneQuest(currentQuest);
+  const completedQuest: Quest = {
+    ...currentQuest,
+    status: 'completed',
+  };
+
+  questsState = [...questsState.slice(0, questIndex), completedQuest, ...questsState.slice(questIndex + 1)];
+
+  applyQuestReward(completedQuest);
+
+  return cloneQuest(completedQuest);
 };
 
 export const getLeaderboardMock = async (): Promise<LeaderboardItem[]> => {
