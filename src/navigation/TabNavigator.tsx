@@ -3,8 +3,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import React from 'react';
 
 import type { TabParamList } from '@/src/navigation/AppNavigator';
-import GuideScreen from '@/src/screens/GuideScreen';
-import MainScreen from '@/src/screens/MainScreen';
+import AgentChatScreen from '@/src/features/chat/screens/AgentChatScreen';
+import ProfileScreen from '@/src/features/profile/screens/ProfileScreen';
+import HomeScreen from '@/src/screens/HomeScreen';
+import QuestsScreen from '@/src/screens/QuestsScreen';
 import useThemeStore from '@/context/Theme-store';
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -13,10 +15,14 @@ const getTabIcon = (
   routeName: keyof TabParamList,
 ): keyof typeof Ionicons.glyphMap => {
   switch (routeName) {
-    case 'Main':
-      return 'book-outline';
-    case 'Guide':
-      return 'compass-outline';
+    case 'Home':
+      return 'home-outline';
+    case 'Quests':
+      return 'list-outline';
+    case 'Chat':
+      return 'chatbubbles-outline';
+    case 'Profile':
+      return 'person-outline';
     default:
       return 'ellipse-outline';
   }
@@ -45,8 +51,10 @@ export default function TabNavigator() {
         ),
       })}
     >
-      <Tab.Screen name="Main" component={MainScreen} />
-      <Tab.Screen name="Guide" component={GuideScreen} />
+      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Home' }} />
+      <Tab.Screen name="Quests" component={QuestsScreen} options={{ title: 'Quests' }} />
+      <Tab.Screen name="Chat" component={AgentChatScreen} options={{ title: 'Chat' }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );
 }

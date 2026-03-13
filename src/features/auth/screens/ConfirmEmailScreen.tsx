@@ -68,7 +68,14 @@ const ConfirmEmailScreen = () => {
         email: normalizedEmail,
         token: normalizedToken,
       });
-      navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
+      const redirectTo = route.params?.redirectTo ?? 'Profile';
+      if (redirectTo === 'Settings') {
+        navigation.dispatch(StackActions.popTo('Settings'));
+        return;
+      }
+
+      navigation.dispatch(StackActions.popTo('MainTabs'));
+      navigation.navigate('MainTabs', { screen: 'Profile' });
     } catch (confirmError) {
       setError(getApiErrorMessage(confirmError, 'Не вдалося підтвердити пошту.'));
     }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import { getFocusedRouteNameFromRoute, type NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import TabNavigator from '@/src/navigation/TabNavigator';
@@ -8,19 +8,17 @@ import ConfirmEmailScreen from '@/src/features/auth/screens/ConfirmEmailScreen';
 import LoginScreen from '@/src/features/auth/screens/LoginScreen';
 import ResetPasswordScreen from '@/src/features/auth/screens/ResetPasswordScreen';
 import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
-import AgentChatScreen from '@/src/features/chat/screens/AgentChatScreen';
-import ProfileScreen from '@/src/features/profile/screens/ProfileScreen';
 import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
 
 export type TabParamList = {
-  Main: undefined;
-  Guide: undefined;
+  Home: undefined;
+  Quests: undefined;
+  Chat: undefined;
+  Profile: undefined;
 };
 
 export type AppStackParamList = {
-  MainTabs: undefined;
-  AgentChat: undefined;
-  Profile: undefined;
+  MainTabs: NavigatorScreenParams<TabParamList> | undefined;
   Settings: undefined;
   Login: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
   Registration: { redirectTo?: 'Settings' | 'Profile' } | undefined;
@@ -31,15 +29,19 @@ export type AppStackParamList = {
 const Stack = createNativeStackNavigator<AppStackParamList>();
 
 const getMainHeaderTitle = (route: unknown) => {
-  const focusedRouteName = getFocusedRouteNameFromRoute(route as never) ?? 'Main';
+  const focusedRouteName = getFocusedRouteNameFromRoute(route as never) ?? 'Home';
 
   switch (focusedRouteName) {
-    case 'Main':
-      return 'Library';
-    case 'Guide':
-      return 'Guide';
+    case 'Home':
+      return 'Home';
+    case 'Quests':
+      return 'Quests';
+    case 'Chat':
+      return 'Chat';
+    case 'Profile':
+      return 'Profile';
     default:
-      return 'Library';
+      return 'Home';
   }
 };
 
@@ -53,35 +55,16 @@ export default function AppNavigator() {
           header: () => (
             <Header
               title={getMainHeaderTitle(route)}
-              onAiPress={() => navigation.navigate('AgentChat')}
-              onProfilePress={() => navigation.navigate('Profile')}
-            />
-          ),
-        })}
-      />
-      <Stack.Screen
-        name="AgentChat"
-        component={AgentChatScreen}
-        options={({ navigation }) => ({
-          header: () => (
-            <Header
-              title="AI Chat"
-              showBackButton
-              onBackPress={() => navigation.goBack()}
-              onProfilePress={() => navigation.navigate('Profile')}
-            />
-          ),
-        })}
-      />
-      <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={({ navigation }) => ({
-          header: () => (
-            <Header
-              title="My Profile"
-              showBackButton
-              onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
+              onProfilePress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Profile',
+                })
+              }
             />
           ),
         })}

@@ -9,7 +9,7 @@ import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 
-type ProfileNavigation = NativeStackNavigationProp<AppStackParamList, 'Profile'>;
+type ProfileNavigation = NativeStackNavigationProp<AppStackParamList>;
 
 const ProfileScreen = () => {
   const navigation = useNavigation<ProfileNavigation>();
