@@ -807,7 +807,7 @@ const HomeScreen = () => {
                 );
               })}
             </View>
-            <Text style={[styles.helperText, { color: colors.textSecondary }]} allowFontScaling>
+                        <Text style={[styles.helperText, { color: colors.textSecondary }]} allowFontScaling>
               Low = fewer/light quests, High = more difficult and longer quests.
             </Text>
 
