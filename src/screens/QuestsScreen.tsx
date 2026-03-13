@@ -28,13 +28,11 @@ import {
   StatCard,
 } from '@/shared/components/ui';
 import {
-  completeQuestMock,
-  getChildrenMock,
-  getMeMock,
-  getProgressMock,
-  getQuestsMock,
-  setMockMeId,
-} from '@/src/features/mvp/services';
+  childrenService,
+  progressService,
+  questsService,
+  userService,
+} from '@/src/integration/services';
 
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
@@ -104,13 +102,16 @@ const QuestsScreen = () => {
 
       const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
       try {
-        setMockMeId(targetMockUserId);
+        userService.setCurrentUserId(targetMockUserId);
       } catch {
-        setMockMeId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+        userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
       }
 
       if (effectiveRole === 'adult') {
-        const [meData, childrenData] = await Promise.all([getMeMock(), getChildrenMock()]);
+        const [meData, childrenData] = await Promise.all([
+          userService.getMe(),
+          childrenService.getChildren(),
+        ]);
         setChildren(childrenData);
 
         if (childrenData.length === 0) {
@@ -134,8 +135,8 @@ const QuestsScreen = () => {
         const activeChild =
           childrenData.find((child) => child.id === resolvedSelectedChildId) ?? childrenData[0];
         const [questsData, progressData] = await Promise.all([
-          getQuestsMock(activeChild.id),
-          getProgressMock(activeChild.id),
+          questsService.getQuests(activeChild.id),
+          progressService.getProgress(activeChild.id),
         ]);
 
         setTargetUserId(activeChild.id);
@@ -146,10 +147,10 @@ const QuestsScreen = () => {
         return progressData;
       }
 
-      const meData = await getMeMock();
+      const meData = await userService.getMe();
       const [questsData, progressData] = await Promise.all([
-        getQuestsMock(meData.id),
-        getProgressMock(meData.id),
+        questsService.getQuests(meData.id),
+        progressService.getProgress(meData.id),
       ]);
 
       setChildren([]);
@@ -214,7 +215,7 @@ const QuestsScreen = () => {
     setScreenError(null);
 
     try {
-      const completedQuest = await completeQuestMock(id);
+      const completedQuest = await questsService.completeQuest(id);
       const refreshedProgress = await refreshData(false);
 
       if (refreshedProgress) {

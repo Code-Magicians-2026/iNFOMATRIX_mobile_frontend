@@ -22,16 +22,12 @@ import {
   StatCard,
 } from '@/shared/components/ui';
 import {
-  approvePlanMock,
-  createChildMock,
-  generatePlanMock,
-  getChildrenMock,
-  getMeMock,
-  getPlansMock,
-  getProgressMock,
-  getQuestsMock,
-  setMockMeId,
-} from '@/src/features/mvp/services';
+  childrenService,
+  plansService,
+  progressService,
+  questsService,
+  userService,
+} from '@/src/integration/services';
 
 const XP_PER_LEVEL = 300;
 
@@ -108,16 +104,16 @@ const HomeScreen = () => {
 
         const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
         try {
-          setMockMeId(targetMockUserId);
+          userService.setCurrentUserId(targetMockUserId);
         } catch {
-          setMockMeId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+          userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
         }
 
         if (effectiveRole === 'adult') {
           const [meData, childrenData, planData] = await Promise.all([
-            getMeMock(),
-            getChildrenMock(),
-            getPlansMock({ limit: 6 }),
+            userService.getMe(),
+            childrenService.getChildren(),
+            plansService.getPlans({ limit: 6 }),
           ]);
 
           const childIds = new Set(childrenData.map((child) => child.id));
@@ -135,7 +131,7 @@ const HomeScreen = () => {
           }
 
           const selectedProgress = resolvedSelectedChildId
-            ? await getProgressMock(resolvedSelectedChildId)
+            ? await progressService.getProgress(resolvedSelectedChildId)
             : null;
 
           setMe(meData);
@@ -147,10 +143,10 @@ const HomeScreen = () => {
           return;
         }
 
-        const meData = await getMeMock();
+        const meData = await userService.getMe();
         const [questData, progressData] = await Promise.all([
-          getQuestsMock(meData.id),
-          getProgressMock(meData.id),
+          questsService.getQuests(meData.id),
+          progressService.getProgress(meData.id),
         ]);
 
         setMe(meData);
@@ -244,7 +240,7 @@ const HomeScreen = () => {
     setIsCreatingChild(true);
     setCreateChildError(null);
     try {
-      const createdChild = await createChildMock({
+      const createdChild = await childrenService.createChild({
         fullName,
         age: Math.round(parsedAge),
         interests: interests.length > 0 ? interests : undefined,
@@ -270,7 +266,7 @@ const HomeScreen = () => {
     setIsGeneratingPlan(true);
     try {
       const randomPrompt = PLAN_PROMPTS[Math.floor(Math.random() * PLAN_PROMPTS.length)] ?? PLAN_PROMPTS[0];
-      const generatedPlan = await generatePlanMock({
+      const generatedPlan = await plansService.generatePlan({
         targetUserId: selectedChild.id,
         prompt: randomPrompt,
         category: 'study',
@@ -288,11 +284,11 @@ const HomeScreen = () => {
   const handleApprovePlan = async (planId: string) => {
     setApprovingPlanId(planId);
     try {
-      const approvedPlan = await approvePlanMock(planId);
+      const approvedPlan = await plansService.approvePlan(planId);
       setRecentPlans((prev) => prev.map((plan) => (plan.id === approvedPlan.id ? approvedPlan : plan)));
 
       if (selectedChild) {
-        const selectedProgress = await getProgressMock(selectedChild.id);
+        const selectedProgress = await progressService.getProgress(selectedChild.id);
         setProgress(selectedProgress);
       }
     } catch {

@@ -17,12 +17,11 @@ import {
   StatCard,
 } from '@/shared/components/ui';
 import {
-  getChildrenMock,
-  getMeMock,
-  getPlansMock,
-  getProgressMock,
-  setMockMeId,
-} from '@/src/features/mvp/services';
+  childrenService,
+  plansService,
+  progressService,
+  userService,
+} from '@/src/integration/services';
 
 type ProfileNavigation = NativeStackNavigationProp<AppStackParamList>;
 
@@ -91,19 +90,22 @@ const ProfileScreen = () => {
 
       const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
       try {
-        setMockMeId(targetMockUserId);
+        userService.setCurrentUserId(targetMockUserId);
       } catch {
-        setMockMeId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+        userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
       }
 
-      const meData = await getMeMock();
-      const progressData = await getProgressMock(meData.id);
+      const meData = await userService.getMe();
+      const progressData = await progressService.getProgress(meData.id);
 
       setMe(meData);
       setProgress(progressData);
 
       if (effectiveRole === 'adult') {
-        const [childrenData, plansData] = await Promise.all([getChildrenMock(), getPlansMock()]);
+        const [childrenData, plansData] = await Promise.all([
+          childrenService.getChildren(),
+          plansService.getPlans(),
+        ]);
         const childIds = new Set(childrenData.map((child) => child.id));
         const assignedPlans = plansData.filter((plan) =>
           plan.quests.some((quest) => childIds.has(quest.assignedToUserId)),

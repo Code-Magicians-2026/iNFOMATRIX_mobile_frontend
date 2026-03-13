@@ -13,10 +13,7 @@ import {
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
-import {
-  approvePlanMock,
-  generatePlanMock,
-} from '@/src/features/mvp/services';
+import { plansService } from '@/src/integration/services';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 type PlanPreviewRoute = RouteProp<AppStackParamList, 'PlanPreview'>;
@@ -42,7 +39,7 @@ const PlanPreviewScreen = () => {
     setIsApproving(true);
     try {
       setScreenError(null);
-      const approved = await approvePlanMock(plan.id);
+      const approved = await plansService.approvePlan(plan.id);
       setPlan(approved);
       setFeedback('Plan approved and quests activated.');
     } catch {
@@ -56,7 +53,7 @@ const PlanPreviewScreen = () => {
     setIsRegenerating(true);
     try {
       setScreenError(null);
-      const regenerated = await generatePlanMock(route.params.request);
+      const regenerated = await plansService.generatePlan(route.params.request);
       setPlan(regenerated);
       setFeedback('Plan regenerated. Review new quests below.');
     } catch {

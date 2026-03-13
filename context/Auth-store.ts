@@ -1,14 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-import {
-  confirmEmail as confirmEmailRequest,
-  login as loginRequest,
-  register as registerRequest,
-  resetPassword as resetPasswordRequest,
-} from '@/src/features/auth/api/auth';
 import type { TokenDto } from '@/src/features/auth/dto/auth.dto';
 import type { AuthSession } from '@/src/features/auth/models/auth-session.model';
+import { authService } from '@/src/integration/services/authService';
 import type { UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
 
 interface AuthState {
@@ -239,21 +234,21 @@ const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   register: async (fullName: string, email: string, password: string) => {
-    await registerRequest({ fullName, email, password });
+    await authService.register({ fullName, email, password });
   },
 
   login: async (email: string, password: string) => {
-    const token = await loginRequest({ email, password });
+    const token = await authService.login({ email, password });
     await get().createSessionFromToken(token, email);
   },
 
   confirmEmail: async (email: string, token: string) => {
-    const response = await confirmEmailRequest({ email, token });
+    const response = await authService.confirmEmail({ email, token });
     await get().createSessionFromToken(response, email);
   },
 
   completePasswordReset: async (email: string, newPassword: string) => {
-    const response = await resetPasswordRequest({ email, newPassword });
+    const response = await authService.resetPassword({ email, newPassword });
     await get().createSessionFromToken(response, email);
   },
 

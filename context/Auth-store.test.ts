@@ -26,11 +26,13 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-vi.mock('@/src/features/auth/api/auth', () => ({
-  login: loginRequestMock,
-  register: registerRequestMock,
-  confirmEmail: confirmEmailRequestMock,
-  resetPassword: resetPasswordRequestMock,
+vi.mock('@/src/integration/services/authService', () => ({
+  authService: {
+    login: loginRequestMock,
+    register: registerRequestMock,
+    confirmEmail: confirmEmailRequestMock,
+    resetPassword: resetPasswordRequestMock,
+  },
 }));
 
 import useAuthStore from '@/context/Auth-store';
