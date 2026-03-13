@@ -121,13 +121,10 @@ const HomeScreen = () => {
             plan.quests.some((quest) => childIds.has(quest.assignedToUserId)),
           );
 
-          const resolvedSelectedChildId =
-            selectedChildId && childIds.has(selectedChildId)
-              ? selectedChildId
-              : (childrenData[0]?.id ?? null);
-
-          if (resolvedSelectedChildId !== selectedChildId) {
-            await setSelectedChildId(resolvedSelectedChildId);
+          const hasSelectedChild = selectedChildId ? childIds.has(selectedChildId) : false;
+          const resolvedSelectedChildId = hasSelectedChild ? selectedChildId : null;
+          if (selectedChildId && !hasSelectedChild) {
+            await setSelectedChildId(null);
           }
 
           const selectedProgress = resolvedSelectedChildId
@@ -179,7 +176,7 @@ const HomeScreen = () => {
   );
 
   const selectedChild = React.useMemo(
-    () => children.find((child) => child.id === selectedChildId) ?? children[0] ?? null,
+    () => children.find((child) => child.id === selectedChildId) ?? null,
     [children, selectedChildId],
   );
 
@@ -386,7 +383,14 @@ const HomeScreen = () => {
                   </Text>
                 </>
               ) : (
-                <EmptyState title="No selected child" description="Create a child profile to begin." />
+                <EmptyState
+                  title="No active child selected"
+                  description={
+                    children.length > 0
+                      ? 'Select a child below to activate planning target.'
+                      : 'Create a child profile to begin.'
+                  }
+                />
               )}
             </StatCard>
 
@@ -446,6 +450,12 @@ const HomeScreen = () => {
                   disabled={!selectedChild}
                   style={styles.actionButton}
                 />
+                {children.length > 0 && !selectedChild ? (
+                  <EmptyState
+                    title="No active child selected"
+                    description="Pick a child from the list to enable AI plan generation."
+                  />
+                ) : null}
               </View>
             </StatCard>
 

@@ -494,3 +494,484 @@ export const getProgressMock = async (userId: string): Promise<ProgressSummary> 
 
   return cloneProgress(progress);
 };
+
+export type DemoScenarioKey =
+  | 'adult_no_children'
+  | 'adult_one_child'
+  | 'child_active_quests'
+  | 'child_completed_history'
+  | 'generated_plan_preview';
+
+export interface DemoScenarioApplyResult {
+  key: DemoScenarioKey;
+  role: 'adult' | 'child';
+  selectedChildId: string | null;
+  previewPlan?: GeneratedPlan;
+  previewRequest?: GeneratePlanMockInput;
+  previewTargetLabel?: string;
+}
+
+const setScenarioState = (nextState: MockState, meId: string) => {
+  state = {
+    users: nextState.users.map(cloneUser),
+    children: nextState.children.map(cloneChild),
+    planRequests: nextState.planRequests.map(clonePlanRequest),
+    plans: nextState.plans.map(clonePlan),
+    quests: nextState.quests.map(cloneQuest),
+    progress: nextState.progress.map(cloneProgress),
+  };
+  meIdState = meId;
+  childCounter = state.children.length;
+  planRequestCounter = state.planRequests.length;
+  planCounter = state.plans.length;
+};
+
+const buildAdultProgress = (xp = 2450, level = 8, streak = 15): ProgressSummary => ({
+  userId: 'adult-1',
+  level,
+  xp,
+  streak,
+  completedQuestsCount: 0,
+  activeQuestsCount: 0,
+  stats: {
+    planning: 8,
+    coaching: 5,
+  },
+});
+
+const buildChildOneProfile = (xp: number, level: number, streak: number): ChildProfile => ({
+  id: 'child-1',
+  fullName: 'Marta Horizon',
+  age: 10,
+  interests: ['math', 'robotics'],
+  notes: 'Works best with short gamified sessions.',
+  createdByAdultId: 'adult-1',
+  level,
+  xp,
+  streak,
+});
+
+const buildAdultUser = (activeChildId?: string): UserProfile => ({
+  id: 'adult-1',
+  fullName: 'Olena Mentor',
+  email: 'olena.mentor@mock.infomatrix.app',
+  role: 'adult',
+  activeChildId,
+  level: 8,
+  xp: 2450,
+  streak: 15,
+  avatarType: 'mentor',
+});
+
+const buildChildUser = (xp: number, level: number, streak: number): UserProfile => ({
+  id: 'child-1',
+  fullName: 'Marta Horizon',
+  email: 'marta.horizon@mock.infomatrix.app',
+  role: 'child',
+  createdByAdultId: 'adult-1',
+  level,
+  xp,
+  streak,
+  avatarType: 'adventurer',
+});
+
+export const applyDemoScenarioMock = async (
+  scenario: DemoScenarioKey,
+): Promise<DemoScenarioApplyResult> => {
+  await wait(MOCK_DELAY_MS);
+
+  if (scenario === 'adult_no_children') {
+    const nextState: MockState = {
+      users: [buildAdultUser()],
+      children: [],
+      planRequests: [],
+      plans: [],
+      quests: [],
+      progress: [buildAdultProgress()],
+    };
+
+    setScenarioState(nextState, 'adult-1');
+
+    return {
+      key: scenario,
+      role: 'adult',
+      selectedChildId: null,
+    };
+  }
+
+  if (scenario === 'adult_one_child') {
+    const questA: Quest = {
+      id: 'demo-a1-quest-1',
+      assignedToUserId: 'child-1',
+      title: 'Homework Sprint',
+      description: 'Complete 3 homework tasks with focused timer blocks.',
+      category: 'study',
+      difficulty: 'medium',
+      rewardXp: 70,
+      estimatedMinutes: 30,
+      status: 'active',
+      createdAt: '2026-03-13T15:00:00.000Z',
+    };
+
+    const questB: Quest = {
+      id: 'demo-a1-quest-2',
+      assignedToUserId: 'child-1',
+      title: 'Room Reset Challenge',
+      description: 'Tidy room zones for 20 minutes and mark done.',
+      category: 'household',
+      difficulty: 'easy',
+      rewardXp: 45,
+      estimatedMinutes: 20,
+      status: 'active',
+      createdAt: '2026-03-13T15:30:00.000Z',
+    };
+
+    const questC: Quest = {
+      id: 'demo-a1-quest-3',
+      assignedToUserId: 'child-1',
+      title: 'Stretch and Recover',
+      description: 'Complete a short stretch and breathing routine.',
+      category: 'health',
+      difficulty: 'easy',
+      rewardXp: 35,
+      estimatedMinutes: 15,
+      status: 'completed',
+      createdAt: '2026-03-12T18:30:00.000Z',
+    };
+
+    const nextState: MockState = {
+      users: [buildAdultUser('child-1'), buildChildUser(420, 3, 5)],
+      children: [buildChildOneProfile(420, 3, 5)],
+      planRequests: [
+        {
+          id: 'demo-a1-request-1',
+          targetUserId: 'child-1',
+          prompt: 'Create one focused after-school routine.',
+          category: 'study',
+          intensity: 'medium',
+          status: 'approved',
+        },
+      ],
+      plans: [
+        {
+          id: 'demo-a1-plan-1',
+          title: 'Marta Focus Starter',
+          summary: 'Two active quests to keep momentum this evening.',
+          childMessage: 'Great job so far. Keep building your streak.',
+          quests: [questA, questB],
+          totalEstimatedMinutes: 50,
+          status: 'approved',
+        },
+      ],
+      quests: [questA, questB, questC],
+      progress: [
+        buildAdultProgress(),
+        {
+          userId: 'child-1',
+          level: 3,
+          xp: 420,
+          streak: 5,
+          completedQuestsCount: 1,
+          activeQuestsCount: 2,
+          stats: {
+            study: 2,
+            household: 1,
+            health: 1,
+          },
+        },
+      ],
+    };
+
+    setScenarioState(nextState, 'adult-1');
+
+    return {
+      key: scenario,
+      role: 'adult',
+      selectedChildId: 'child-1',
+    };
+  }
+
+  if (scenario === 'child_active_quests') {
+    const questA: Quest = {
+      id: 'demo-ca-quest-1',
+      assignedToUserId: 'child-1',
+      title: 'Math Mission',
+      description: 'Solve 8 math exercises and check mistakes.',
+      category: 'study',
+      difficulty: 'medium',
+      rewardXp: 65,
+      estimatedMinutes: 25,
+      status: 'active',
+      createdAt: '2026-03-13T09:10:00.000Z',
+    };
+
+    const questB: Quest = {
+      id: 'demo-ca-quest-2',
+      assignedToUserId: 'child-1',
+      title: 'Focus Cleanup',
+      description: 'Clean your desk and shelf area before study block.',
+      category: 'household',
+      difficulty: 'easy',
+      rewardXp: 40,
+      estimatedMinutes: 15,
+      status: 'active',
+      createdAt: '2026-03-13T10:00:00.000Z',
+    };
+
+    const questC: Quest = {
+      id: 'demo-ca-quest-3',
+      assignedToUserId: 'child-1',
+      title: 'Hydration Check',
+      description: 'Drink water and complete a short body reset.',
+      category: 'health',
+      difficulty: 'easy',
+      rewardXp: 30,
+      estimatedMinutes: 10,
+      status: 'active',
+      createdAt: '2026-03-13T11:00:00.000Z',
+    };
+
+    const nextState: MockState = {
+      users: [buildAdultUser('child-1'), buildChildUser(330, 2, 3)],
+      children: [buildChildOneProfile(330, 2, 3)],
+      planRequests: [
+        {
+          id: 'demo-ca-request-1',
+          targetUserId: 'child-1',
+          prompt: 'Build active quests for today after school.',
+          category: 'study',
+          intensity: 'medium',
+          status: 'approved',
+        },
+      ],
+      plans: [
+        {
+          id: 'demo-ca-plan-1',
+          title: 'Today Quest Pack',
+          summary: 'Three active quests to keep progress rolling.',
+          childMessage: 'One by one. You are on track today.',
+          quests: [questA, questB, questC],
+          totalEstimatedMinutes: 50,
+          status: 'approved',
+        },
+      ],
+      quests: [questA, questB, questC],
+      progress: [
+        buildAdultProgress(),
+        {
+          userId: 'child-1',
+          level: 2,
+          xp: 330,
+          streak: 3,
+          completedQuestsCount: 0,
+          activeQuestsCount: 3,
+          stats: {
+            study: 1,
+            household: 1,
+            health: 1,
+          },
+        },
+      ],
+    };
+
+    setScenarioState(nextState, 'child-1');
+
+    return {
+      key: scenario,
+      role: 'child',
+      selectedChildId: null,
+    };
+  }
+
+  if (scenario === 'child_completed_history') {
+    const questA: Quest = {
+      id: 'demo-ch-quest-1',
+      assignedToUserId: 'child-1',
+      title: 'Reading Quest',
+      description: 'Read one chapter and write two key takeaways.',
+      category: 'study',
+      difficulty: 'medium',
+      rewardXp: 70,
+      estimatedMinutes: 30,
+      status: 'completed',
+      createdAt: '2026-03-10T16:00:00.000Z',
+    };
+
+    const questB: Quest = {
+      id: 'demo-ch-quest-2',
+      assignedToUserId: 'child-1',
+      title: 'Workout Mini Set',
+      description: 'Complete 20 minutes of movement and stretching.',
+      category: 'sport',
+      difficulty: 'easy',
+      rewardXp: 50,
+      estimatedMinutes: 20,
+      status: 'completed',
+      createdAt: '2026-03-11T16:30:00.000Z',
+    };
+
+    const questC: Quest = {
+      id: 'demo-ch-quest-3',
+      assignedToUserId: 'child-1',
+      title: 'Room Organization',
+      description: 'Organize your desk and backpack for tomorrow.',
+      category: 'household',
+      difficulty: 'easy',
+      rewardXp: 45,
+      estimatedMinutes: 15,
+      status: 'completed',
+      createdAt: '2026-03-12T17:00:00.000Z',
+    };
+
+    const questD: Quest = {
+      id: 'demo-ch-quest-4',
+      assignedToUserId: 'child-1',
+      title: 'Calm Evening Reset',
+      description: 'Do a calm breathing and journaling routine.',
+      category: 'health',
+      difficulty: 'easy',
+      rewardXp: 40,
+      estimatedMinutes: 15,
+      status: 'completed',
+      createdAt: '2026-03-13T18:00:00.000Z',
+    };
+
+    const nextState: MockState = {
+      users: [buildAdultUser('child-1'), buildChildUser(780, 3, 9)],
+      children: [buildChildOneProfile(780, 3, 9)],
+      planRequests: [
+        {
+          id: 'demo-ch-request-1',
+          targetUserId: 'child-1',
+          prompt: 'Plan a weekly completion streak.',
+          category: 'routine',
+          intensity: 'medium',
+          status: 'approved',
+        },
+      ],
+      plans: [
+        {
+          id: 'demo-ch-plan-1',
+          title: 'Completed Week Plan',
+          summary: 'All assigned quests were completed.',
+          childMessage: 'You finished everything. Great consistency.',
+          quests: [questA, questB, questC, questD],
+          totalEstimatedMinutes: 80,
+          status: 'approved',
+        },
+      ],
+      quests: [questA, questB, questC, questD],
+      progress: [
+        buildAdultProgress(),
+        {
+          userId: 'child-1',
+          level: 3,
+          xp: 780,
+          streak: 9,
+          completedQuestsCount: 4,
+          activeQuestsCount: 0,
+          stats: {
+            study: 3,
+            sport: 2,
+            household: 2,
+            health: 2,
+          },
+        },
+      ],
+    };
+
+    setScenarioState(nextState, 'child-1');
+
+    return {
+      key: scenario,
+      role: 'child',
+      selectedChildId: null,
+    };
+  }
+
+  const previewQuestA: Quest = {
+    id: 'demo-gp-quest-1',
+    assignedToUserId: 'child-1',
+    title: 'After-school Focus Block',
+    description: 'Start with a 20-minute focused study sprint.',
+    category: 'study',
+    difficulty: 'medium',
+    rewardXp: 75,
+    estimatedMinutes: 20,
+    status: 'draft',
+    createdAt: '2026-03-13T12:00:00.000Z',
+  };
+
+  const previewQuestB: Quest = {
+    id: 'demo-gp-quest-2',
+    assignedToUserId: 'child-1',
+    title: 'Room Quest',
+    description: 'Turn room cleanup into a timed mini challenge.',
+    category: 'household',
+    difficulty: 'easy',
+    rewardXp: 45,
+    estimatedMinutes: 15,
+    status: 'draft',
+    createdAt: '2026-03-13T12:15:00.000Z',
+  };
+
+  const previewRequest: GeneratePlanMockInput = {
+    targetUserId: 'child-1',
+    prompt: 'Create an after-school plan with study and room cleanup quests.',
+    category: 'routine',
+    intensity: 'medium',
+  };
+
+  const previewPlan: GeneratedPlan = {
+    id: 'demo-gp-plan-1',
+    title: 'Marta: AI Draft Preview',
+    summary: 'Draft generated plan ready for adult review.',
+    childMessage: 'You can do this. Let us start with one simple quest.',
+    quests: [previewQuestA, previewQuestB],
+    totalEstimatedMinutes: 35,
+    status: 'draft',
+  };
+
+  const nextState: MockState = {
+    users: [buildAdultUser('child-1'), buildChildUser(360, 3, 4)],
+    children: [buildChildOneProfile(360, 3, 4)],
+    planRequests: [
+      {
+        id: 'demo-gp-request-1',
+        targetUserId: 'child-1',
+        prompt: previewRequest.prompt,
+        category: previewRequest.category,
+        intensity: previewRequest.intensity,
+        status: 'generated',
+      },
+    ],
+    plans: [previewPlan],
+    quests: [],
+    progress: [
+      buildAdultProgress(),
+      {
+        userId: 'child-1',
+        level: 3,
+        xp: 360,
+        streak: 4,
+        completedQuestsCount: 1,
+        activeQuestsCount: 0,
+        stats: {
+          study: 2,
+          household: 1,
+        },
+      },
+    ],
+  };
+
+  setScenarioState(nextState, 'adult-1');
+
+  return {
+    key: scenario,
+    role: 'adult',
+    selectedChildId: 'child-1',
+    previewPlan: clonePlan(previewPlan),
+    previewRequest,
+    previewTargetLabel: 'Marta Horizon',
+  };
+};

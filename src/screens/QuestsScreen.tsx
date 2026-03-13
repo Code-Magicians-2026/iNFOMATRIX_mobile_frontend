@@ -126,14 +126,28 @@ const QuestsScreen = () => {
         const isSelectedChildValid = selectedChildCandidate
           ? childrenData.some((child) => child.id === selectedChildCandidate)
           : false;
-        const resolvedSelectedChildId = isSelectedChildValid ? selectedChildCandidate : childrenData[0].id;
+        const resolvedSelectedChildId = isSelectedChildValid ? selectedChildCandidate : null;
 
-        if (resolvedSelectedChildId !== selectedChildId) {
-          await setSelectedChildId(resolvedSelectedChildId);
+        if (selectedChildId && !isSelectedChildValid) {
+          await setSelectedChildId(null);
         }
 
-        const activeChild =
-          childrenData.find((child) => child.id === resolvedSelectedChildId) ?? childrenData[0];
+        if (!resolvedSelectedChildId) {
+          setTargetUserId(null);
+          setTargetLabel('No active child');
+          setQuests([]);
+          setProgress(null);
+          return null;
+        }
+
+        const activeChild = childrenData.find((child) => child.id === resolvedSelectedChildId);
+        if (!activeChild) {
+          setTargetUserId(null);
+          setTargetLabel('No active child');
+          setQuests([]);
+          setProgress(null);
+          return null;
+        }
         const [questsData, progressData] = await Promise.all([
           questsService.getQuests(activeChild.id),
           progressService.getProgress(activeChild.id),
@@ -272,6 +286,12 @@ const QuestsScreen = () => {
         <StatCard title="Target Child" subtitle="Quests are tied to selected profile">
           {children.length > 0 ? (
             <View style={styles.childList}>
+              {!targetUserId ? (
+                <EmptyState
+                  title="No active child selected"
+                  description="Choose a child to preview their assigned quests."
+                />
+              ) : null}
               {children.map((child) => {
                 const isSelected = child.id === targetUserId;
                 return (

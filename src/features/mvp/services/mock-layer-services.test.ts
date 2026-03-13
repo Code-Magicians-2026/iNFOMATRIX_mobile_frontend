@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  applyDemoScenarioMock,
   approvePlanMock,
   completeQuestMock,
   createChildMock,
@@ -88,6 +89,28 @@ describe('mock-layer-services', () => {
 
     expect(plans).toHaveLength(1);
     expect(plans[0]?.id).toBe(generatedPlan.id);
+  });
+
+  it('applies adult_no_children demo scenario with empty children list', async () => {
+    const result = await applyDemoScenarioMock('adult_no_children');
+    const me = await getMeMock();
+    const children = await getChildrenMock();
+
+    expect(result.role).toBe('adult');
+    expect(result.selectedChildId).toBeNull();
+    expect(me.role).toBe('adult');
+    expect(children).toHaveLength(0);
+  });
+
+  it('applies generated_plan_preview scenario with draft plan payload', async () => {
+    const result = await applyDemoScenarioMock('generated_plan_preview');
+    const plans = await getPlansMock({ limit: 1 });
+
+    expect(result.role).toBe('adult');
+    expect(result.selectedChildId).toBe('child-1');
+    expect(result.previewPlan?.status).toBe('draft');
+    expect(result.previewRequest?.targetUserId).toBe('child-1');
+    expect(plans[0]?.status).toBe('draft');
   });
 
   it('updates progress after quest completion', async () => {

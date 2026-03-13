@@ -80,7 +80,8 @@ const AgentChatScreen = () => {
 
   const [isLoading, setIsLoading] = React.useState(true);
   const [isGenerating, setIsGenerating] = React.useState(false);
-  const [screenError, setScreenError] = React.useState<string | null>(null);
+  const [contextError, setContextError] = React.useState<string | null>(null);
+  const [generationError, setGenerationError] = React.useState<string | null>(null);
   const [isTransparencyVisible, setIsTransparencyVisible] = React.useState(false);
 
   const inputSchemaPreview = React.useMemo(
@@ -102,7 +103,7 @@ const AgentChatScreen = () => {
     setIsLoading(true);
 
     try {
-      setScreenError(null);
+      setContextError(null);
 
       const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
       try {
@@ -133,11 +134,11 @@ const AgentChatScreen = () => {
         ? childrenData.some((child) => child.id === selectedChildId)
         : false;
 
-      if (!isSelectedChildValid) {
-        await setSelectedChildId(childrenData[0].id);
+      if (selectedChildId && !isSelectedChildValid) {
+        await setSelectedChildId(null);
       }
     } catch {
-      setScreenError('Failed to load AI Plan Builder context.');
+      setContextError('Failed to load AI Plan Builder context.');
     } finally {
       setIsLoading(false);
     }
@@ -148,29 +149,33 @@ const AgentChatScreen = () => {
   }, [loadBuilderContext]);
 
   const selectedChild = React.useMemo(
-    () => children.find((child) => child.id === selectedChildId) ?? children[0] ?? null,
+    () => children.find((child) => child.id === selectedChildId) ?? null,
     [children, selectedChildId],
   );
 
   const canUseChildTarget = effectiveRole === 'adult' && children.length > 0;
-  const activeTargetLabel = targetMode === 'myself' ? me?.fullName ?? 'Myself' : selectedChild?.fullName ?? 'Child';
+  const activeTargetLabel = targetMode === 'myself'
+    ? me?.fullName ?? 'Myself'
+    : selectedChild?.fullName ?? 'No active child';
+  const isChildTargetWithoutSelection =
+    targetMode === 'child' && canUseChildTarget && !selectedChild;
 
   const handleGeneratePlan = async () => {
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt) {
-      setScreenError('Prompt is required to generate a plan.');
+      setGenerationError('Prompt is required to generate a plan.');
       return;
     }
 
     const targetUserId = targetMode === 'myself' ? me?.id : selectedChild?.id;
     if (!targetUserId) {
-      setScreenError('Select target user before generating a plan.');
+      setGenerationError('No active child selected. Select child target before generation.');
       return;
     }
 
     setIsGenerating(true);
     try {
-      setScreenError(null);
+      setGenerationError(null);
 
       const request = {
         targetUserId,
@@ -187,7 +192,7 @@ const AgentChatScreen = () => {
         targetLabel: activeTargetLabel,
       });
     } catch {
-      setScreenError('Failed to generate AI plan. Please try again.');
+      setGenerationError('Generation failed. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -208,13 +213,29 @@ const AgentChatScreen = () => {
         subtitle="Create structured plans instead of free-form chat"
       />
 
-      {screenError ? <EmptyState title="Builder error" description={screenError} /> : null}
+      {contextError ? <EmptyState title="Builder error" description={contextError} /> : null}
+      {generationError ? (
+        <View style={styles.card}>
+          <EmptyState title="Generation failed" description={generationError} />
+          <PrimaryButton
+            label="Try generate again"
+            onPress={() => {
+              void handleGeneratePlan();
+            }}
+            disabled={isGenerating || prompt.trim().length === 0}
+            style={styles.retryButton}
+          />
+        </View>
+      ) : null}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <StatCard title="Selected Target" subtitle={`Active: ${activeTargetLabel}`} style={styles.card}>
           <View style={styles.optionRow}>
             <Pressable
-              onPress={() => setTargetMode('myself')}
+              onPress={() => {
+                setTargetMode('myself');
+                setGenerationError(null);
+              }}
               style={[
                 styles.optionChip,
                 {
@@ -239,6 +260,7 @@ const AgentChatScreen = () => {
                 }
 
                 setTargetMode('child');
+                setGenerationError(null);
               }}
               style={[
                 styles.optionChip,
@@ -261,38 +283,58 @@ const AgentChatScreen = () => {
 
           {targetMode === 'child' ? (
             canUseChildTarget ? (
-              <View style={styles.childList}>
-                {children.map((child) => {
-                  const isSelected = child.id === selectedChild?.id;
+              isChildTargetWithoutSelection ? (
+                <View style={styles.childList}>
+                  <EmptyState
+                    title="No active child selected"
+                    description="Select child profile to generate a plan for them."
+                  />
+                  <PrimaryButton
+                    label="Select first child"
+                    variant="secondary"
+                    onPress={() => {
+                      const firstChild = children[0];
+                      if (firstChild) {
+                        void setSelectedChildId(firstChild.id);
+                      }
+                    }}
+                  />
+                </View>
+              ) : (
+                <View style={styles.childList}>
+                  {children.map((child) => {
+                    const isSelected = child.id === selectedChild?.id;
 
-                  return (
-                    <Pressable
-                      key={child.id}
+                    return (
+                      <Pressable
+                        key={child.id}
                       onPress={() => {
                         void setSelectedChildId(child.id);
+                        setGenerationError(null);
                       }}
-                      style={[
-                        styles.childRow,
-                        {
-                          borderColor: isSelected ? '#ff2d55' : colors.border,
-                          backgroundColor: isSelected ? '#ff2d55' : colors.background,
-                        },
-                      ]}
-                      android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                    >
-                      <Text style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
-                        {child.fullName}
-                      </Text>
-                      <Text
-                        style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
-                        allowFontScaling
+                        style={[
+                          styles.childRow,
+                          {
+                            borderColor: isSelected ? '#ff2d55' : colors.border,
+                            backgroundColor: isSelected ? '#ff2d55' : colors.background,
+                          },
+                        ]}
+                        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                       >
-                        Age {child.age} | Lvl {child.level}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                        <Text style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
+                          {child.fullName}
+                        </Text>
+                        <Text
+                          style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
+                          allowFontScaling
+                        >
+                          Age {child.age} | Lvl {child.level}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )
             ) : (
               <EmptyState title="No child profiles" description="Create child profile from Home first." />
             )
@@ -302,7 +344,12 @@ const AgentChatScreen = () => {
         <StatCard title="Prompt" subtitle="Describe the plan you want" style={styles.card}>
           <TextInput
             value={prompt}
-            onChangeText={setPrompt}
+            onChangeText={(value) => {
+              setPrompt(value);
+              if (generationError) {
+                setGenerationError(null);
+              }
+            }}
             placeholder="Write what the AI should build..."
             placeholderTextColor={colors.textSecondary}
             multiline
@@ -415,6 +462,14 @@ const AgentChatScreen = () => {
         </Pressable>
       </ScrollView>
 
+      <Modal visible={isGenerating} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.loadingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <LoadingState label="Generating AI plan..." />
+          </View>
+        </View>
+      </Modal>
+
       <Modal
         visible={isTransparencyVisible}
         transparent
@@ -486,6 +541,9 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       width: '100%',
       maxWidth: cardMaxWidth,
       alignSelf: 'center',
+    },
+    retryButton: {
+      marginTop: 8,
     },
     optionRow: {
       flexDirection: 'row',
@@ -587,6 +645,14 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderWidth: 1,
       padding: isTablet ? 18 : 14,
       gap: 10,
+      elevation: 4,
+    },
+    loadingCard: {
+      width: '100%',
+      maxWidth: cardMaxWidth,
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: isTablet ? 16 : 12,
       elevation: 4,
     },
     modalScroll: {
