@@ -20,7 +20,7 @@ const getTabIcon = (
     case 'Quests':
       return 'list-outline';
     case 'Chat':
-      return 'chatbubbles-outline';
+      return 'sparkles-outline';
     case 'Profile':
       return 'person-outline';
     default:
@@ -53,7 +53,7 @@ export default function TabNavigator() {
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Home' }} />
       <Tab.Screen name="Quests" component={QuestsScreen} options={{ title: 'Quests' }} />
-      <Tab.Screen name="Chat" component={AgentChatScreen} options={{ title: 'Chat' }} />
+      <Tab.Screen name="Chat" component={AgentChatScreen} options={{ title: 'AI Builder' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );

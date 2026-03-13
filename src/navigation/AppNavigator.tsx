@@ -9,6 +9,8 @@ import LoginScreen from '@/src/features/auth/screens/LoginScreen';
 import ResetPasswordScreen from '@/src/features/auth/screens/ResetPasswordScreen';
 import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
 import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
+import PlanPreviewScreen from '@/src/features/chat/screens/PlanPreviewScreen';
+import type { GeneratedPlan } from '@/shared/models/mvp-contracts.model';
 
 export type TabParamList = {
   Home: undefined;
@@ -20,6 +22,16 @@ export type TabParamList = {
 export type AppStackParamList = {
   MainTabs: NavigatorScreenParams<TabParamList> | undefined;
   Settings: undefined;
+  PlanPreview: {
+    plan: GeneratedPlan;
+    request: {
+      targetUserId: string;
+      prompt: string;
+      category: string;
+      intensity: string;
+    };
+    targetLabel: string;
+  };
   Login: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
   Registration: { redirectTo?: 'Settings' | 'Profile' } | undefined;
   ConfirmEmail: { initialEmail?: string; redirectTo?: 'Settings' | 'Profile' } | undefined;
@@ -37,7 +49,7 @@ const getMainHeaderTitle = (route: unknown) => {
     case 'Quests':
       return 'Quests';
     case 'Chat':
-      return 'Chat';
+      return 'AI Builder';
     case 'Profile':
       return 'Profile';
     default:
@@ -65,6 +77,19 @@ export default function AppNavigator() {
                   screen: 'Profile',
                 })
               }
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="PlanPreview"
+        component={PlanPreviewScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <Header
+              title="Plan Preview"
+              showBackButton
+              onBackPress={() => navigation.goBack()}
             />
           ),
         })}
