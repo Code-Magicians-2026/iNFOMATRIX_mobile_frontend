@@ -7,6 +7,7 @@ import {
   generatePlanMock,
   getChildrenMock,
   getMeMock,
+  getPlansMock,
   getProgressMock,
   getQuestsMock,
   resetMockLayerState,
@@ -57,6 +58,20 @@ describe('mock-layer-services', () => {
     expect(childQuests.some((quest) => quest.status === 'active')).toBe(true);
   });
 
+  
+  it('returns latest plans for child through getPlansMock', async () => {
+    const generatedPlan = await generatePlanMock({
+      targetUserId: 'child-1',
+      prompt: 'Keep steady study rhythm and confidence.',
+      category: 'study',
+      intensity: 'low',
+    });
+
+    const plans = await getPlansMock({ targetUserId: 'child-1', limit: 1 });
+
+    expect(plans).toHaveLength(1);
+    expect(plans[0]?.id).toBe(generatedPlan.id);
+  });
   it('updates progress after quest completion', async () => {
     const questsBefore = await getQuestsMock('child-1');
     const questToComplete = questsBefore.find((quest) => quest.status === 'active');

@@ -5,6 +5,7 @@ export {
   generatePlanMock,
   getChildrenMock,
   getMeMock,
+  getPlansMock,
   getProgressMock,
   getQuestsMock,
   resetMockLayerState,
@@ -14,6 +15,7 @@ export {
 export type {
   CreateChildMockInput,
   GeneratePlanMockInput,
+  GetPlansMockInput,
 } from './mock-layer-services';
 
 export {

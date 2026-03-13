@@ -40,6 +40,11 @@ export interface GeneratePlanMockInput {
   intensity: string;
 }
 
+export interface GetPlansMockInput {
+  targetUserId?: string;
+  limit?: number;
+}
+
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const cloneQuest = (quest: Quest): Quest => ({ ...quest });
@@ -234,6 +239,23 @@ export const getMeMock = async (): Promise<UserProfile> => {
   await wait(MOCK_DELAY_MS);
 
   return cloneUser(getCurrentMeFromState());
+};
+
+export const getPlansMock = async (input: GetPlansMockInput = {}): Promise<GeneratedPlan[]> => {
+  await wait(MOCK_DELAY_MS);
+
+  const filteredPlans = input.targetUserId
+    ? state.plans.filter((plan) =>
+        plan.quests.some((quest) => quest.assignedToUserId === input.targetUserId),
+      )
+    : [...state.plans];
+
+  const limitedPlans =
+    typeof input.limit === 'number' && input.limit > 0
+      ? filteredPlans.slice(0, input.limit)
+      : filteredPlans;
+
+  return limitedPlans.map(clonePlan);
 };
 
 export const getChildrenMock = async (): Promise<ChildProfile[]> => {

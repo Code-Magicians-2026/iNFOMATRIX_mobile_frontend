@@ -4,109 +4,53 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import type { ChildProfile, GeneratedPlan, Quest, UserRole } from '@/shared/models/mvp-contracts.model';
+import type {
+  ChildProfile,
+  GeneratedPlan,
+  ProgressSummary,
+  Quest,
+  UserProfile,
+  UserRole,
+} from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
+  LoadingState,
   PrimaryButton,
   ScreenContainer,
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
+import {
+  approvePlanMock,
+  createChildMock,
+  generatePlanMock,
+  getChildrenMock,
+  getMeMock,
+  getPlansMock,
+  getProgressMock,
+  getQuestsMock,
+  setMockMeId,
+} from '@/src/features/mvp/services';
 
-const INITIAL_CHILDREN: ChildProfile[] = [
-  {
-    id: 'child-1',
-    fullName: 'Marta',
-    age: 10,
-    interests: ['math', 'robotics'],
-    notes: 'Loves short gamified tasks.',
-    createdByAdultId: 'local-adult',
-    level: 3,
-    xp: 320,
-    streak: 4,
-  },
-  {
-    id: 'child-2',
-    fullName: 'Oleh',
-    age: 12,
-    interests: ['science', 'reading'],
-    createdByAdultId: 'local-adult',
-    level: 2,
-    xp: 190,
-    streak: 2,
-  },
-];
+const XP_PER_LEVEL = 300;
 
-const INITIAL_RECENT_PLANS: GeneratedPlan[] = [
-  {
-    id: 'plan-initial-1',
-    title: 'Marta: Starter Focus Plan',
-    summary: '3 balanced quests for study and routine building.',
-    childMessage: 'Small steps today = big wins tomorrow.',
-    quests: [
-      {
-        id: 'plan-initial-1-q1',
-        assignedToUserId: 'child-1',
-        title: 'Math Sprint',
-        description: 'Solve 10 practice tasks without rushing.',
-        category: 'study',
-        difficulty: 'medium',
-        rewardXp: 70,
-        estimatedMinutes: 30,
-        status: 'active',
-      },
-      {
-        id: 'plan-initial-1-q2',
-        assignedToUserId: 'child-1',
-        title: 'Movement Break',
-        description: '20-minute outdoor walk and stretch.',
-        category: 'health',
-        difficulty: 'easy',
-        rewardXp: 40,
-        estimatedMinutes: 20,
-        status: 'active',
-      },
-    ],
-    totalEstimatedMinutes: 50,
-    status: 'generated',
-  },
-];
+const PLAN_PROMPTS = [
+  'Build a balanced plan for school progress and healthy routine.',
+  'Create a motivational quest sequence with short achievable steps.',
+  'Generate a confidence plan focused on consistency and wins.',
+] as const;
 
-const INITIAL_CHILD_QUESTS: Quest[] = [
-  {
-    id: 'child-quest-1',
-    assignedToUserId: 'local-child',
-    title: 'Morning Reading',
-    description: 'Read 8 pages and write 2 key takeaways.',
-    category: 'study',
-    difficulty: 'easy',
-    rewardXp: 45,
-    estimatedMinutes: 25,
-    status: 'active',
-  },
-  {
-    id: 'child-quest-2',
-    assignedToUserId: 'local-child',
-    title: 'Logic Mini-Challenge',
-    description: 'Solve one logic puzzle and explain the approach.',
-    category: 'study',
-    difficulty: 'medium',
-    rewardXp: 65,
-    estimatedMinutes: 30,
-    status: 'active',
-  },
-  {
-    id: 'child-quest-3',
-    assignedToUserId: 'local-child',
-    title: 'Daily Habit Check',
-    description: 'Complete hydration and short movement routine.',
-    category: 'health',
-    difficulty: 'easy',
-    rewardXp: 35,
-    estimatedMinutes: 15,
-    status: 'completed',
-  },
-];
+const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
+  if (role === 'adult') {
+    return 'adult-1';
+  }
+
+  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
+    return currentUserId;
+  }
+
+  return 'child-1';
+};
 
 const HomeScreen = () => {
   const colors = useThemeStore((s) => s.colors);
@@ -116,16 +60,24 @@ const HomeScreen = () => {
     [cardMaxWidth, isTablet, spacing],
   );
 
-  const sessionEmail = useAuthStore((s) => s.session?.email ?? 'guest@local.infomatrix');
-  const currentUser = useAuthStore((s) => s.currentUser);
   const role = useAuthStore((s) => s.role);
+  const currentUser = useAuthStore((s) => s.currentUser);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
 
-  const [children, setChildren] = React.useState<ChildProfile[]>(INITIAL_CHILDREN);
-  const [recentPlans, setRecentPlans] = React.useState<GeneratedPlan[]>(INITIAL_RECENT_PLANS);
-  const [childQuests] = React.useState<Quest[]>(INITIAL_CHILD_QUESTS);
+  const [me, setMe] = React.useState<UserProfile | null>(null);
+  const [children, setChildren] = React.useState<ChildProfile[]>([]);
+  const [recentPlans, setRecentPlans] = React.useState<GeneratedPlan[]>([]);
+  const [todayQuests, setTodayQuests] = React.useState<Quest[]>([]);
+  const [progress, setProgress] = React.useState<ProgressSummary | null>(null);
+
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [screenError, setScreenError] = React.useState<string | null>(null);
+  const [isCreatingChild, setIsCreatingChild] = React.useState(false);
+  const [isGeneratingPlan, setIsGeneratingPlan] = React.useState(false);
+  const [approvingPlanId, setApprovingPlanId] = React.useState<string | null>(null);
 
   const effectiveRole: UserRole = role ?? 'child';
 
@@ -135,108 +87,180 @@ const HomeScreen = () => {
     }
   }, [role, setRole]);
 
+  const loadDashboard = React.useCallback(
+    async (showLoader = false) => {
+      if (showLoader) {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
+
+      try {
+        setScreenError(null);
+
+        const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
+        try {
+          setMockMeId(targetMockUserId);
+        } catch {
+          setMockMeId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+        }
+
+        if (effectiveRole === 'adult') {
+          const [meData, childrenData, planData] = await Promise.all([
+            getMeMock(),
+            getChildrenMock(),
+            getPlansMock({ limit: 6 }),
+          ]);
+
+          const childIds = new Set(childrenData.map((child) => child.id));
+          const filteredPlans = planData.filter((plan) =>
+            plan.quests.some((quest) => childIds.has(quest.assignedToUserId)),
+          );
+
+          const resolvedSelectedChildId =
+            selectedChildId && childIds.has(selectedChildId)
+              ? selectedChildId
+              : (childrenData[0]?.id ?? null);
+
+          if (resolvedSelectedChildId !== selectedChildId) {
+            await setSelectedChildId(resolvedSelectedChildId);
+          }
+
+          const selectedProgress = resolvedSelectedChildId
+            ? await getProgressMock(resolvedSelectedChildId)
+            : null;
+
+          setMe(meData);
+          setChildren(childrenData);
+          setRecentPlans(filteredPlans);
+          setProgress(selectedProgress);
+          setTodayQuests([]);
+
+          return;
+        }
+
+        const meData = await getMeMock();
+        const [questData, progressData] = await Promise.all([
+          getQuestsMock(meData.id),
+          getProgressMock(meData.id),
+        ]);
+
+        setMe(meData);
+        setChildren([]);
+        setRecentPlans([]);
+        setTodayQuests(questData.slice(0, 5));
+        setProgress(progressData);
+      } catch {
+        setScreenError('Failed to load dashboard data. Please try again.');
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId],
+  );
+
   React.useEffect(() => {
-    if (effectiveRole !== 'adult' || selectedChildId || children.length === 0) {
-      return;
-    }
+    void loadDashboard(true);
+  }, [loadDashboard]);
 
-    void setSelectedChildId(children[0].id);
-  }, [children, effectiveRole, selectedChildId, setSelectedChildId]);
-
-  const activeChild = React.useMemo(
-    () => children.find((child) => child.id === selectedChildId) ?? null,
+  const selectedChild = React.useMemo(
+    () => children.find((child) => child.id === selectedChildId) ?? children[0] ?? null,
     [children, selectedChildId],
   );
 
-  const visiblePlans = React.useMemo(() => recentPlans.slice(0, 4), [recentPlans]);
-
-  const todayQuests = React.useMemo(
-    () => childQuests.filter((quest) => quest.assignedToUserId === 'local-child'),
-    [childQuests],
-  );
-
-  const completedQuestsCount = React.useMemo(
+  const completedToday = React.useMemo(
     () => todayQuests.filter((quest) => quest.status === 'completed').length,
     [todayQuests],
   );
 
-  const activeQuestsCount = React.useMemo(
-    () => todayQuests.filter((quest) => quest.status === 'active').length,
-    [todayQuests],
+  const totalXp = progress?.xp ?? me?.xp ?? 0;
+  const streak = progress?.streak ?? me?.streak ?? 0;
+  const level = progress?.level ?? me?.level ?? 1;
+  const levelStartXp = Math.max(0, (level - 1) * XP_PER_LEVEL);
+  const xpToNextLevel = Math.max(0, level * XP_PER_LEVEL - totalXp);
+  const levelProgressPercent = Math.max(
+    0,
+    Math.min(100, Math.round(((totalXp - levelStartXp) / XP_PER_LEVEL) * 100)),
   );
 
-  const progressPercent =
-    todayQuests.length > 0 ? Math.round((completedQuestsCount / todayQuests.length) * 100) : 0;
+  const handleCreateChild = async () => {
+    setIsCreatingChild(true);
+    try {
+      const childIndex = children.length + 1;
+      const createdChild = await createChildMock({
+        fullName: `Child ${childIndex}`,
+        age: Math.min(16, 8 + (childIndex % 7)),
+        interests: ['focus', 'learning'],
+        notes: 'Created from Home dashboard.',
+      });
 
-  const handleCreateChild = () => {
-    const nextIndex = children.length + 1;
-    const newChild: ChildProfile = {
-      id: `child-${Date.now()}`,
-      fullName: `Child ${nextIndex}`,
-      age: 8 + (nextIndex % 7),
-      interests: ['focus', 'learning'],
-      createdByAdultId: currentUser?.id ?? 'local-adult',
-      level: 1,
-      xp: 0,
-      streak: 0,
-      notes: 'Auto-created from adult dashboard.',
-    };
-
-    setChildren((prev) => [...prev, newChild]);
-    void setSelectedChildId(newChild.id);
+      await setSelectedChildId(createdChild.id);
+      await loadDashboard(false);
+    } catch {
+      setScreenError('Failed to create child profile.');
+    } finally {
+      setIsCreatingChild(false);
+    }
   };
 
-  const handleCreatePlan = () => {
-    if (!activeChild) {
+  const handleCreateAiPlan = async () => {
+    if (!selectedChild) {
       return;
     }
 
-    const planId = `plan-${Date.now()}`;
-    const quests: Quest[] = [
-      {
-        id: `${planId}-q1`,
-        assignedToUserId: activeChild.id,
-        title: 'Deep Study Sprint',
-        description: 'Focus on one topic and finish a short recap.',
+    setIsGeneratingPlan(true);
+    try {
+      const randomPrompt = PLAN_PROMPTS[Math.floor(Math.random() * PLAN_PROMPTS.length)] ?? PLAN_PROMPTS[0];
+      const generatedPlan = await generatePlanMock({
+        targetUserId: selectedChild.id,
+        prompt: randomPrompt,
         category: 'study',
-        difficulty: 'medium',
-        rewardXp: 80,
-        estimatedMinutes: 35,
-        status: 'active',
-      },
-      {
-        id: `${planId}-q2`,
-        assignedToUserId: activeChild.id,
-        title: 'Energy Recharge',
-        description: 'Outdoor walk + quick breathing reset.',
-        category: 'health',
-        difficulty: 'easy',
-        rewardXp: 45,
-        estimatedMinutes: 20,
-        status: 'active',
-      },
-    ];
+        intensity: 'medium',
+      });
 
-    const totalEstimatedMinutes = quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0);
-
-    const newPlan: GeneratedPlan = {
-      id: planId,
-      title: `${activeChild.fullName}: AI Focus Plan`,
-      summary: `${quests.length} quests to keep steady progress this day.`,
-      childMessage: `You can do this, ${activeChild.fullName}. One quest at a time.`,
-      quests,
-      totalEstimatedMinutes,
-      status: 'generated',
-    };
-
-    setRecentPlans((prev) => [newPlan, ...prev]);
+      setRecentPlans((prev) => [generatedPlan, ...prev.filter((plan) => plan.id !== generatedPlan.id)].slice(0, 6));
+    } catch {
+      setScreenError('Failed to generate AI plan.');
+    } finally {
+      setIsGeneratingPlan(false);
+    }
   };
+
+  const handleApprovePlan = async (planId: string) => {
+    setApprovingPlanId(planId);
+    try {
+      const approvedPlan = await approvePlanMock(planId);
+      setRecentPlans((prev) => prev.map((plan) => (plan.id === approvedPlan.id ? approvedPlan : plan)));
+
+      if (selectedChild) {
+        const selectedProgress = await getProgressMock(selectedChild.id);
+        setProgress(selectedProgress);
+      }
+    } catch {
+      setScreenError('Failed to approve generated plan.');
+    } finally {
+      setApprovingPlanId(null);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <ScreenContainer centered>
+        <LoadingState label="Loading role dashboard..." />
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer>
       <SectionHeader
         title="Home"
-        subtitle={`Signed in as ${currentUser?.fullName ?? sessionEmail}`}
+        subtitle={
+          effectiveRole === 'adult'
+            ? `Adult dashboard: ${me?.fullName ?? 'Parent'}`
+            : `Hello, ${me?.fullName ?? 'Hero'}!`
+        }
       />
 
       <View style={[styles.roleSwitcher, { borderColor: colors.border, backgroundColor: colors.card }]}>
@@ -251,15 +275,13 @@ const HomeScreen = () => {
               borderColor: effectiveRole === 'adult' ? '#ff2d55' : colors.border,
             },
           ]}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
         >
           <Text
-            style={[
-              styles.roleChipLabel,
-              { color: effectiveRole === 'adult' ? '#ffffff' : colors.text },
-            ]}
+            style={[styles.roleChipLabel, { color: effectiveRole === 'adult' ? '#ffffff' : colors.text }]}
             allowFontScaling
           >
-            Adult view
+            Adult
           </Text>
         </Pressable>
         <Pressable
@@ -273,116 +295,162 @@ const HomeScreen = () => {
               borderColor: effectiveRole === 'child' ? '#ff2d55' : colors.border,
             },
           ]}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
         >
           <Text
-            style={[
-              styles.roleChipLabel,
-              { color: effectiveRole === 'child' ? '#ffffff' : colors.text },
-            ]}
+            style={[styles.roleChipLabel, { color: effectiveRole === 'child' ? '#ffffff' : colors.text }]}
             allowFontScaling
           >
-            Child view
+            Child
           </Text>
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      {screenError ? <EmptyState title="Dashboard error" description={screenError} /> : null}
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {effectiveRole === 'adult' ? (
           <>
             <StatCard
-              title="Adult Workspace"
-              subtitle="Manage children and generate AI plans"
+              title="Selected Child"
+              subtitle="Current focus profile"
               style={styles.card}
             >
-              <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Selected child: {activeChild?.fullName ?? 'None'}
-              </Text>
-              <View style={styles.childSwitcherWrap}>
-                {children.map((child) => {
-                  const isActive = child.id === selectedChildId;
-                  return (
-                    <Pressable
-                      key={child.id}
-                      onPress={() => {
-                        void setSelectedChildId(child.id);
-                      }}
-                      style={[
-                        styles.childChip,
-                        {
-                          backgroundColor: isActive ? '#ff2d55' : colors.background,
-                          borderColor: isActive ? '#ff2d55' : colors.border,
-                        },
-                      ]}
-                    >
-                      <Text
+              {selectedChild ? (
+                <>
+                  <Text style={[styles.headingValue, { color: colors.text }]} allowFontScaling>
+                    {selectedChild.fullName}
+                  </Text>
+                  <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+                    Age: {selectedChild.age} | Level: {progress?.level ?? selectedChild.level}
+                  </Text>
+                  <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+                    XP: {progress?.xp ?? selectedChild.xp} | Streak: {progress?.streak ?? selectedChild.streak}
+                  </Text>
+                  <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+                    Active quests: {progress?.activeQuestsCount ?? 0}
+                  </Text>
+                </>
+              ) : (
+                <EmptyState title="No selected child" description="Create a child profile to begin." />
+              )}
+            </StatCard>
+
+            <StatCard title="Children" subtitle="Choose who you are planning for" style={styles.card}>
+              {children.length > 0 ? (
+                <View style={styles.childList}>
+                  {children.map((child) => {
+                    const isSelected = child.id === selectedChild?.id;
+                    return (
+                      <Pressable
+                        key={child.id}
+                        onPress={() => {
+                          void setSelectedChildId(child.id);
+                        }}
                         style={[
-                          styles.childChipLabel,
-                          { color: isActive ? '#ffffff' : colors.text },
+                          styles.childRow,
+                          {
+                            backgroundColor: isSelected ? '#ff2d55' : colors.background,
+                            borderColor: isSelected ? '#ff2d55' : colors.border,
+                          },
                         ]}
-                        allowFontScaling
+                        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                       >
-                        {child.fullName}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                        <Text
+                          style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]}
+                          allowFontScaling
+                        >
+                          {child.fullName}
+                        </Text>
+                        <Text
+                          style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
+                          allowFontScaling
+                        >
+                          Age {child.age} | Lvl {child.level}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : (
+                <EmptyState title="No children yet" description="Create child to start planning." />
+              )}
+
               <View style={styles.actionButtonsWrap}>
                 <PrimaryButton
                   label="Create child"
-                  onPress={handleCreateChild}
+                  onPress={() => {
+                    void handleCreateChild();
+                  }}
                   variant="secondary"
+                  loading={isCreatingChild}
                   style={styles.actionButton}
                 />
                 <PrimaryButton
                   label="Create AI plan"
-                  onPress={handleCreatePlan}
-                  disabled={!activeChild}
+                  onPress={() => {
+                    void handleCreateAiPlan();
+                  }}
+                  loading={isGeneratingPlan}
+                  disabled={!selectedChild}
                   style={styles.actionButton}
                 />
               </View>
             </StatCard>
 
-            <StatCard
-              title="Recent Plans"
-              subtitle="Latest generated plans for children"
-              style={styles.card}
-            >
-              {visiblePlans.length > 0 ? (
-                visiblePlans.map((plan) => (
-                  <View
-                    key={plan.id}
-                    style={[styles.planItem, { borderColor: colors.border }]}
-                  >
-                    <Text style={[styles.planTitle, { color: colors.text }]} allowFontScaling>
-                      {plan.title}
-                    </Text>
-                    <Text style={[styles.planSummary, { color: colors.textSecondary }]} allowFontScaling>
-                      {plan.summary}
-                    </Text>
-                    <Text style={[styles.planMeta, { color: colors.textSecondary }]} allowFontScaling>
-                      Quests: {plan.quests.length} | Est. minutes: {plan.totalEstimatedMinutes}
-                    </Text>
-                  </View>
-                ))
+            <StatCard title="Recent Generated Plans" subtitle="Latest AI output" style={styles.card}>
+              {recentPlans.length > 0 ? (
+                recentPlans.map((plan) => {
+                  const isDraft = plan.status === 'draft';
+                  const targetChild = children.find((child) =>
+                    plan.quests.some((quest) => quest.assignedToUserId === child.id),
+                  );
+
+                  return (
+                    <View key={plan.id} style={[styles.planItem, { borderColor: colors.border }]}>
+                      <Text style={[styles.planTitle, { color: colors.text }]} allowFontScaling>
+                        {plan.title}
+                      </Text>
+                      <Text style={[styles.planSummary, { color: colors.textSecondary }]} allowFontScaling>
+                        {plan.summary}
+                      </Text>
+                      <Text style={[styles.planMeta, { color: colors.textSecondary }]} allowFontScaling>
+                        Child: {targetChild?.fullName ?? 'Unknown'} | Quests: {plan.quests.length} | Status: {plan.status}
+                      </Text>
+
+                      {isDraft ? (
+                        <Pressable
+                          onPress={() => {
+                            void handleApprovePlan(plan.id);
+                          }}
+                          style={[styles.approveButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                        >
+                          <Text style={[styles.approveButtonLabel, { color: colors.text }]} allowFontScaling>
+                            {approvingPlanId === plan.id ? 'Approving...' : 'Approve plan'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })
               ) : (
-                <EmptyState
-                  title="No plans yet"
-                  description="Generate the first AI plan for a selected child."
-                />
+                <EmptyState title="No generated plans" description="Press Create AI plan to generate one." />
               )}
             </StatCard>
           </>
         ) : (
           <>
-            <StatCard
-              title="Today's Quests"
-              subtitle="Complete quests and keep your momentum"
-              style={styles.card}
-            >
+            <StatCard title="Greeting" subtitle="Your daily overview" style={styles.card}>
+              <Text style={[styles.headingValue, { color: colors.text }]} allowFontScaling>
+                Hi, {me?.fullName ?? 'Explorer'}
+              </Text>
+              <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+                Keep your streak alive and finish today&apos;s quests.
+              </Text>
+            </StatCard>
+
+            <StatCard title="Today Quests" subtitle="Preview" style={styles.card}>
               {todayQuests.length > 0 ? (
                 todayQuests.map((quest) => (
                   <View key={quest.id} style={[styles.questItem, { borderColor: colors.border }]}>
@@ -395,29 +463,52 @@ const HomeScreen = () => {
                   </View>
                 ))
               ) : (
-                <EmptyState title="No quests for today" description="Ask adult to generate a new plan." />
+                <EmptyState title="No quests yet" description="Ask adult to generate and approve a plan." />
               )}
             </StatCard>
 
-            <StatCard title="Progress" subtitle="XP, streak and daily completion" style={styles.card}>
+            <StatCard title="Progress" subtitle="Core metrics" style={styles.card}>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                XP: {currentUser?.xp ?? 0}
+                Completed today: {completedToday}
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Streak: {currentUser?.streak ?? 0} days
+                Total XP: {totalXp}
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Active quests: {activeQuestsCount}
+                Streak: {streak} days
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Completed quests: {completedQuestsCount}
+                Level: {level}
               </Text>
-              <Text style={[styles.progressLabel, { color: colors.textSecondary }]} allowFontScaling>
-                Progress today: {progressPercent}%
+
+              <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${levelProgressPercent}%`,
+                      backgroundColor: '#ff2d55',
+                    },
+                  ]}
+                />
+              </View>
+
+              <Text style={[styles.progressHint, { color: colors.textSecondary }]} allowFontScaling>
+                Progress to next level: {levelProgressPercent}% ({xpToNextLevel} XP left)
               </Text>
             </StatCard>
           </>
         )}
+
+        <PrimaryButton
+          label={isRefreshing ? 'Refreshing...' : 'Refresh dashboard'}
+          onPress={() => {
+            void loadDashboard(false);
+          }}
+          variant="tertiary"
+          disabled={isRefreshing}
+          style={[styles.card, styles.refreshButton]}
+        />
       </ScrollView>
     </ScreenContainer>
   );
@@ -439,7 +530,7 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: 10,
+      overflow: 'hidden',
     },
     roleChipLabel: {
       fontSize: isTablet ? 15 : 14,
@@ -454,29 +545,36 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       maxWidth: cardMaxWidth,
       alignSelf: 'center',
     },
+    headingValue: {
+      fontSize: isTablet ? 20 : 17,
+      fontWeight: '700',
+    },
     metricText: {
-      fontSize: isTablet ? 17 : 15,
+      fontSize: isTablet ? 16 : 14,
       fontWeight: '600',
     },
-    childSwitcherWrap: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+    childList: {
       gap: 8,
     },
-    childChip: {
+    childRow: {
       borderWidth: 1,
-      borderRadius: 999,
-      minHeight: 36,
+      borderRadius: 10,
       paddingHorizontal: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
+      paddingVertical: 10,
+      gap: 2,
+      overflow: 'hidden',
     },
-    childChipLabel: {
-      fontSize: isTablet ? 14 : 13,
+    childName: {
+      fontSize: isTablet ? 16 : 14,
       fontWeight: '700',
+    },
+    childMeta: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '500',
     },
     actionButtonsWrap: {
       gap: 10,
+      marginTop: 4,
     },
     actionButton: {
       width: '100%',
@@ -485,18 +583,31 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderWidth: 1,
       borderRadius: 10,
       padding: 10,
-      gap: 4,
+      gap: 6,
     },
     planTitle: {
-      fontSize: isTablet ? 17 : 15,
+      fontSize: isTablet ? 16 : 14,
       fontWeight: '700',
     },
     planSummary: {
-      fontSize: isTablet ? 14 : 13,
+      fontSize: isTablet ? 14 : 12,
     },
     planMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
+    },
+    approveButton: {
+      minHeight: 36,
+      borderWidth: 1,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      paddingHorizontal: 12,
+    },
+    approveButtonLabel: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
     },
     questItem: {
       borderWidth: 1,
@@ -512,12 +623,23 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
     },
-    progressLabel: {
-      fontSize: isTablet ? 14 : 13,
-      fontWeight: '600',
+    progressTrack: {
+      height: 10,
+      borderRadius: 999,
+      overflow: 'hidden',
       marginTop: 4,
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 999,
+    },
+    progressHint: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '500',
+    },
+    refreshButton: {
+      marginTop: 2,
     },
   });
 
 export default HomeScreen;
-
