@@ -101,14 +101,8 @@ describe('Auth store', () => {
     );
   });
 
-  it('register performs auto-login and stores session', async () => {
+  it('register only creates account and does not create session', async () => {
     registerRequestMock.mockResolvedValue({ email: 'user@example.com' });
-    loginRequestMock.mockResolvedValue({
-      accessToken: 'access',
-      refreshToken: 'refresh',
-      expiresIn: 3600,
-      tokenType: null,
-    });
 
     await useAuthStore.getState().register('User Name', 'user@example.com', 'secret');
     expect(registerRequestMock).toHaveBeenCalledWith({
@@ -116,18 +110,17 @@ describe('Auth store', () => {
       email: 'user@example.com',
       password: 'secret',
     });
-    expect(loginRequestMock).toHaveBeenCalledWith({ email: 'user@example.com', password: 'secret' });
-    expect(useAuthStore.getState().session?.accessToken).toBe('access');
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(loginRequestMock).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(setItemMock).not.toHaveBeenCalled();
   });
 
-  it('register throws localized message when auto-login fails', async () => {
-    registerRequestMock.mockResolvedValue({ email: 'user@example.com' });
-    loginRequestMock.mockRejectedValue(new Error('Bad credentials'));
+  it('register forwards API error', async () => {
+    registerRequestMock.mockRejectedValue(new Error('Email exists'));
 
     await expect(
       useAuthStore.getState().register('User Name', 'user@example.com', 'secret'),
-    ).rejects.toThrow('Акаунт створено, але автовхід не вдався. Увійдіть вручну.');
+    ).rejects.toThrow('Email exists');
   });
 
   it('confirmEmail stores session using provided email fallback', async () => {

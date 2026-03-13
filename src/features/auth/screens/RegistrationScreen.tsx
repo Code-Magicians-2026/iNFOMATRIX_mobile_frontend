@@ -87,7 +87,12 @@ const RegistrationScreen = () => {
         email: normalizedEmail,
         password,
       });
-      navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
+      navigation.dispatch(
+        StackActions.replace('ConfirmEmail', {
+          initialEmail: normalizedEmail,
+          redirectTo: route.params?.redirectTo ?? 'Profile',
+        }),
+      );
     } catch (registrationError) {
       setError(getApiErrorMessage(registrationError, 'Не вдалося зареєструватися.'));
     }

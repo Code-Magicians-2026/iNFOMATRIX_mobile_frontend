@@ -69,11 +69,6 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
   register: async (fullName: string, email: string, password: string) => {
     await registerRequest({ fullName, email, password });
-    try {
-      await get().login(email, password);
-    } catch {
-      throw new Error('Акаунт створено, але автовхід не вдався. Увійдіть вручну.');
-    }
   },
 
   login: async (email: string, password: string) => {
