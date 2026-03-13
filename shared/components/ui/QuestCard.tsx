@@ -20,12 +20,22 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
   const stepsCount = quest.stepsCount ?? quest.steps?.length ?? 0;
   const completedStepsCount =
     quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
+  const isDone = isArchived || (stepsCount > 0 && completedStepsCount === stepsCount);
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[styles.title, { color: colors.text }]} allowFontScaling>
-        {quest.title}
-      </Text>
+      <View style={styles.titleRow}>
+        <Text style={[styles.title, { color: colors.text }]} allowFontScaling>
+          {quest.title}
+        </Text>
+        {isDone ? (
+          <View style={styles.doneCheckWrap}>
+            <Text style={styles.doneCheckLabel} allowFontScaling={false}>
+              ✓
+            </Text>
+          </View>
+        ) : null}
+      </View>
       {quest.originalTask ? (
         <Text style={[styles.originalTask, { color: colors.textSecondary }]} allowFontScaling>
           Original task: {quest.originalTask}
@@ -81,6 +91,27 @@ const getStyles = (isTablet: boolean) =>
     title: {
       fontSize: isTablet ? 22 : 18,
       fontWeight: '700',
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    doneCheckWrap: {
+      width: isTablet ? 24 : 22,
+      height: isTablet ? 24 : 22,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#1f9b54',
+      elevation: 1,
+    },
+    doneCheckLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '900',
+      lineHeight: isTablet ? 16 : 15,
     },
     originalTask: {
       fontSize: isTablet ? 15 : 13,

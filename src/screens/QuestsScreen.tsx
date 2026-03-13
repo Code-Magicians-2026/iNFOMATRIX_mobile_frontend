@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  Animated,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -50,6 +52,7 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
 
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 const STEP_TOGGLE_VIBRATION_PATTERN = [0, 45, 25, 65];
+const QUEST_VICTORY_VIBRATION_PATTERN = [0, 80, 60, 120, 80, 220];
 
 const isQuestArchived = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
 
@@ -61,6 +64,12 @@ const getQuestProgress = (quest: Quest) => {
     quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
 
   return { stepsCount, completedStepsCount };
+};
+
+const isQuestDone = (quest: Quest) => {
+  const { stepsCount, completedStepsCount } = getQuestProgress(quest);
+
+  return isQuestArchived(quest) || (stepsCount > 0 && completedStepsCount === stepsCount);
 };
 
 type CompletionFeedback = {
@@ -100,6 +109,8 @@ const QuestsScreen = () => {
   const [completionFeedback, setCompletionFeedback] = React.useState<CompletionFeedback | null>(null);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
+  const completionShakeX = React.useRef(new Animated.Value(0)).current;
+  const completionScale = React.useRef(new Animated.Value(1)).current;
 
   React.useEffect(() => {
     if (!role) {
@@ -263,10 +274,12 @@ const QuestsScreen = () => {
 
     try {
       const updatedQuest = await questsService.toggleQuestStep(questId, step.id);
+      setQuests((current) => current.map((quest) => (quest.id === questId ? updatedQuest : quest)));
       const refreshedProgress = await refreshData(false);
 
       const movedToArchive = !isQuestArchived(questToUpdate) && isQuestArchived(updatedQuest);
       if (movedToArchive && refreshedProgress) {
+        Vibration.vibrate(QUEST_VICTORY_VIBRATION_PATTERN);
         setCompletionFeedback({
           questTitle: updatedQuest.title,
           rewardXp: updatedQuest.rewardXp,
@@ -288,12 +301,64 @@ const QuestsScreen = () => {
       return undefined;
     }
 
+    completionShakeX.setValue(0);
+    completionScale.setValue(1);
+
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(completionShakeX, {
+          toValue: 14,
+          duration: 55,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: -12,
+          duration: 55,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: 10,
+          duration: 48,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: -8,
+          duration: 44,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: 0,
+          duration: 42,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.sequence([
+        Animated.timing(completionScale, {
+          toValue: 1.04,
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionScale, {
+          toValue: 1,
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
     const timer = setTimeout(() => {
       setCompletionFeedback(null);
     }, 4200);
 
     return () => clearTimeout(timer);
-  }, [completionFeedback]);
+  }, [completionFeedback, completionScale, completionShakeX]);
 
   const handleSelectChild = async (childId: string) => {
     setScreenError(null);
@@ -415,20 +480,34 @@ const QuestsScreen = () => {
           </StatCard>
 
           {completionFeedback ? (
-            <StatCard title="Quest completed" subtitle={completionFeedback.questTitle}>
-              <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
-                +{completionFeedback.rewardXp} XP
-              </Text>
-              <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-                All steps completed
-              </Text>
-              <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-                Quest moved to Archive, {completionFeedback.category} stat is now {completionFeedback.categoryValue}
-              </Text>
-              <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
-                Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}
-              </Text>
-            </StatCard>
+            <Animated.View
+              style={[
+                styles.completionAnimatedWrap,
+                {
+                  transform: [{ translateX: completionShakeX }, { scale: completionScale }],
+                },
+              ]}
+            >
+              <StatCard title="Quest completed" subtitle={completionFeedback.questTitle}>
+                <View style={styles.completionCheckWrap}>
+                  <Text style={styles.completionCheckLabel} allowFontScaling={false}>
+                    ✓
+                  </Text>
+                </View>
+                <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
+                  +{completionFeedback.rewardXp} XP
+                </Text>
+                <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+                  All steps completed
+                </Text>
+                <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+                  Quest moved to Archive, {completionFeedback.category} stat is now {completionFeedback.categoryValue}
+                </Text>
+                <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
+                  Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}
+                </Text>
+              </StatCard>
+            </Animated.View>
           ) : null}
 
           <PrimaryButton
@@ -508,10 +587,31 @@ const QuestsScreen = () => {
         onRequestClose={() => setDetailsQuestId(null)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Animated.View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                transform: [{ translateX: completionShakeX }, { scale: completionScale }],
+              },
+            ]}
+          >
             {detailsQuest ? (
               <>
                 <SectionHeader title="Quest Details" subtitle={detailsQuest.title} />
+                <View style={styles.detailsTitleRow}>
+                  <Text style={[styles.detailsTitleText, { color: colors.text }]} allowFontScaling>
+                    {detailsQuest.title}
+                  </Text>
+                  {isQuestDone(detailsQuest) ? (
+                    <View style={styles.detailsDoneCheckWrap}>
+                      <Text style={styles.detailsDoneCheckLabel} allowFontScaling={false}>
+                        ✓
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Original task: {detailsQuest.originalTask ?? 'Generated from approved AI plan'}
                 </Text>
@@ -605,7 +705,7 @@ const QuestsScreen = () => {
                 />
               </>
             ) : null}
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </ScreenContainer>
@@ -624,6 +724,25 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     successXp: {
       fontSize: isTablet ? 24 : 21,
       fontWeight: '800',
+    },
+    completionAnimatedWrap: {
+      width: '100%',
+    },
+    completionCheckWrap: {
+      width: isTablet ? 34 : 30,
+      height: isTablet ? 34 : 30,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#1f9b54',
+      elevation: 2,
+      marginBottom: 4,
+    },
+    completionCheckLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 22 : 20,
+      fontWeight: '900',
+      lineHeight: isTablet ? 24 : 22,
     },
     childList: {
       gap: 8,
@@ -697,6 +816,32 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     previewLabel: {
       fontSize: isTablet ? 15 : 13,
       fontWeight: '500',
+    },
+    detailsTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    detailsTitleText: {
+      flex: 1,
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: '700',
+    },
+    detailsDoneCheckWrap: {
+      width: isTablet ? 24 : 22,
+      height: isTablet ? 24 : 22,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#1f9b54',
+      elevation: 1,
+    },
+    detailsDoneCheckLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '900',
+      lineHeight: isTablet ? 16 : 15,
     },
     previewText: {
       fontSize: isTablet ? 16 : 14,
