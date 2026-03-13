@@ -31,9 +31,41 @@ const SettingsScreen = () => {
           onValueChange={() => {
             void toggleTheme();
           }}
-          trackColor={{ false: '#767577', true: '#ff2d55' }}
+          trackColor={{ false: "#767577", true: "#ff2d55" }}
           accessibilityLabel="Перемикач темної теми"
           accessibilityHint="Вмикає або вимикає темну тему застосунку"
+        />
+      </View>
+
+      <View
+        style={styles.settingRow}
+        accessible
+        importantForAccessibility="yes"
+        accessibilityLabel="Налаштування біометричної автентифікації"
+      >
+        <Text style={styles.label} allowFontScaling>
+          Біометрична автентифікація
+        </Text>
+        <Switch
+          trackColor={{ false: "#767577", true: "#ff2d55" }}
+          accessibilityLabel="Перемикач біометричної автентифікації"
+          accessibilityHint="Вмикає або вимикає біометричну автентифікацію"
+        />
+      </View>
+
+      <View
+        style={styles.settingRow}
+        accessible
+        importantForAccessibility="yes"
+        accessibilityLabel="Налаштування змінити мову інтерфейсу"
+      >
+        <Text style={styles.label} allowFontScaling>
+          Змінити мову інтерфейсу
+        </Text>
+        <Switch
+          trackColor={{ false: "#767577", true: "#ff2d55" }}
+          accessibilityLabel="Перемикач зміни мови інтерфейсу"
+          accessibilityHint="Вмикає або вимикає зміну мови інтерфейсу"
         />
       </View>
     </SafeAreaView>

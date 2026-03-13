@@ -62,12 +62,14 @@ const parseApiErrorMessage = async (response: Response): Promise<string> => {
 
 export const request = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
   const headers = new Headers(options.headers);
+  const isFormDataBody =
+    typeof FormData !== 'undefined' && options.body instanceof FormData;
 
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json');
   }
 
-  if (options.body && !headers.has('Content-Type')) {
+  if (options.body && !headers.has('Content-Type') && !isFormDataBody) {
     headers.set('Content-Type', 'application/json');
   }
 

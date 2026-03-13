@@ -25,12 +25,23 @@ export interface ChildProfile {
   streak: number;
 }
 
+export interface CapturedPhoto {
+  uri: string;
+  width?: number;
+  height?: number;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  previewUri?: string;
+}
+
 export interface PlanRequest {
   id: string;
   targetUserId: string;
   prompt: string;
   category: string;
   intensity: string;
+  photo?: CapturedPhoto;
   status: string;
 }
 

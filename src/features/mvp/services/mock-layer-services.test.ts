@@ -47,9 +47,17 @@ describe('mock-layer-services', () => {
       prompt: 'Build focus and consistency this week.',
       category: 'study',
       intensity: 'medium',
+      photo: {
+        uri: 'file:///camera/photo-1.jpg',
+        width: 1080,
+        height: 1440,
+        fileName: 'photo-1.jpg',
+        mimeType: 'image/jpeg',
+      },
     });
 
     expect(generatedPlan.status).toBe('draft');
+    expect(generatedPlan.summary).toContain('using camera context');
 
     const approvedPlan = await approvePlanMock(generatedPlan.id);
     const childQuests = await getQuestsMock('child-1');
@@ -110,6 +118,7 @@ describe('mock-layer-services', () => {
     expect(result.selectedChildId).toBe('child-1');
     expect(result.previewPlan?.status).toBe('draft');
     expect(result.previewRequest?.targetUserId).toBe('child-1');
+    expect(result.previewRequest?.photo?.uri).toBe('file:///demo/room-scene.jpg');
     expect(plans[0]?.status).toBe('draft');
   });
 

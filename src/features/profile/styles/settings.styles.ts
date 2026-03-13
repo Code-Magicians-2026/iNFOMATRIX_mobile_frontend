@@ -28,6 +28,7 @@ export const getStyles = (
       borderColor: c.border,
       backgroundColor: c.card,
       gap: 12,
+      marginBottom: spacing,
     },
     label: {
       fontSize: isTablet ? 22 : 20,

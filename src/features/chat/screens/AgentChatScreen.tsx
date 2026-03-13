@@ -1,12 +1,18 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import type { ChildProfile, UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
+import type {
+  CapturedPhoto,
+  ChildProfile,
+  UserProfile,
+  UserRole,
+} from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
   LoadingState,
@@ -23,6 +29,7 @@ import {
   PLAN_BUILDER_TONE_RULES,
 } from '@/src/features/chat/config/ai-transparency';
 import { childrenService, plansService, userService } from '@/src/integration/services';
+import type { GeneratePlanInput } from '@/src/integration/services';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const QUICK_PROMPTS = [
@@ -51,6 +58,16 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
   return 'child-1';
 };
 
+const mapAssetToCapturedPhoto = (asset: ImagePicker.ImagePickerAsset): CapturedPhoto => ({
+  uri: asset.uri,
+  width: asset.width,
+  height: asset.height,
+  fileName: asset.fileName ?? undefined,
+  mimeType: asset.mimeType ?? undefined,
+  fileSize: asset.fileSize ?? undefined,
+  previewUri: asset.uri,
+});
+
 const AgentChatScreen = () => {
   const navigation = useNavigation<ChatNavigation>();
   const colors = useThemeStore((s) => s.colors);
@@ -77,6 +94,7 @@ const AgentChatScreen = () => {
   const [prompt, setPrompt] = React.useState('');
   const [category, setCategory] = React.useState<string>('study');
   const [intensity, setIntensity] = React.useState<string>('medium');
+  const [capturedPhoto, setCapturedPhoto] = React.useState<CapturedPhoto | null>(null);
 
   const [isLoading, setIsLoading] = React.useState(true);
   const [isGenerating, setIsGenerating] = React.useState(false);
@@ -159,11 +177,51 @@ const AgentChatScreen = () => {
     : selectedChild?.fullName ?? 'No active child';
   const isChildTargetWithoutSelection =
     targetMode === 'child' && canUseChildTarget && !selectedChild;
+  const isGenerateDisabled = isGenerating || prompt.trim().length === 0 || !capturedPhoto?.uri;
+
+  const handleCapturePhoto = async () => {
+    try {
+      setGenerationError(null);
+
+      const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!cameraPermission.granted) {
+        setGenerationError('Camera permission is required to add room photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.9,
+        base64: false,
+        exif: false,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      if (!asset?.uri) {
+        setGenerationError('Captured photo is unavailable. Please retake.');
+        return;
+      }
+
+      setCapturedPhoto(mapAssetToCapturedPhoto(asset));
+    } catch {
+      setGenerationError('Failed to capture photo. Please try again.');
+    }
+  };
 
   const handleGeneratePlan = async () => {
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt) {
       setGenerationError('Prompt is required to generate a plan.');
+      return;
+    }
+
+    if (!capturedPhoto?.uri) {
+      setGenerationError('Add one room/situation photo before generating a plan.');
       return;
     }
 
@@ -177,11 +235,12 @@ const AgentChatScreen = () => {
     try {
       setGenerationError(null);
 
-      const request = {
+      const request: GeneratePlanInput = {
         targetUserId,
         prompt: normalizedPrompt,
         category,
         intensity,
+        photo: capturedPhoto,
       };
 
       const generatedPlan = await plansService.generatePlan(request);
@@ -210,7 +269,7 @@ const AgentChatScreen = () => {
     <ScreenContainer>
       <SectionHeader
         title="AI Plan Builder"
-        subtitle="Create structured plans instead of free-form chat"
+        subtitle="Capture one photo, add prompt, and generate a structured AI plan"
       />
 
       {contextError ? <EmptyState title="Builder error" description={contextError} /> : null}
@@ -222,7 +281,7 @@ const AgentChatScreen = () => {
             onPress={() => {
               void handleGeneratePlan();
             }}
-            disabled={isGenerating || prompt.trim().length === 0}
+            disabled={isGenerateDisabled}
             style={styles.retryButton}
           />
         </View>
@@ -308,10 +367,10 @@ const AgentChatScreen = () => {
                     return (
                       <Pressable
                         key={child.id}
-                      onPress={() => {
-                        void setSelectedChildId(child.id);
-                        setGenerationError(null);
-                      }}
+                        onPress={() => {
+                          void setSelectedChildId(child.id);
+                          setGenerationError(null);
+                        }}
                         style={[
                           styles.childRow,
                           {
@@ -339,6 +398,58 @@ const AgentChatScreen = () => {
               <EmptyState title="No child profiles" description="Create child profile from Home first." />
             )
           ) : null}
+        </StatCard>
+
+        <StatCard title="Room / Situation Photo" subtitle="One camera image for AI vision context" style={styles.card}>
+          {capturedPhoto ? (
+            <View style={styles.photoContainer}>
+              <Image
+                source={{ uri: capturedPhoto.previewUri ?? capturedPhoto.uri }}
+                style={styles.photoPreview}
+              />
+              <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
+                Resolution: {capturedPhoto.width ?? '?'} x {capturedPhoto.height ?? '?'}
+              </Text>
+              {capturedPhoto.fileSize ? (
+                <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
+                  Size: {(capturedPhoto.fileSize / 1024 / 1024).toFixed(2)} MB
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <EmptyState
+              title="No photo attached"
+              description="Take one camera photo of room/situation before generation."
+            />
+          )}
+
+          <View style={styles.photoActions}>
+            <Pressable
+              onPress={() => {
+                void handleCapturePhoto();
+              }}
+              style={styles.cameraButton}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+            >
+              <Text style={styles.cameraButtonLabel} allowFontScaling>
+                {capturedPhoto ? 'Retake photo' : 'Take photo'}
+              </Text>
+            </Pressable>
+            {capturedPhoto ? (
+              <Pressable
+                onPress={() => {
+                  setCapturedPhoto(null);
+                  setGenerationError(null);
+                }}
+                style={[styles.removePhotoButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              >
+                <Text style={[styles.removePhotoButtonLabel, { color: colors.text }]} allowFontScaling>
+                  Remove photo
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </StatCard>
 
         <StatCard title="Prompt" subtitle="Describe the plan you want" style={styles.card}>
@@ -452,8 +563,8 @@ const AgentChatScreen = () => {
           onPress={() => {
             void handleGeneratePlan();
           }}
-          disabled={isGenerating}
-          style={[styles.generateButton, isGenerating && styles.generateButtonDisabled]}
+          disabled={isGenerateDisabled}
+          style={[styles.generateButton, isGenerateDisabled && styles.generateButtonDisabled]}
           android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
         >
           <Text style={styles.generateButtonLabel} allowFontScaling>
@@ -585,6 +696,54 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     childMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
+    },
+    photoContainer: {
+      gap: 6,
+      marginTop: 2,
+    },
+    photoPreview: {
+      width: '100%',
+      height: isTablet ? 280 : 220,
+      borderRadius: 12,
+      backgroundColor: '#101214',
+    },
+    photoMeta: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '500',
+    },
+    photoActions: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 10,
+    },
+    cameraButton: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 10,
+      backgroundColor: '#ff2d55',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      elevation: 2,
+    },
+    cameraButtonLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+    },
+    removePhotoButton: {
+      minWidth: isTablet ? 132 : 118,
+      minHeight: 44,
+      borderWidth: 1,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      elevation: 1,
+    },
+    removePhotoButtonLabel: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
     },
     promptInput: {
       borderWidth: 1,
