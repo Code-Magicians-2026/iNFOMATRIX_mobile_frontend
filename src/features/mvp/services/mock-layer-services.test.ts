@@ -58,7 +58,24 @@ describe('mock-layer-services', () => {
     expect(childQuests.some((quest) => quest.status === 'active')).toBe(true);
   });
 
-  
+  it('binds approved plan quests to the exact target child', async () => {
+    const generatedPlan = await generatePlanMock({
+      targetUserId: 'child-2',
+      prompt: 'Build calm evening structure and short clean-up routine.',
+      category: 'routine',
+      intensity: 'medium',
+    });
+
+    const approvedPlan = await approvePlanMock(generatedPlan.id);
+    const childOneQuests = await getQuestsMock('child-1');
+    const childTwoQuests = await getQuestsMock('child-2');
+
+    const approvedQuestIds = new Set(approvedPlan.quests.map((quest) => quest.id));
+
+    expect(childTwoQuests.some((quest) => approvedQuestIds.has(quest.id))).toBe(true);
+    expect(childOneQuests.some((quest) => approvedQuestIds.has(quest.id))).toBe(false);
+  });
+
   it('returns latest plans for child through getPlansMock', async () => {
     const generatedPlan = await generatePlanMock({
       targetUserId: 'child-1',
@@ -72,6 +89,7 @@ describe('mock-layer-services', () => {
     expect(plans).toHaveLength(1);
     expect(plans[0]?.id).toBe(generatedPlan.id);
   });
+
   it('updates progress after quest completion', async () => {
     const questsBefore = await getQuestsMock('child-1');
     const questToComplete = questsBefore.find((quest) => quest.status === 'active');

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -170,6 +171,16 @@ const HomeScreen = () => {
   React.useEffect(() => {
     void loadDashboard(true);
   }, [loadDashboard]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isLoading) {
+        void loadDashboard(false);
+      }
+
+      return undefined;
+    }, [isLoading, loadDashboard]),
+  );
 
   const selectedChild = React.useMemo(
     () => children.find((child) => child.id === selectedChildId) ?? children[0] ?? null,

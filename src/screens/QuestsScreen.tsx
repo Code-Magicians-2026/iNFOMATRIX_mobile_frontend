@@ -5,20 +5,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
+import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import {
-  acceptGeneratedQuestMock,
-  completeQuestMock,
-  generateQuestMock,
-  getHomeSummaryMock,
-  getQuestsMock,
-} from '@/src/features/mvp/services/mock-services';
-import type { Quest } from '@/shared/models/mvp-contracts.model';
+import type {
+  ChildProfile,
+  ProgressSummary,
+  Quest,
+  UserRole,
+} from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
   LoadingState,
@@ -28,37 +27,61 @@ import {
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
+import {
+  completeQuestMock,
+  getChildrenMock,
+  getMeMock,
+  getProgressMock,
+  getQuestsMock,
+  setMockMeId,
+} from '@/src/features/mvp/services';
 
-type ModalStep = 'form' | 'preview';
+const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
+  if (role === 'adult') {
+    return 'adult-1';
+  }
 
-const CATEGORY_OPTIONS = ['study', 'sport', 'productivity', 'health'] as const;
+  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
+    return currentUserId;
+  }
+
+  return 'child-1';
+};
+
+const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 
 const QuestsScreen = () => {
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(() => getStyles(cardMaxWidth, isTablet, spacing), [cardMaxWidth, isTablet, spacing]);
 
+  const role = useAuthStore((s) => s.role);
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const selectedChildId = useAuthStore((s) => s.selectedChildId);
+  const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
+  const setRole = useAuthStore((s) => s.setRole);
+
+  const effectiveRole: UserRole = role ?? 'child';
+
+  const [children, setChildren] = React.useState<ChildProfile[]>([]);
+  const [targetUserId, setTargetUserId] = React.useState<string | null>(null);
+  const [targetLabel, setTargetLabel] = React.useState<string>('Myself');
   const [quests, setQuests] = React.useState<Quest[]>([]);
-  const [totalXpToday, setTotalXpToday] = React.useState(0);
-  const [completedToday, setCompletedToday] = React.useState(0);
+  const [progress, setProgress] = React.useState<ProgressSummary | null>(null);
+
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [screenError, setScreenError] = React.useState<string | null>(null);
-
-  const [isAddTaskOpen, setIsAddTaskOpen] = React.useState(false);
-  const [modalStep, setModalStep] = React.useState<ModalStep>('form');
-  const [taskText, setTaskText] = React.useState('');
-  const [taskCategory, setTaskCategory] = React.useState<string>('study');
-  const [durationMinutes, setDurationMinutes] = React.useState('');
-  const [generatedQuest, setGeneratedQuest] = React.useState<Quest | null>(null);
-  const [modalError, setModalError] = React.useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = React.useState(false);
-  const [isAccepting, setIsAccepting] = React.useState(false);
-
   const [completingQuestId, setCompletingQuestId] = React.useState<string | null>(null);
   const [detailsQuest, setDetailsQuest] = React.useState<Quest | null>(null);
 
-  const refreshData = React.useCallback(async (showLoader = false) => {
+  React.useEffect(() => {
+    if (!role) {
+      void setRole('child');
+    }
+  }, [role, setRole]);
+
+  const refreshData = React.useCallback(async (showLoader = false, preferredChildId?: string | null) => {
     if (showLoader) {
       setIsLoading(true);
     } else {
@@ -67,21 +90,83 @@ const QuestsScreen = () => {
 
     try {
       setScreenError(null);
-      const [questsData, homeSummary] = await Promise.all([getQuestsMock(), getHomeSummaryMock()]);
+
+      const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
+      try {
+        setMockMeId(targetMockUserId);
+      } catch {
+        setMockMeId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+      }
+
+      if (effectiveRole === 'adult') {
+        const [meData, childrenData] = await Promise.all([getMeMock(), getChildrenMock()]);
+        setChildren(childrenData);
+
+        if (childrenData.length === 0) {
+          setTargetUserId(null);
+          setTargetLabel(meData.fullName);
+          setQuests([]);
+          setProgress(null);
+          return;
+        }
+
+        const selectedChildCandidate = preferredChildId ?? selectedChildId;
+        const isSelectedChildValid = selectedChildCandidate
+          ? childrenData.some((child) => child.id === selectedChildCandidate)
+          : false;
+        const resolvedSelectedChildId = isSelectedChildValid ? selectedChildCandidate : childrenData[0].id;
+
+        if (resolvedSelectedChildId !== selectedChildId) {
+          await setSelectedChildId(resolvedSelectedChildId);
+        }
+
+        const activeChild =
+          childrenData.find((child) => child.id === resolvedSelectedChildId) ?? childrenData[0];
+        const [questsData, progressData] = await Promise.all([
+          getQuestsMock(activeChild.id),
+          getProgressMock(activeChild.id),
+        ]);
+
+        setTargetUserId(activeChild.id);
+        setTargetLabel(activeChild.fullName);
+        setQuests(questsData);
+        setProgress(progressData);
+
+        return;
+      }
+
+      const meData = await getMeMock();
+      const [questsData, progressData] = await Promise.all([
+        getQuestsMock(meData.id),
+        getProgressMock(meData.id),
+      ]);
+
+      setChildren([]);
+      setTargetUserId(meData.id);
+      setTargetLabel(meData.fullName);
       setQuests(questsData);
-      setTotalXpToday(homeSummary.xpGainedToday);
-      setCompletedToday(homeSummary.questsCompletedToday);
+      setProgress(progressData);
     } catch {
-      setScreenError('Failed to load quest data. Please try again.');
+      setScreenError('Failed to load assigned quests. Please try again.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId]);
 
   React.useEffect(() => {
     void refreshData(true);
   }, [refreshData]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isLoading) {
+        void refreshData(false);
+      }
+
+      return undefined;
+    }, [isLoading, refreshData]),
+  );
 
   const activeQuests = React.useMemo(
     () => quests.filter((quest) => quest.status === 'active'),
@@ -93,85 +178,17 @@ const QuestsScreen = () => {
     [quests],
   );
 
-  const resetTaskModal = () => {
-    setModalStep('form');
-    setTaskText('');
-    setTaskCategory('study');
-    setDurationMinutes('');
-    setGeneratedQuest(null);
-    setModalError(null);
-    setIsGenerating(false);
-    setIsAccepting(false);
-  };
+  const completedToday = React.useMemo(() => {
+    const today = getTodayIsoDate();
+    return completedQuests.filter((quest) => quest.createdAt?.slice(0, 10) === today).length;
+  }, [completedQuests]);
 
-  const closeAddTaskModal = () => {
-    setIsAddTaskOpen(false);
-    resetTaskModal();
-  };
-
-  const parseDuration = () => {
-    const normalized = durationMinutes.trim();
-    if (!normalized) {
-      return undefined;
-    }
-
-    const parsed = Number(normalized);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return null;
-    }
-
-    return Math.round(parsed);
-  };
-
-  const handleGenerateQuest = async () => {
-    const normalizedTask = taskText.trim();
-    if (!normalizedTask) {
-      setModalError('Please enter task text.');
-      return;
-    }
-
-    const parsedDuration = parseDuration();
-    if (parsedDuration === null) {
-      setModalError('Duration must be a positive number of minutes.');
-      return;
-    }
-
-    setModalError(null);
-    setIsGenerating(true);
-
-    try {
-      const draftQuest = await generateQuestMock({
-        taskText: normalizedTask,
-        category: taskCategory,
-        durationMinutes: parsedDuration,
-      });
-      setGeneratedQuest(draftQuest);
-      setModalStep('preview');
-    } catch {
-      setModalError('Could not generate a quest. Please try again.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleAcceptQuest = async () => {
-    if (!generatedQuest) {
-      return;
-    }
-
-    setIsAccepting(true);
-    setModalError(null);
-
-    try {
-      await acceptGeneratedQuestMock(generatedQuest);
-      await refreshData(false);
-      closeAddTaskModal();
-    } catch {
-      setModalError('Could not accept the generated quest.');
-    } finally {
-      setIsAccepting(false);
-    }
-  };
+  const xpToday = React.useMemo(() => {
+    const today = getTodayIsoDate();
+    return completedQuests
+      .filter((quest) => quest.createdAt?.slice(0, 10) === today)
+      .reduce((sum, quest) => sum + quest.rewardXp, 0);
+  }, [completedQuests]);
 
   const handleCompleteQuest = async (id: string) => {
     setCompletingQuestId(id);
@@ -187,35 +204,97 @@ const QuestsScreen = () => {
     }
   };
 
+  const handleSelectChild = async (childId: string) => {
+    setScreenError(null);
+    try {
+      await setSelectedChildId(childId);
+      await refreshData(false, childId);
+    } catch {
+      setScreenError('Could not switch child profile.');
+    }
+  };
+
   return (
     <ScreenContainer contentStyle={styles.container}>
       <SectionHeader
         title="Quests"
-        subtitle="Add a task, generate AI quest, accept it and complete for rewards."
+        subtitle={
+          effectiveRole === 'adult'
+            ? 'Assigned quests for selected child'
+            : 'Your active and completed quests'
+        }
       />
 
-      <StatCard title="Quest Progress Today" subtitle="Daily reward summary">
+      {effectiveRole === 'adult' ? (
+        <StatCard title="Target Child" subtitle="Quests are tied to selected profile">
+          {children.length > 0 ? (
+            <View style={styles.childList}>
+              {children.map((child) => {
+                const isSelected = child.id === targetUserId;
+                return (
+                  <Pressable
+                    key={child.id}
+                    onPress={() => {
+                      void handleSelectChild(child.id);
+                    }}
+                    style={[
+                      styles.childRow,
+                      {
+                        borderColor: isSelected ? '#ff2d55' : colors.border,
+                        backgroundColor: isSelected ? '#ff2d55' : colors.background,
+                      },
+                    ]}
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                  >
+                    <Text style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
+                      {child.fullName}
+                    </Text>
+                    <Text
+                      style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
+                      allowFontScaling
+                    >
+                      Age {child.age} | Level {child.level}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <EmptyState title="No child profiles" description="Create child from Home to assign quests." />
+          )}
+        </StatCard>
+      ) : null}
+
+      <StatCard title="Quest Progress" subtitle={`Target: ${targetLabel}`}>
         <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          Total XP from quests today: {totalXpToday}
+          Active quests: {activeQuests.length}
         </Text>
         <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          Completed quests today: {completedToday}
+          Completed today: {completedToday}
         </Text>
         <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-          Active quests now: {activeQuests.length}
+          XP earned today: {xpToday}
+        </Text>
+        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+          Total XP: {progress?.xp ?? 0}
+        </Text>
+        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+          Streak: {progress?.streak ?? 0}
         </Text>
       </StatCard>
 
       <PrimaryButton
-        label={isRefreshing ? 'Refreshing...' : 'Add Task'}
+        label={isRefreshing ? 'Refreshing...' : 'Refresh quests'}
         disabled={isRefreshing}
-        onPress={() => setIsAddTaskOpen(true)}
+        onPress={() => {
+          void refreshData(false);
+        }}
       />
 
       {screenError ? <EmptyState title="Quest flow error" description={screenError} /> : null}
 
       {isLoading ? (
-        <LoadingState label="Loading quests..." />
+        <LoadingState label="Loading assigned quests..." />
       ) : (
         <View style={styles.listArea}>
           <ScrollView
@@ -225,201 +304,54 @@ const QuestsScreen = () => {
           >
             <View style={styles.sectionBlock}>
               <SectionHeader title="Active Quests" />
-              {activeQuests.length > 0 ? (
-                activeQuests.map((quest) => (
-                  <QuestCard
-                    key={quest.id}
-                    quest={quest}
-                    onComplete={handleCompleteQuest}
-                    onViewDetails={setDetailsQuest}
-                    isCompleting={completingQuestId === quest.id}
+              {targetUserId ? (
+                activeQuests.length > 0 ? (
+                  activeQuests.map((quest) => (
+                    <QuestCard
+                      key={quest.id}
+                      quest={quest}
+                      onComplete={handleCompleteQuest}
+                      onViewDetails={setDetailsQuest}
+                      isCompleting={completingQuestId === quest.id}
+                    />
+                  ))
+                ) : (
+                  <EmptyState
+                    title="No active quests"
+                    description="Approve an AI plan to move quests into active state."
                   />
-                ))
+                )
               ) : (
                 <EmptyState
-                  title="No active quests"
-                  description="Generate and accept your first quest from Add Task."
+                  title="No target selected"
+                  description="Select child profile to load assigned quests."
                 />
               )}
             </View>
 
             <View style={styles.sectionBlock}>
               <SectionHeader title="Completed Quests" />
-              {completedQuests.length > 0 ? (
-                completedQuests.map((quest) => <QuestCard key={quest.id} quest={quest} />)
+              {targetUserId ? (
+                completedQuests.length > 0 ? (
+                  completedQuests.map((quest) => (
+                    <QuestCard key={quest.id} quest={quest} onViewDetails={setDetailsQuest} />
+                  ))
+                ) : (
+                  <EmptyState
+                    title="No completed quests yet"
+                    description="Complete active quests to move them here."
+                  />
+                )
               ) : (
                 <EmptyState
-                  title="No completed quests yet"
-                  description="Complete an active quest to earn XP and see it here."
+                  title="No completed quests"
+                  description="Create child profile and approve a plan first."
                 />
               )}
             </View>
           </ScrollView>
         </View>
       )}
-
-      <Modal
-        visible={isAddTaskOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={closeAddTaskModal}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {modalStep === 'form' ? (
-              <>
-                <SectionHeader
-                  title="Add Task"
-                  subtitle="Describe a human task and convert it into an AI-generated quest."
-                />
-
-                <TextInput
-                  value={taskText}
-                  onChangeText={setTaskText}
-                  placeholder="Finish math homework"
-                  placeholderTextColor={colors.textSecondary}
-                  style={[
-                    styles.input,
-                    {
-                      color: colors.text,
-                      backgroundColor: colors.inputBackground,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  multiline
-                  numberOfLines={3}
-                />
-
-                <Text style={[styles.fieldLabel, { color: colors.text }]} allowFontScaling>
-                  Category
-                </Text>
-                <View style={styles.categoryRow}>
-                  {CATEGORY_OPTIONS.map((category) => {
-                    const isSelected = taskCategory === category;
-                    return (
-                      <Pressable
-                        key={category}
-                        onPress={() => setTaskCategory(category)}
-                        style={[
-                          styles.categoryChip,
-                          {
-                            borderColor: isSelected ? '#ff2d55' : colors.border,
-                            backgroundColor: isSelected ? '#ff2d55' : colors.card,
-                          },
-                        ]}
-                        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                      >
-                        <Text
-                          style={[styles.categoryChipText, { color: isSelected ? '#ffffff' : colors.text }]}
-                          allowFontScaling
-                        >
-                          {category}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <TextInput
-                  value={durationMinutes}
-                  onChangeText={setDurationMinutes}
-                  placeholder="Optional duration (minutes)"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="number-pad"
-                  style={[
-                    styles.input,
-                    {
-                      color: colors.text,
-                      backgroundColor: colors.inputBackground,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                />
-
-                {modalError ? (
-                  <Text style={styles.errorText} allowFontScaling>
-                    {modalError}
-                  </Text>
-                ) : null}
-
-                <View style={styles.modalActions}>
-                  <PrimaryButton
-                    label="Cancel"
-                    variant="secondary"
-                    onPress={closeAddTaskModal}
-                    style={styles.modalButton}
-                  />
-                  <PrimaryButton
-                    label="Generate Quest"
-                    onPress={() => {
-                      void handleGenerateQuest();
-                    }}
-                    loading={isGenerating}
-                    style={styles.modalButton}
-                  />
-                </View>
-              </>
-            ) : generatedQuest ? (
-              <>
-                <SectionHeader
-                  title="AI Generated Quest"
-                  subtitle="Review generated quest and confirm it."
-                />
-
-                <StatCard title={generatedQuest.title} subtitle={`Difficulty: ${generatedQuest.difficulty}`}>
-                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                    Original task: {generatedQuest.originalTask}
-                  </Text>
-                  <Text style={[styles.previewText, { color: colors.text }]} allowFontScaling>
-                    {generatedQuest.description}
-                  </Text>
-                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                    Category: {generatedQuest.category}
-                  </Text>
-                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                    Reward XP: {generatedQuest.rewardXp}
-                  </Text>
-                </StatCard>
-
-                {modalError ? (
-                  <Text style={styles.errorText} allowFontScaling>
-                    {modalError}
-                  </Text>
-                ) : null}
-
-                <View style={styles.previewActions}>
-                  <PrimaryButton
-                    label="Accept Quest"
-                    onPress={() => {
-                      void handleAcceptQuest();
-                    }}
-                    loading={isAccepting}
-                  />
-                  <PrimaryButton
-                    label="Regenerate"
-                    variant="secondary"
-                    onPress={() => {
-                      void handleGenerateQuest();
-                    }}
-                    loading={isGenerating}
-                  />
-                  <PrimaryButton
-                    label="Try another"
-                    variant="tertiary"
-                    onPress={() => {
-                      setModalStep('form');
-                      setGeneratedQuest(null);
-                      setModalError(null);
-                    }}
-                  />
-                </View>
-              </>
-            ) : (
-              <LoadingState label="Preparing generated quest..." />
-            )}
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={Boolean(detailsQuest)}
@@ -433,7 +365,7 @@ const QuestsScreen = () => {
               <>
                 <SectionHeader title="Quest Details" subtitle={detailsQuest.title} />
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                  Original task: {detailsQuest.originalTask}
+                  Original task: {detailsQuest.originalTask ?? 'Generated from approved AI plan'}
                 </Text>
                 <Text style={[styles.previewText, { color: colors.text }]} allowFontScaling>
                   {detailsQuest.description}
@@ -470,6 +402,26 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontSize: isTablet ? 16 : 14,
       fontWeight: '500',
     },
+    childList: {
+      gap: 8,
+    },
+    childRow: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 2,
+      overflow: 'hidden',
+      elevation: 1,
+    },
+    childName: {
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+    },
+    childMeta: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '500',
+    },
     listArea: {
       flex: 1,
     },
@@ -500,51 +452,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       gap: 10,
       elevation: 3,
     },
-    input: {
-      borderWidth: 1,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: isTablet ? 16 : 14,
-      textAlignVertical: 'top',
-    },
-    fieldLabel: {
-      fontSize: isTablet ? 15 : 14,
-      fontWeight: '600',
-    },
-    categoryRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    categoryChip: {
-      borderWidth: 1,
-      borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      minWidth: 96,
-      alignItems: 'center',
-      justifyContent: 'center',
-      elevation: 1,
-    },
-    categoryChipText: {
-      fontSize: isTablet ? 14 : 13,
-      fontWeight: '600',
-      textTransform: 'capitalize',
-    },
-    errorText: {
-      color: '#c11335',
-      fontSize: isTablet ? 13 : 12,
-      fontWeight: '600',
-    },
-    modalActions: {
-      flexDirection: 'row',
-      gap: 10,
-      marginTop: 4,
-    },
-    modalButton: {
-      flex: 1,
-    },
     previewLabel: {
       fontSize: isTablet ? 15 : 13,
       fontWeight: '500',
@@ -552,10 +459,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     previewText: {
       fontSize: isTablet ? 16 : 14,
       lineHeight: isTablet ? 22 : 20,
-    },
-    previewActions: {
-      gap: 8,
-      marginTop: 6,
     },
   });
 
