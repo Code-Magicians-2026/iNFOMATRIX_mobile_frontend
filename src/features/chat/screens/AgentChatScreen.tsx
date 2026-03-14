@@ -71,6 +71,23 @@ const buildFallbackMeProfile = (role: UserRole): UserProfile => ({
 
 const normalizePromptValue = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
+const resolvePhotoAchievementLabel = (photo: CapturedPhoto): string => {
+  const width = photo.width ?? 0;
+  const height = photo.height ?? 0;
+  const megapixels = (width * height) / 1_000_000;
+  const fileSizeMb = (photo.fileSize ?? 0) / (1024 * 1024);
+
+  if (megapixels >= 6) {
+    return 'Achievement: Eagle Eye';
+  }
+
+  if (fileSizeMb >= 4) {
+    return 'Achievement: Detail Hunter';
+  }
+
+  return 'Achievement: Scene Scout';
+};
+
 const AgentChatScreen = () => {
   const navigation = useNavigation<ChatNavigation>();
   const colors = useThemeStore((s) => s.colors);
@@ -248,6 +265,10 @@ const AgentChatScreen = () => {
   }, [prompt]);
 
   const resolvedQuickPromptIndex = selectedQuickPromptIndex ?? activeQuickPromptIndex;
+  const photoAchievementLabel = React.useMemo(
+    () => (capturedPhoto ? resolvePhotoAchievementLabel(capturedPhoto) : null),
+    [capturedPhoto],
+  );
 
   const assignPreparedPhoto = async (photo: CapturedPhoto | null) => {
     if (!photo) {
@@ -662,12 +683,36 @@ const AgentChatScreen = () => {
                   ) : null}
                 </View>
               </View>
+              {photoAchievementLabel ? (
+                <View
+                  style={[
+                    styles.achievementChip,
+                    { borderColor: colors.border, backgroundColor: colors.background },
+                  ]}
+                >
+                  <Text style={[styles.achievementText, { color: colors.text }]} allowFontScaling>
+                    {photoAchievementLabel}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : (
-            <EmptyState
-              title="No photo attached"
-              description="Use Take photo or Choose from gallery to add AI context."
-            />
+            <View style={styles.photoContainer}>
+              <EmptyState
+                title="No photo attached"
+                description="Use Take photo or Choose from gallery to add AI context."
+              />
+              <View
+                style={[
+                  styles.achievementChip,
+                  { borderColor: colors.border, backgroundColor: colors.background },
+                ]}
+              >
+                <Text style={[styles.achievementText, { color: colors.textSecondary }]} allowFontScaling>
+                  Achievement locked: Scene Scout
+                </Text>
+              </View>
+            </View>
           )}
 
           <View style={styles.photoPrimaryActions}>
@@ -920,6 +965,18 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     photoMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: "500",
+    },
+    achievementChip: {
+      borderWidth: 1,
+      borderRadius: 999,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      elevation: 1,
+    },
+    achievementText: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "700",
     },
     photoActions: {
       flexDirection: "row",
