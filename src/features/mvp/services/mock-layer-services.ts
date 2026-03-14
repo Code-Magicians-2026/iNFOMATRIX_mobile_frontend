@@ -16,7 +16,7 @@ import { mockProgress } from '@/src/features/mvp/mocks/mockProgress';
 import { mockQuests } from '@/src/features/mvp/mocks/mockQuests';
 import { mockUsers } from '@/src/features/mvp/mocks/mockUsers';
 
-const MOCK_DELAY_MS = 180;
+const MOCK_DELAY_MS = 0;
 const XP_PER_LEVEL = 300;
 
 type MockState = {

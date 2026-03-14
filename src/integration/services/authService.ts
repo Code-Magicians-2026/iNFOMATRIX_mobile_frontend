@@ -1,71 +1,67 @@
 import type {
   ConfirmEmailRequestDto,
+  CreateFamilyRequestDto,
   EmailDto,
   LoginRequestDto,
+  RegisterChildRequestDto,
   RegisterRequestDto,
   RequestResetPasswordRequestDto,
   ResetPasswordRequestDto,
   TokenDto,
   VerifyOtpRequestDto,
 } from '@/src/features/auth/dto/auth.dto';
-
-const MOCK_DELAY_MS = 180;
-
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const normalizeUserId = (email: string) => {
-  const normalized = email
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  return normalized || 'local-user';
-};
-
-const buildMockToken = (email: string): TokenDto => ({
-  accessToken: `mock-access-${Date.now()}`,
-  refreshToken: `mock-refresh-${Date.now()}`,
-  expiresIn: 3600,
-  tokenType: 'Bearer',
-  email,
-  userId: `user-${normalizeUserId(email)}`,
-});
+import {
+  confirmEmail,
+  createFamily,
+  getFamily,
+  getFamilyChildren,
+  login,
+  register,
+  registerChild,
+  requestResetPassword,
+  resetPassword,
+  verifyOtp,
+} from '@/src/features/auth/api/auth';
 
 export const authService = {
   register: async (payload: RegisterRequestDto): Promise<EmailDto> => {
-    await wait(MOCK_DELAY_MS);
-
-    return { email: payload.email };
+    return register(payload);
   },
 
   login: async (payload: LoginRequestDto): Promise<TokenDto> => {
-    await wait(MOCK_DELAY_MS);
-
-    return buildMockToken(payload.email);
+    return login(payload);
   },
 
   confirmEmail: async (payload: ConfirmEmailRequestDto): Promise<TokenDto> => {
-    await wait(MOCK_DELAY_MS);
+    return confirmEmail(payload);
+  },
 
-    return buildMockToken(payload.email);
+  createFamily: async (
+    payload: CreateFamilyRequestDto,
+    accessToken: string,
+  ): Promise<unknown> => createFamily(payload, { accessToken }),
+
+  getFamily: async (accessToken: string): Promise<unknown> => getFamily({ accessToken }),
+
+  getFamilyChildren: async (accessToken: string): Promise<unknown> => getFamilyChildren({ accessToken }),
+
+  registerChild: async (
+    payload: RegisterChildRequestDto,
+    accessToken: string,
+  ): Promise<void> => {
+    await registerChild(payload, { accessToken });
   },
 
   requestResetPassword: async (payload: RequestResetPasswordRequestDto): Promise<EmailDto> => {
-    await wait(MOCK_DELAY_MS);
-
-    return { email: payload.email };
+    return requestResetPassword(payload);
   },
 
   verifyOtp: async (payload: VerifyOtpRequestDto): Promise<EmailDto> => {
-    await wait(MOCK_DELAY_MS);
-
-    return { email: payload.email };
+    return verifyOtp(payload);
   },
 
   resetPassword: async (payload: ResetPasswordRequestDto): Promise<TokenDto> => {
-    await wait(MOCK_DELAY_MS);
-
-    return buildMockToken(payload.email);
+    return resetPassword(payload);
   },
 };
 

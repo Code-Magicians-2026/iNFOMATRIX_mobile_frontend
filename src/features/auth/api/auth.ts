@@ -1,14 +1,33 @@
 import { request } from './client';
 import type {
   ConfirmEmailRequestDto,
+  CreateFamilyRequestDto,
   EmailDto,
   LoginRequestDto,
+  RegisterChildRequestDto,
   RegisterRequestDto,
   RequestResetPasswordRequestDto,
   ResetPasswordRequestDto,
   TokenDto,
   VerifyOtpRequestDto,
 } from '../dto/auth.dto';
+
+interface RefreshTokenRequestDto {
+  accessToken: string;
+  refreshToken: string;
+}
+
+interface AuthorizedRequestOptions {
+  accessToken: string;
+}
+
+interface UnknownApiObject {
+  [key: string]: unknown;
+}
+
+const withAuthorization = ({ accessToken }: AuthorizedRequestOptions) => ({
+  accessToken,
+});
 
 export const register = async (payload: RegisterRequestDto): Promise<EmailDto> =>
   request<EmailDto>('/api/auth/register', {
@@ -20,12 +39,57 @@ export const login = async (payload: LoginRequestDto): Promise<TokenDto> =>
   request<TokenDto>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify(payload),
+    timeoutMs: 120000,
   });
 
 export const confirmEmail = async (payload: ConfirmEmailRequestDto): Promise<TokenDto> =>
   request<TokenDto>('/api/auth/confirm-email', {
     method: 'POST',
     body: JSON.stringify(payload),
+    // Email confirmation may take longer than standard auth calls.
+    timeoutMs: 120000,
+  });
+
+export const refreshToken = async (payload: RefreshTokenRequestDto): Promise<TokenDto> =>
+  request<TokenDto>('/api/auth/refresh-token', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const createFamily = async (
+  payload: CreateFamilyRequestDto,
+  options: AuthorizedRequestOptions,
+): Promise<UnknownApiObject | null> =>
+  request<UnknownApiObject | null>('/api/families', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    ...withAuthorization(options),
+    timeoutMs: 20000,
+  });
+
+export const getFamily = async (options: AuthorizedRequestOptions): Promise<unknown> =>
+  request<unknown>('/api/families', {
+    method: 'GET',
+    ...withAuthorization(options),
+    timeoutMs: 15000,
+  });
+
+export const getFamilyChildren = async (options: AuthorizedRequestOptions): Promise<unknown> =>
+  request<unknown>('/api/children', {
+    method: 'GET',
+    ...withAuthorization(options),
+    timeoutMs: 15000,
+  });
+
+export const registerChild = async (
+  payload: RegisterChildRequestDto,
+  options: AuthorizedRequestOptions,
+): Promise<void> =>
+  request<void>('/api/children', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    ...withAuthorization(options),
+    timeoutMs: 20000,
   });
 
 export const requestResetPassword = async (

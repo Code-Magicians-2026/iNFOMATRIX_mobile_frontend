@@ -1,5 +1,10 @@
 const API_BASE_URL = 'https://infomatrix-api.azurewebsites.net';
-const REQUEST_TIMEOUT_MS = 20000;
+const REQUEST_TIMEOUT_MS = 60000;
+
+interface ApiRequestOptions extends RequestInit {
+  accessToken?: string | null;
+  timeoutMs?: number;
+}
 
 interface ApiProblemDetails {
   title?: string;
@@ -52,6 +57,21 @@ const parseApiErrorMessage = async (response: Response): Promise<string> => {
     } else {
       const text = await response.text();
       if (text.trim().length > 0) {
+        const trimmed = text.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          try {
+            const parsed = JSON.parse(trimmed) as ApiProblemDetails | string;
+            if (typeof parsed === 'string' && parsed.trim().length > 0) {
+              return parsed;
+            }
+
+            const parsedMessage = extractProblemMessage(parsed as ApiProblemDetails);
+            if (parsedMessage) {
+              return parsedMessage;
+            }
+          } catch {}
+        }
+
         return text;
       }
     }
@@ -60,22 +80,31 @@ const parseApiErrorMessage = async (response: Response): Promise<string> => {
   return `Request failed with status ${response.status}`;
 };
 
-export const request = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
-  const headers = new Headers(options.headers);
+export const request = async <T>(path: string, options: ApiRequestOptions = {}): Promise<T> => {
+  const { accessToken, timeoutMs, ...requestOptions } = options;
+  const headers = new Headers(requestOptions.headers);
   const isFormDataBody =
-    typeof FormData !== 'undefined' && options.body instanceof FormData;
+    typeof FormData !== 'undefined' && requestOptions.body instanceof FormData;
 
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json');
   }
 
-  if (options.body && !headers.has('Content-Type') && !isFormDataBody) {
+  if (requestOptions.body && !headers.has('Content-Type') && !isFormDataBody) {
     headers.set('Content-Type', 'application/json');
   }
 
+  if (accessToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const parentSignal = options.signal;
+  const effectiveTimeoutMs =
+    typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? timeoutMs
+      : REQUEST_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+  const parentSignal = requestOptions.signal;
 
   const onParentAbort = () => {
     controller.abort();
@@ -93,7 +122,7 @@ export const request = async <T>(path: string, options: RequestInit = {}): Promi
 
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
+      ...requestOptions,
       headers,
       signal: controller.signal,
     });
@@ -122,7 +151,15 @@ export const request = async <T>(path: string, options: RequestInit = {}): Promi
     return (await response.json()) as T;
   }
 
-  return (await response.text()) as T;
+  const text = await response.text();
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {}
+  }
+
+  return text as T;
 };
 
 export const getApiErrorMessage = (error: unknown, fallback: string): string => {

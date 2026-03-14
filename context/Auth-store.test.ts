@@ -8,6 +8,9 @@ const {
   registerRequestMock,
   confirmEmailRequestMock,
   resetPasswordRequestMock,
+  createFamilyRequestMock,
+  getFamilyRequestMock,
+  registerChildRequestMock,
 } = vi.hoisted(() => ({
   getItemMock: vi.fn(),
   setItemMock: vi.fn(),
@@ -16,6 +19,9 @@ const {
   registerRequestMock: vi.fn(),
   confirmEmailRequestMock: vi.fn(),
   resetPasswordRequestMock: vi.fn(),
+  createFamilyRequestMock: vi.fn(),
+  getFamilyRequestMock: vi.fn(),
+  registerChildRequestMock: vi.fn(),
 }));
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -32,6 +38,9 @@ vi.mock('@/src/integration/services/authService', () => ({
     register: registerRequestMock,
     confirmEmail: confirmEmailRequestMock,
     resetPassword: resetPasswordRequestMock,
+    createFamily: createFamilyRequestMock,
+    getFamily: getFamilyRequestMock,
+    registerChild: registerChildRequestMock,
   },
 }));
 
@@ -45,8 +54,11 @@ describe('Auth store', () => {
       currentUser: null,
       role: null,
       selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
       isHydrated: false,
     });
+    getFamilyRequestMock.mockResolvedValue(null);
   });
 
   it('hydrates legacy session payload and migrates it', async () => {
@@ -65,6 +77,7 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().session?.email).toBe('user@example.com');
     expect(useAuthStore.getState().role).toBe('child');
     expect(useAuthStore.getState().currentUser?.email).toBe('user@example.com');
+    expect(useAuthStore.getState().family).toBeNull();
     expect(useAuthStore.getState().isHydrated).toBe(true);
     expect(setItemMock).toHaveBeenCalledTimes(1);
   });
@@ -77,6 +90,7 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().session).toBeNull();
     expect(useAuthStore.getState().currentUser).toBeNull();
     expect(useAuthStore.getState().role).toBeNull();
+    expect(useAuthStore.getState().family).toBeNull();
     expect(useAuthStore.getState().isHydrated).toBe(true);
   });
 
@@ -98,17 +112,19 @@ describe('Auth store', () => {
       expiresIn: 3600,
       tokenType: 'Bearer',
     });
-    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().role).toBe('adult');
     expect(useAuthStore.getState().currentUser?.fullName).toBe('User');
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(getFamilyRequestMock).toHaveBeenCalledWith('access');
+    expect(setItemMock).toHaveBeenCalled();
 
-    const [, persistedJson] = setItemMock.mock.calls[0] as [string, string];
+    const lastPersistedCall = setItemMock.mock.calls.at(-1) as [string, string];
+    const [, persistedJson] = lastPersistedCall;
     const persisted = JSON.parse(persistedJson) as { role: string; currentUser: { email: string } };
-    expect(persisted.role).toBe('child');
+    expect(persisted.role).toBe('adult');
     expect(persisted.currentUser.email).toBe('user@example.com');
   });
 
-  it('throws when login response has no tokens', async () => {
+  it('throws when login response has no access token', async () => {
     loginRequestMock.mockResolvedValue({
       accessToken: null,
       refreshToken: null,
@@ -117,21 +133,25 @@ describe('Auth store', () => {
     });
 
     await expect(useAuthStore.getState().login('user@example.com', 'secret')).rejects.toThrow(
-      'Сервер не повернув токени доступу.',
+      'Сервер не повернув access token.',
     );
   });
 
-  it('register only creates account and does not create session', async () => {
+  it('register stores pending family name and does not create session', async () => {
     registerRequestMock.mockResolvedValue({ email: 'user@example.com' });
 
-    await useAuthStore.getState().register('User Name', 'user@example.com', 'secret');
+    await useAuthStore.getState().register('User', 'Name', 'user@example.com', 'secret');
     expect(registerRequestMock).toHaveBeenCalledWith({
-      fullName: 'User Name',
+      firstName: 'User',
+      lastName: 'Name',
       email: 'user@example.com',
       password: 'secret',
     });
+    expect(createFamilyRequestMock).not.toHaveBeenCalled();
     expect(loginRequestMock).not.toHaveBeenCalled();
     expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().family).toBeNull();
+    expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
     expect(setItemMock).not.toHaveBeenCalled();
   });
 
@@ -139,14 +159,14 @@ describe('Auth store', () => {
     registerRequestMock.mockRejectedValue(new Error('Email exists'));
 
     await expect(
-      useAuthStore.getState().register('User Name', 'user@example.com', 'secret'),
+      useAuthStore.getState().register('User', 'Name', 'user@example.com', 'secret'),
     ).rejects.toThrow('Email exists');
   });
 
   it('confirmEmail stores session using provided email fallback', async () => {
     confirmEmailRequestMock.mockResolvedValue({
       accessToken: 'access',
-      refreshToken: 'refresh',
+      refreshToken: null,
       expiresIn: 3600,
       email: null,
     });
@@ -156,12 +176,13 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().session).toEqual({
       email: 'user@example.com',
       accessToken: 'access',
-      refreshToken: 'refresh',
+      refreshToken: null,
       expiresIn: 3600,
       tokenType: 'Bearer',
     });
     expect(useAuthStore.getState().currentUser?.email).toBe('user@example.com');
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(getFamilyRequestMock).toHaveBeenCalledWith('access');
+    expect(setItemMock).toHaveBeenCalled();
   });
 
   it('supports role switch and child selection for adult flow', async () => {
@@ -189,7 +210,8 @@ describe('Auth store', () => {
 
     expect(useAuthStore.getState().session?.email).toBe('reset@example.com');
     expect(useAuthStore.getState().currentUser?.email).toBe('reset@example.com');
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(getFamilyRequestMock).toHaveBeenCalledWith('access');
+    expect(setItemMock).toHaveBeenCalled();
   });
 
   it('logout clears all auth and role-based state', async () => {
@@ -213,6 +235,8 @@ describe('Auth store', () => {
       },
       role: 'adult',
       selectedChildId: 'child-7',
+      family: { id: 'family-1', name: 'Family One' },
+      pendingFamilyName: null,
       isHydrated: true,
     });
 
@@ -222,6 +246,7 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().currentUser).toBeNull();
     expect(useAuthStore.getState().role).toBeNull();
     expect(useAuthStore.getState().selectedChildId).toBeNull();
+    expect(useAuthStore.getState().family).toBeNull();
     expect(removeItemMock).toHaveBeenCalledTimes(1);
   });
 });
