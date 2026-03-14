@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -77,6 +77,8 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
   return 'child-1';
 };
 
+const normalizePromptValue = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+
 const AgentChatScreen = () => {
   const navigation = useNavigation<ChatNavigation>();
   const colors = useThemeStore((s) => s.colors);
@@ -99,6 +101,7 @@ const AgentChatScreen = () => {
   const [targetMode, setTargetMode] = React.useState<TargetMode>('myself');
 
   const [prompt, setPrompt] = React.useState('');
+  const [selectedQuickPromptIndex, setSelectedQuickPromptIndex] = React.useState<number | null>(null);
   const [intensity, setIntensity] = React.useState<IntensityOption>('medium');
   const [capturedPhoto, setCapturedPhoto] = React.useState<CapturedPhoto | null>(null);
   const [cameraPermissionState, setCameraPermissionState] =
@@ -189,6 +192,15 @@ const AgentChatScreen = () => {
     void loadBuilderContext();
   }, [loadBuilderContext]);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadBuilderContext();
+      void refreshPermissionsState();
+
+      return undefined;
+    }, [loadBuilderContext, refreshPermissionsState]),
+  );
+
   const selectedChild = React.useMemo(
     () => children.find((child) => child.id === selectedChildId) ?? null,
     [children, selectedChildId],
@@ -203,11 +215,24 @@ const AgentChatScreen = () => {
     : selectedChild?.fullName ?? 'No active child';
   const isChildTargetWithoutSelection =
     targetMode === 'child' && canUseChildTarget && !selectedChild;
-  const isGenerateDisabled = isGenerating || prompt.trim().length === 0 || !capturedPhoto?.uri;
+  const isGenerateDisabled = isGenerating || prompt.trim().length === 0;
   const isCameraBlocked = cameraPermissionState === 'blocked';
   const isGalleryBlocked = galleryPermissionState === 'blocked';
   const shouldShowPermissionHelp =
     cameraPermissionState !== 'granted' || galleryPermissionState !== 'granted';
+  const activeQuickPromptIndex = React.useMemo(() => {
+    const normalizedPrompt = normalizePromptValue(prompt);
+    if (!normalizedPrompt) {
+      return null;
+    }
+
+    const index = QUICK_PROMPTS.findIndex(
+      (item) => normalizePromptValue(item) === normalizedPrompt,
+    );
+    return index >= 0 ? index : null;
+  }, [prompt]);
+
+  const resolvedQuickPromptIndex = selectedQuickPromptIndex ?? activeQuickPromptIndex;
 
   const assignPreparedPhoto = async (photo: CapturedPhoto | null) => {
     if (!photo) {
@@ -328,11 +353,6 @@ const AgentChatScreen = () => {
       return;
     }
 
-    if (!capturedPhoto?.uri) {
-      setGenerationError('Add one room/situation photo before generating a plan.');
-      return;
-    }
-
     const targetUserId = targetMode === 'myself' ? me?.id : selectedChild?.id;
     if (!targetUserId) {
       setGenerationError('No active child selected. Select child target before generation.');
@@ -347,10 +367,12 @@ const AgentChatScreen = () => {
         targetUserId,
         prompt: normalizedPrompt,
         intensity: resolvedIntensity,
-        photo: capturedPhoto,
+        ...(capturedPhoto ? { photo: capturedPhoto } : {}),
       };
 
-      const generatedPlan = await plansService.uploadPhotoAndGenerate(request);
+      const generatedPlan = capturedPhoto?.uri
+        ? await plansService.uploadPhotoAndGenerate(request)
+        : await plansService.generatePlan(request);
 
       navigation.navigate('PlanPreview', {
         plan: generatedPlan,
@@ -409,7 +431,7 @@ const AgentChatScreen = () => {
       >
         {effectiveRole === 'adult' ? (
           <StatCard title="Selected Target" subtitle={`Active: ${activeTargetLabel}`} style={styles.card}>
-            <View style={styles.optionRow}>
+            <View key={`target-mode-${targetMode}-${selectedChildId ?? 'none'}`} style={styles.optionRow}>
               <Pressable
                 onPress={() => {
                   setTargetMode('myself');
@@ -530,7 +552,7 @@ const AgentChatScreen = () => {
 
         <StatCard title="Room / Situation Photo" subtitle="Photo is AI context for plan generation" style={styles.card}>
           <Text style={[styles.photoHintText, { color: colors.textSecondary }]} allowFontScaling>
-            Add one photo so AI can understand the current room/situation before generating the plan.
+            Add a photo optionally to give AI better room/situation context for generation.
           </Text>
 
           {shouldShowPermissionHelp ? (
@@ -675,6 +697,12 @@ const AgentChatScreen = () => {
             value={prompt}
             onChangeText={(value) => {
               setPrompt(value);
+              if (selectedQuickPromptIndex !== null) {
+                const selectedValue = QUICK_PROMPTS[selectedQuickPromptIndex] ?? '';
+                if (normalizePromptValue(value) !== normalizePromptValue(selectedValue)) {
+                  setSelectedQuickPromptIndex(null);
+                }
+              }
               if (generationError) {
                 setGenerationError(null);
               }
@@ -711,7 +739,7 @@ const AgentChatScreen = () => {
         </StatCard>
 
         <StatCard title="Intensity" subtitle="How demanding the plan should be" style={styles.card}>
-          <View style={styles.optionRow}>
+          <View key={`intensity-${resolvedIntensity}`} style={styles.optionRow}>
             {INTENSITY_OPTIONS.map((item) => {
               const isSelected = resolvedIntensity === item;
               const optionLabel = item.charAt(0).toUpperCase() + item.slice(1);
@@ -747,19 +775,33 @@ const AgentChatScreen = () => {
         </StatCard>
 
         <StatCard title="Quick Prompts" subtitle="Tap to prefill" style={styles.card}>
-          <View style={styles.quickPromptList}>
-            {QUICK_PROMPTS.map((quickPrompt) => (
-              <Pressable
-                key={quickPrompt}
-                onPress={() => setPrompt(quickPrompt)}
-                style={[styles.quickPromptItem, { borderColor: colors.border, backgroundColor: colors.background }]}
-                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-              >
-                <Text style={[styles.quickPromptText, { color: colors.text }]} allowFontScaling>
-                  {quickPrompt}
-                </Text>
-              </Pressable>
-            ))}
+          <View key={`quick-prompts-${resolvedQuickPromptIndex ?? 'none'}`} style={styles.quickPromptList}>
+            {QUICK_PROMPTS.map((quickPrompt, index) => {
+              const isSelected = resolvedQuickPromptIndex === index;
+
+              return (
+                <Pressable
+                  key={`${quickPrompt}-${isSelected ? 'selected' : 'idle'}`}
+                  onPress={() => {
+                    setSelectedQuickPromptIndex(index);
+                    setPrompt(quickPrompt);
+                    setGenerationError(null);
+                  }}
+                  style={[
+                    styles.quickPromptItem,
+                    {
+                      borderColor: isSelected ? BRAND_RED : colors.border,
+                      backgroundColor: isSelected ? BRAND_RED : colors.background,
+                    },
+                  ]}
+                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                >
+                  <Text style={[styles.quickPromptText, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
+                    {quickPrompt}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </StatCard>
 

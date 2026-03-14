@@ -61,7 +61,7 @@ export const plansService = {
 
   uploadPhotoAndGenerate: async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
     if (!input.photo?.uri) {
-      throw new Error('Photo is required for uploadPhotoAndGenerate.');
+      return generatePlanMock(input);
     }
 
     const formData = buildGeneratePlanFormData(input);
