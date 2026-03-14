@@ -29,6 +29,7 @@ import {
   LoadingState,
   PrimaryButton,
   QuestCard,
+  QuestRewardEditor,
   ScreenContainer,
   SectionHeader,
   StatCard,
@@ -44,6 +45,14 @@ import {
   pickRandomBadgeImageKey,
   type BadgeImageKey,
 } from '@/shared/components/ui/badge-catalog';
+import {
+  buildQuestRewardFieldsFromDraft,
+  buildQuestRewardPreviewFromDraft,
+  createQuestRewardDraftFromQuest,
+  getQuestRewardLabel,
+  getQuestRewardTypeLabel,
+  type QuestRewardDraft,
+} from '@/shared/models/quest-reward.model';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
@@ -74,6 +83,7 @@ type CompletionFeedback = {
   difficulty: string;
   badgeImageKey: BadgeImageKey;
   rewardXp: number;
+  rewardLabel: string;
   totalXp: number;
   streak: number;
 };
@@ -106,9 +116,13 @@ const QuestsScreen = () => {
   const [togglingStepId, setTogglingStepId] = React.useState<string | null>(null);
   const [detailsQuestId, setDetailsQuestId] = React.useState<string | null>(null);
   const [completionFeedback, setCompletionFeedback] = React.useState<CompletionFeedback | null>(null);
+  const [rewardDraft, setRewardDraft] = React.useState<QuestRewardDraft | null>(null);
+  const [isSavingReward, setIsSavingReward] = React.useState(false);
+  const [rewardSystemNote, setRewardSystemNote] = React.useState<string | null>(null);
   const [isCompletionBadgeSpotlightVisible, setIsCompletionBadgeSpotlightVisible] = React.useState(false);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
+  const initializedRewardDraftQuestIdRef = React.useRef<string | null>(null);
   const lastRefreshAtRef = React.useRef(0);
   const completionShakeX = React.useRef(new Animated.Value(0)).current;
   const completionScale = React.useRef(new Animated.Value(1)).current;
@@ -281,6 +295,23 @@ const QuestsScreen = () => {
     }
   }, [detailsQuest, detailsQuestId]);
 
+  React.useEffect(() => {
+    if (!detailsQuest) {
+      setRewardDraft(null);
+      setRewardSystemNote(null);
+      initializedRewardDraftQuestIdRef.current = null;
+      return;
+    }
+
+    if (initializedRewardDraftQuestIdRef.current === detailsQuest.id) {
+      return;
+    }
+
+    initializedRewardDraftQuestIdRef.current = detailsQuest.id;
+    setRewardDraft(createQuestRewardDraftFromQuest(detailsQuest));
+    setRewardSystemNote(null);
+  }, [detailsQuest]);
+
   const handleToggleStep = async (questId: string, step: QuestStep) => {
     const questToUpdate = quests.find((quest) => quest.id === questId);
     if (!questToUpdate) {
@@ -319,6 +350,7 @@ const QuestsScreen = () => {
           difficulty: updatedQuest.difficulty,
           badgeImageKey: earnedBadgeImageKey,
           rewardXp: updatedQuest.rewardXp,
+          rewardLabel: getQuestRewardLabel(updatedQuest),
           totalXp: refreshedProgress.xp,
           streak: refreshedProgress.streak,
         });
@@ -464,6 +496,38 @@ const QuestsScreen = () => {
     }
   };
 
+  const handleSaveReward = async () => {
+    if (!detailsQuest || !rewardDraft || effectiveRole !== 'adult') {
+      return;
+    }
+
+    if (isQuestArchived(detailsQuest)) {
+      setScreenError('Reward is locked for completed quests.');
+      return;
+    }
+
+    setIsSavingReward(true);
+    setScreenError(null);
+    try {
+      const updatedQuest = await questsService.updateQuestReward(
+        detailsQuest.id,
+        buildQuestRewardFieldsFromDraft(rewardDraft),
+      );
+      setQuests((current) => current.map((quest) => (quest.id === updatedQuest.id ? updatedQuest : quest)));
+      setRewardDraft(createQuestRewardDraftFromQuest(updatedQuest));
+      const progress = getQuestProgress(updatedQuest);
+      setRewardSystemNote(
+        progress.completedStepsCount > 0
+          ? 'Батьки оновили нагороду цього квесту.'
+          : 'Нагороду оновлено.',
+      );
+    } catch {
+      setScreenError('Could not update quest reward. Please try again.');
+    } finally {
+      setIsSavingReward(false);
+    }
+  };
+
   return (
     <ScreenContainer contentStyle={styles.container}>
       {isLoading ? (
@@ -596,6 +660,11 @@ const QuestsScreen = () => {
                 </View>
                 <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
                   +{completionFeedback.rewardXp} XP
+                </Text>
+                <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+                  {isChildExecutionMode
+                    ? `Нагорода очікує підтвердження від батьків: ${completionFeedback.rewardLabel}`
+                    : `Нагорода розблокована: ${completionFeedback.rewardLabel}`}
                 </Text>
                 <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
                   All steps completed
@@ -752,7 +821,66 @@ const QuestsScreen = () => {
                   Difficulty: {detailsQuest.difficulty}
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                  Reward: +{detailsQuest.rewardXp} XP
+                  Reward XP: +{detailsQuest.rewardXp} XP
+                </Text>
+                <Text style={[styles.previewLabel, { color: colors.text }]} allowFontScaling>
+                  🎁 Нагорода: {getQuestRewardLabel(detailsQuest)}
+                </Text>
+                <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                  Тип нагороди: {getQuestRewardTypeLabel(detailsQuest.rewardType)}
+                </Text>
+                {detailsQuest.rewardDescription ? (
+                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                    Коментар: {detailsQuest.rewardDescription}
+                  </Text>
+                ) : null}
+                {detailsQuest.rewardUpdatedAt && getQuestProgress(detailsQuest).completedStepsCount > 0 ? (
+                  <Text style={[styles.systemNoteText, { color: colors.text }]} allowFontScaling>
+                    Батьки оновили нагороду цього квесту.
+                  </Text>
+                ) : null}
+                {rewardSystemNote ? (
+                  <Text style={[styles.systemNoteText, { color: colors.text }]} allowFontScaling>
+                    {rewardSystemNote}
+                  </Text>
+                ) : null}
+                {effectiveRole === 'adult' && rewardDraft ? (
+                  <>
+                    <QuestRewardEditor
+                      draft={rewardDraft}
+                      previewText={buildQuestRewardPreviewFromDraft(rewardDraft)}
+                      onChangeType={(type) => {
+                        setRewardDraft({
+                          type,
+                          valueInput: '',
+                          noteInput: rewardDraft.noteInput,
+                        });
+                      }}
+                      onChangeValue={(value) => {
+                        setRewardDraft({ ...rewardDraft, valueInput: value });
+                      }}
+                      onChangeNote={(value) => {
+                        setRewardDraft({ ...rewardDraft, noteInput: value });
+                      }}
+                      disabled={isQuestArchived(detailsQuest) || isSavingReward}
+                    />
+                    {isQuestArchived(detailsQuest) ? (
+                      <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                        Нагорода зафіксована після завершення квесту.
+                      </Text>
+                    ) : (
+                      <PrimaryButton
+                        label={isSavingReward ? 'Saving reward...' : 'Save reward'}
+                        onPress={() => {
+                          void handleSaveReward();
+                        }}
+                        disabled={isSavingReward}
+                      />
+                    )}
+                  </>
+                ) : null}
+                <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                  Reward lock: {isQuestArchived(detailsQuest) ? 'Locked' : 'Editable'}
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Estimated minutes: {detailsQuest.estimatedMinutes}
@@ -984,6 +1112,11 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     previewLabel: {
       fontSize: isTablet ? 15 : 13,
       fontWeight: '500',
+    },
+    systemNoteText: {
+      fontSize: isTablet ? 14 : 12,
+      fontWeight: '700',
+      color: '#1f9b54',
     },
     detailsTitleRow: {
       flexDirection: 'row',

@@ -30,6 +30,7 @@ import {
   questsService,
   userService,
 } from '@/src/integration/services';
+import { authService } from '@/src/integration/services/authService';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const XP_PER_LEVEL = 300;
@@ -123,6 +124,44 @@ const isRecoverableCreateChildError = (error: unknown): boolean => {
   }
 
   return false;
+};
+
+const toTrimmedOrNull = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const formatDebugPayload = (payload: unknown, maxLength = 360): string => {
+  if (payload === null || payload === undefined) {
+    return 'null';
+  }
+
+  try {
+    const normalized =
+      typeof payload === 'string' ? payload : JSON.stringify(payload);
+    if (!normalized) {
+      return 'empty';
+    }
+
+    return normalized.length > maxLength
+      ? `${normalized.slice(0, maxLength)}...`
+      : normalized;
+  } catch {
+    return '[unserializable payload]';
+  }
+};
+
+type FamilyResolutionDebug = {
+  familyId: string | null;
+  storeFamilyId: string | null;
+  refreshedFamilyId: string | null;
+  rawFamilyPayload: unknown;
+  refreshFamilyError: string | null;
+  getFamilyError: string | null;
 };
 
 const HomeScreen = () => {
@@ -300,6 +339,38 @@ const HomeScreen = () => {
     setCreateChildError(null);
   };
 
+  const resolveFamilyId = React.useCallback(async (): Promise<FamilyResolutionDebug> => {
+    const storeFamilyId = toTrimmedOrNull(family?.id);
+    let refreshedFamilyId: string | null = null;
+    let rawFamilyPayload: unknown = null;
+    let refreshFamilyError: string | null = null;
+    let getFamilyError: string | null = null;
+
+    try {
+      const refreshedFamily = await refreshFamily();
+      refreshedFamilyId = toTrimmedOrNull(refreshedFamily?.id);
+    } catch (error) {
+      refreshFamilyError = getApiErrorMessage(error, 'refreshFamily failed');
+    }
+
+    if (session?.accessToken) {
+      try {
+        rawFamilyPayload = await authService.getFamily(session.accessToken);
+      } catch (error) {
+        getFamilyError = getApiErrorMessage(error, 'GET /api/families failed');
+      }
+    }
+
+    return {
+      familyId: refreshedFamilyId ?? storeFamilyId,
+      storeFamilyId,
+      refreshedFamilyId,
+      rawFamilyPayload,
+      refreshFamilyError,
+      getFamilyError,
+    };
+  }, [family?.id, refreshFamily, session?.accessToken]);
+
   const openCreateChildModal = async () => {
     if (!session) {
       setScreenError('Sign in first to create a child profile.');
@@ -315,7 +386,7 @@ const HomeScreen = () => {
       setChildLastName(userLastName);
     }
     setIsCreateChildModalVisible(true);
-    void refreshFamily().catch(() => {});
+    void resolveFamilyId().catch(() => {});
   };
 
   const closeCreateChildModal = () => {
@@ -349,12 +420,29 @@ const HomeScreen = () => {
     const existingChildIds = new Set(children.map((child) => child.id));
     const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
 
+    let usedFamilyId: string | null = null;
+    let createChildStrategy: 'explicit-family-id' | 'store-register-child' = 'store-register-child';
+    let familyResolutionDebug: FamilyResolutionDebug | null = null;
+
     try {
-      await registerChild({
-        firstName,
-        lastName,
-        password: childPassword,
-      });
+      familyResolutionDebug = await resolveFamilyId();
+      const familyId = familyResolutionDebug.familyId;
+      usedFamilyId = familyId;
+      if (familyId) {
+        createChildStrategy = 'explicit-family-id';
+        await childrenService.createChild({
+          firstName,
+          lastName,
+          password: childPassword,
+          familyId,
+        });
+      } else {
+        await registerChild({
+          firstName,
+          lastName,
+          password: childPassword,
+        });
+      }
 
       const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
       const createdChild =
@@ -399,9 +487,35 @@ const HomeScreen = () => {
         } catch {}
       }
 
-      setCreateChildError(
-        getApiErrorMessage(error, 'Failed to create child profile. Please try again.'),
+      const baseErrorMessage = getApiErrorMessage(
+        error,
+        'Failed to create child profile. Please try again.',
       );
+
+      const normalizedBaseMessage = baseErrorMessage.toLowerCase();
+      const shouldAttachDiagnostics =
+        normalizedBaseMessage.includes('family') &&
+        normalizedBaseMessage.includes('not found');
+
+      if (shouldAttachDiagnostics) {
+        const currentFamilyDebug = familyResolutionDebug ?? (await resolveFamilyId().catch(() => null));
+        const diagnostics = currentFamilyDebug
+          ? [
+              `POST /api/children familyId: ${usedFamilyId ?? 'null'}`,
+              `create strategy: ${createChildStrategy}`,
+              `store family.id: ${currentFamilyDebug.storeFamilyId ?? 'null'}`,
+              `refreshFamily family.id: ${currentFamilyDebug.refreshedFamilyId ?? 'null'}`,
+              `GET /api/families payload: ${formatDebugPayload(currentFamilyDebug.rawFamilyPayload)}`,
+              `refreshFamily error: ${currentFamilyDebug.refreshFamilyError ?? 'none'}`,
+              `GET /api/families error: ${currentFamilyDebug.getFamilyError ?? 'none'}`,
+            ]
+          : ['Failed to collect family diagnostics.'];
+
+        setCreateChildError(`${baseErrorMessage}\n\nDiagnostics:\n${diagnostics.join('\n')}`);
+        return;
+      }
+
+      setCreateChildError(baseErrorMessage);
     } finally {
       setIsCreatingChild(false);
     }

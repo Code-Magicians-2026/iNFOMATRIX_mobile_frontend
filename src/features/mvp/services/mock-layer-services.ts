@@ -6,10 +6,12 @@ import type {
   PlanRequest,
   ProgressSummary,
   Quest,
+  QuestRewardType,
   QuestStatus,
   QuestStep,
   UserProfile,
 } from '@/shared/models/mvp-contracts.model';
+import { isQuestRewardType } from '@/shared/models/quest-reward.model';
 import {
   mockOfflineSeedAiResponses,
   mockOfflineSeedChildren,
@@ -66,6 +68,14 @@ export interface GeneratePlanMockInput {
 export interface GetPlansMockInput {
   targetUserId?: string;
   limit?: number;
+}
+
+export interface UpdateQuestRewardMockInput {
+  rewardType: QuestRewardType;
+  rewardTitle: string;
+  rewardDescription?: string;
+  rewardValue?: number | null;
+  rewardCurrencyOrUnit?: string | null;
 }
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -872,6 +882,33 @@ const syncQuestToPlans = (updatedQuest: Quest) => {
   }));
 };
 
+const normalizeQuestRewardUpdateInput = (
+  input: UpdateQuestRewardMockInput,
+): UpdateQuestRewardMockInput => {
+  if (!isQuestRewardType(input.rewardType)) {
+    throw new Error('Reward type is invalid.');
+  }
+
+  const rewardTitle = input.rewardTitle.trim();
+  if (!rewardTitle) {
+    throw new Error('Reward title is required.');
+  }
+
+  const rewardDescription = input.rewardDescription?.trim();
+  const rewardCurrencyOrUnit = input.rewardCurrencyOrUnit?.trim();
+
+  return {
+    rewardType: input.rewardType,
+    rewardTitle,
+    rewardDescription: rewardDescription || undefined,
+    rewardValue:
+      typeof input.rewardValue === 'number' && Number.isFinite(input.rewardValue)
+        ? Math.max(1, Math.round(input.rewardValue))
+        : null,
+    rewardCurrencyOrUnit: rewardCurrencyOrUnit || null,
+  };
+};
+
 const applyQuestCompletionReward = (quest: Quest) => {
   const progress = ensureProgressState(quest.assignedToUserId);
   progress.xp += quest.rewardXp;
@@ -936,6 +973,33 @@ const persistQuest = (questIndex: number, updatedQuest: Quest) => {
   ];
 
   syncQuestToPlans(updatedQuest);
+};
+
+export const updateQuestRewardMock = async (
+  questId: string,
+  input: UpdateQuestRewardMockInput,
+): Promise<Quest> => {
+  await wait(MOCK_DELAY_MS);
+
+  const questIndex = state.quests.findIndex((quest) => quest.id === questId);
+  if (questIndex < 0) {
+    throw new Error(`Quest '${questId}' was not found.`);
+  }
+
+  const currentQuest = normalizeQuest(state.quests[questIndex]);
+  if (isArchivedQuestStatus(currentQuest.status)) {
+    throw new Error('Reward is locked for completed quests.');
+  }
+
+  const normalizedInput = normalizeQuestRewardUpdateInput(input);
+  const updatedQuest = normalizeQuest({
+    ...currentQuest,
+    ...normalizedInput,
+    rewardUpdatedAt: nowIso(),
+  });
+
+  persistQuest(questIndex, updatedQuest);
+  return cloneQuest(updatedQuest);
 };
 
 export const toggleQuestStepMock = async (questId: string, stepId: string): Promise<Quest> => {

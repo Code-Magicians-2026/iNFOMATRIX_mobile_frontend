@@ -140,14 +140,18 @@ const pickFirstString = (
   return null;
 };
 
-const extractFamilySummary = (payload: unknown, depth = 0): FamilySummary | null => {
-  if (depth > 3 || payload === null || payload === undefined) {
+const extractFamilySummary = (
+  payload: unknown,
+  depth = 0,
+  withinFamilyBranch = false,
+): FamilySummary | null => {
+  if (depth > 4 || payload === null || payload === undefined) {
     return null;
   }
 
   if (Array.isArray(payload)) {
     for (const item of payload) {
-      const parsed = extractFamilySummary(item, depth + 1);
+      const parsed = extractFamilySummary(item, depth + 1, withinFamilyBranch);
       if (parsed) {
         return parsed;
       }
@@ -160,36 +164,55 @@ const extractFamilySummary = (payload: unknown, depth = 0): FamilySummary | null
     return null;
   }
 
-  const id = pickFirstString(payload, [
-    'id',
+  const explicitFamilyId = pickFirstString(payload, [
     'familyId',
     'familyID',
-    'Id',
+    'family_id',
     'FamilyId',
     'FamilyID',
+    'Family_Id',
   ]);
-  const name = pickFirstString(payload, ['name', 'familyName', 'Name', 'FamilyName']);
-  if (id || name) {
+  const explicitFamilyName = pickFirstString(payload, [
+    'familyName',
+    'family_name',
+    'FamilyName',
+    'Family_Name',
+  ]);
+  if (explicitFamilyId || explicitFamilyName) {
     return {
-      id: id ?? null,
-      name: name ?? null,
+      id: explicitFamilyId ?? null,
+      name: explicitFamilyName ?? null,
     };
   }
 
-  const nestedCandidates = [
-    payload.family,
-    payload.data,
-    payload.result,
-    payload.item,
-    payload.items,
-    payload.value,
+  const nestedCandidates: Array<{ value: unknown; nextWithinFamilyBranch: boolean }> = [
+    { value: payload.family, nextWithinFamilyBranch: true },
+    { value: payload.families, nextWithinFamilyBranch: true },
+    { value: payload.data, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.result, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.item, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.items, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.value, nextWithinFamilyBranch: withinFamilyBranch },
   ];
 
   for (const candidate of nestedCandidates) {
-    const parsed = extractFamilySummary(candidate, depth + 1);
+    const parsed = extractFamilySummary(
+      candidate.value,
+      depth + 1,
+      candidate.nextWithinFamilyBranch,
+    );
     if (parsed) {
       return parsed;
     }
+  }
+
+  const genericName = pickFirstString(payload, ['name', 'Name']);
+  const genericId = pickFirstString(payload, ['id', 'Id']);
+  if (genericName || (withinFamilyBranch && genericId)) {
+    return {
+      id: genericId ?? null,
+      name: genericName ?? null,
+    };
   }
 
   return null;

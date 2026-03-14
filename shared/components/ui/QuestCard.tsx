@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Quest } from '@/shared/models/mvp-contracts.model';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { getQuestRewardLabel } from '@/shared/models/quest-reward.model';
 
 type QuestCardProps = {
   quest: Quest;
@@ -21,6 +22,7 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
   const completedStepsCount =
     quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
   const isDone = isArchived || (stepsCount > 0 && completedStepsCount === stepsCount);
+  const rewardLabel = getQuestRewardLabel(quest);
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -54,6 +56,9 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
         </Text>
         <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
           Reward: +{quest.rewardXp} XP
+        </Text>
+        <Text style={[styles.rewardHighlight, { color: colors.text }]} allowFontScaling>
+          🎁 {rewardLabel}
         </Text>
       </View>
 
@@ -130,6 +135,10 @@ const getStyles = (isTablet: boolean) =>
     },
     metaText: {
       fontSize: isTablet ? 14 : 13,
+    },
+    rewardHighlight: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
     },
     footer: {
       flexDirection: 'row',

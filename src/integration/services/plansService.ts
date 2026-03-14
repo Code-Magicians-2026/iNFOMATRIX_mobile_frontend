@@ -8,6 +8,7 @@ import {
   syncMockLayerContextFromAuth,
 } from '@/src/integration/services/offline-mode';
 import type { GeneratedPlan, Quest, QuestStatus, QuestStep } from '@/shared/models/mvp-contracts.model';
+import { isQuestRewardType } from '@/shared/models/quest-reward.model';
 
 export type GeneratePlanInput = {
   targetUserId: string;
@@ -308,6 +309,12 @@ const buildQuestFromPayload = (
   const description =
     pickString(payload, ['description', 'details', 'text', 'content']) ??
     normalizedPrompt;
+  const rewardTypeCandidate = pickString(payload, ['rewardType', 'rewardKind', 'rewardCategory']);
+  const rewardType = isQuestRewardType(rewardTypeCandidate) ? rewardTypeCandidate : undefined;
+  const rewardTitle = pickString(payload, ['rewardTitle', 'rewardLabel']) ?? undefined;
+  const rewardDescription = pickString(payload, ['rewardDescription', 'rewardNote']) ?? undefined;
+  const rewardValue = pickNumber(payload, ['rewardValue']) ?? null;
+  const rewardCurrencyOrUnit = pickString(payload, ['rewardCurrencyOrUnit', 'rewardUnit']) ?? null;
   const steps = buildStepsFromPayload(payload, id, title, description, forcedStepCandidates);
   const completedStepsCount = steps.filter((step) => step.status === 'completed').length;
 
@@ -319,6 +326,11 @@ const buildQuestFromPayload = (
     category: pickString(payload, ['category', 'type']) ?? undefined,
     difficulty: pickString(payload, ['difficulty', 'level']) ?? 'medium',
     rewardXp: Math.max(1, Math.round(rewardXp)),
+    rewardType,
+    rewardTitle,
+    rewardDescription,
+    rewardValue,
+    rewardCurrencyOrUnit,
     estimatedMinutes: Math.max(1, Math.round(estimatedMinutes)),
     status: (() => {
       const rawStatus = pickString(payload, ['status', 'questStatus']);

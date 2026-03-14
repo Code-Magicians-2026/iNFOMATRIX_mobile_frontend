@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 import type { GeneratedPlan, Quest, QuestStep } from '@/shared/models/mvp-contracts.model';
+import { isQuestRewardType } from '@/shared/models/quest-reward.model';
 
 interface PlansState {
   plans: GeneratedPlan[];
@@ -68,6 +69,15 @@ const toQuest = (value: unknown, index: number): Quest | null => {
     category: isNonEmptyString(value.category) ? value.category : undefined,
     difficulty: isNonEmptyString(value.difficulty) ? value.difficulty : 'medium',
     rewardXp: typeof value.rewardXp === 'number' && Number.isFinite(value.rewardXp) ? value.rewardXp : 50,
+    rewardType: isQuestRewardType(value.rewardType) ? value.rewardType : undefined,
+    rewardTitle: isNonEmptyString(value.rewardTitle) ? value.rewardTitle.trim() : undefined,
+    rewardDescription: isNonEmptyString(value.rewardDescription) ? value.rewardDescription.trim() : undefined,
+    rewardValue:
+      typeof value.rewardValue === 'number' && Number.isFinite(value.rewardValue)
+        ? value.rewardValue
+        : null,
+    rewardCurrencyOrUnit: isNonEmptyString(value.rewardCurrencyOrUnit) ? value.rewardCurrencyOrUnit.trim() : null,
+    rewardUpdatedAt: isNonEmptyString(value.rewardUpdatedAt) ? value.rewardUpdatedAt : undefined,
     estimatedMinutes:
       typeof value.estimatedMinutes === 'number' && Number.isFinite(value.estimatedMinutes)
         ? value.estimatedMinutes

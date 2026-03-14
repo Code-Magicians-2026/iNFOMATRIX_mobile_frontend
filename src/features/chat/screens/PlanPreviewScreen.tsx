@@ -11,15 +11,30 @@ import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import {
   EmptyState,
   LoadingState,
+  QuestRewardEditor,
   ScreenContainer,
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
-import { plansService } from '@/src/integration/services';
+import {
+  buildQuestRewardFieldsFromDraft,
+  buildQuestRewardPreviewFromDraft,
+  createQuestRewardDraftFromQuest,
+  getQuestRewardLabel,
+  type QuestRewardDraft,
+} from '@/shared/models/quest-reward.model';
+import type { GeneratedPlan, Quest } from '@/shared/models/mvp-contracts.model';
+import { plansService, questsService } from '@/src/integration/services';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 type PlanPreviewRoute = RouteProp<AppStackParamList, 'PlanPreview'>;
 type PlanPreviewNavigation = NativeStackNavigationProp<AppStackParamList>;
+
+const createRewardDraftMap = (quests: Quest[]): Record<string, QuestRewardDraft> =>
+  quests.reduce<Record<string, QuestRewardDraft>>((result, quest) => {
+    result[quest.id] = createQuestRewardDraftFromQuest(quest);
+    return result;
+  }, {});
 
 const PlanPreviewScreen = () => {
   const route = useRoute<PlanPreviewRoute>();
@@ -38,7 +53,49 @@ const PlanPreviewScreen = () => {
   const [isRegenerating, setIsRegenerating] = React.useState(false);
   const [feedback, setFeedback] = React.useState<string | null>(null);
   const [screenError, setScreenError] = React.useState<string | null>(null);
+  const [rewardDraftsByQuestId, setRewardDraftsByQuestId] = React.useState<Record<string, QuestRewardDraft>>(
+    () => createRewardDraftMap(route.params.plan.quests),
+  );
+  const [dirtyRewardQuestIds, setDirtyRewardQuestIds] = React.useState<Record<string, true>>({});
   const canApprove = plan.status === 'draft';
+
+  React.useEffect(() => {
+    setRewardDraftsByQuestId(createRewardDraftMap(plan.quests));
+    setDirtyRewardQuestIds({});
+  }, [plan]);
+
+  const updateRewardDraft = React.useCallback(
+    (quest: Quest, nextDraft: QuestRewardDraft) => {
+      setRewardDraftsByQuestId((current) => ({
+        ...current,
+        [quest.id]: nextDraft,
+      }));
+      setDirtyRewardQuestIds((current) => ({
+        ...current,
+        [quest.id]: true,
+      }));
+    },
+    [],
+  );
+
+  const applyEditedRewardsAfterApprove = React.useCallback(async (approvedPlan: GeneratedPlan) => {
+    const editedQuestIds = Object.keys(dirtyRewardQuestIds);
+    if (editedQuestIds.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      editedQuestIds.map(async (questId) => {
+        const approvedQuest = approvedPlan.quests.find((quest) => quest.id === questId);
+        const draft = rewardDraftsByQuestId[questId];
+        if (!approvedQuest || !draft) {
+          return;
+        }
+
+        await questsService.updateQuestReward(approvedQuest.id, buildQuestRewardFieldsFromDraft(draft));
+      }),
+    );
+  }, [dirtyRewardQuestIds, rewardDraftsByQuestId]);
 
   const handleApprove = async () => {
     if (!canApprove) {
@@ -49,6 +106,7 @@ const PlanPreviewScreen = () => {
     try {
       setScreenError(null);
       const approved = await plansService.approvePlan(plan.id);
+      await applyEditedRewardsAfterApprove(approved);
       setPlan(approved);
       const targetChildId =
         approved.quests.find((quest) => quest.assignedToUserId.trim().length > 0)?.assignedToUserId.trim() ?? null;
@@ -108,47 +166,80 @@ const PlanPreviewScreen = () => {
 
         <StatCard title="Quests" subtitle={`${plan.quests.length} generated quests`} style={styles.card}>
           {plan.quests.length > 0 ? (
-            plan.quests.map((quest) => (
-              <View key={quest.id} style={[styles.questItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                <Text style={[styles.questTitle, { color: colors.text }]} allowFontScaling>
-                  {quest.title}
-                </Text>
-                <Text style={[styles.questDescription, { color: colors.textSecondary }]} allowFontScaling>
-                  {quest.description}
-                </Text>
-                <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  Difficulty: {quest.difficulty}
-                </Text>
-                <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  Reward XP: {quest.rewardXp}
-                </Text>
-                <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  Estimated minutes: {quest.estimatedMinutes}
-                </Text>
+            plan.quests.map((quest) => {
+              const rewardDraft =
+                rewardDraftsByQuestId[quest.id] ?? createQuestRewardDraftFromQuest(quest);
+              const rewardPreview = buildQuestRewardPreviewFromDraft(rewardDraft);
 
-                {(quest.steps?.length ?? 0) > 0 ? (
-                  <View style={styles.stepsWrap}>
-                    <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
-                      Steps
-                    </Text>
-                    {[...(quest.steps ?? [])]
-                      .sort((left, right) => left.order - right.order)
-                      .map((step, index) => (
-                        <View key={step.id} style={[styles.stepItem, { borderColor: colors.border }]}>
-                          <Text style={[styles.stepTitle, { color: colors.text }]} allowFontScaling>
-                            {index + 1}. {step.title}
-                          </Text>
-                          {step.description ? (
-                            <Text style={[styles.stepDescription, { color: colors.textSecondary }]} allowFontScaling>
-                              {step.description}
+              return (
+                <View key={quest.id} style={[styles.questItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                  <Text style={[styles.questTitle, { color: colors.text }]} allowFontScaling>
+                    {quest.title}
+                  </Text>
+                  <Text style={[styles.questDescription, { color: colors.textSecondary }]} allowFontScaling>
+                    {quest.description}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Difficulty: {quest.difficulty}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Reward XP: {quest.rewardXp}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.text }]} allowFontScaling>
+                    🎁 {canApprove ? rewardPreview : getQuestRewardLabel(quest)}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Active reward: {canApprove ? rewardPreview : getQuestRewardLabel(quest)}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Estimated minutes: {quest.estimatedMinutes}
+                  </Text>
+
+                  {canApprove ? (
+                    <QuestRewardEditor
+                      draft={rewardDraft}
+                      previewText={rewardPreview}
+                      onChangeType={(type) => {
+                        const nextDraft: QuestRewardDraft = {
+                          type,
+                          valueInput: '',
+                          noteInput: rewardDraft.noteInput,
+                        };
+                        updateRewardDraft(quest, nextDraft);
+                      }}
+                      onChangeValue={(value) => {
+                        updateRewardDraft(quest, { ...rewardDraft, valueInput: value });
+                      }}
+                      onChangeNote={(value) => {
+                        updateRewardDraft(quest, { ...rewardDraft, noteInput: value });
+                      }}
+                    />
+                  ) : null}
+
+                  {(quest.steps?.length ?? 0) > 0 ? (
+                    <View style={styles.stepsWrap}>
+                      <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                        Steps
+                      </Text>
+                      {[...(quest.steps ?? [])]
+                        .sort((left, right) => left.order - right.order)
+                        .map((step, index) => (
+                          <View key={step.id} style={[styles.stepItem, { borderColor: colors.border }]}>
+                            <Text style={[styles.stepTitle, { color: colors.text }]} allowFontScaling>
+                              {index + 1}. {step.title}
                             </Text>
-                          ) : null}
-                        </View>
-                      ))}
-                  </View>
-                ) : null}
-              </View>
-            ))
+                            {step.description ? (
+                              <Text style={[styles.stepDescription, { color: colors.textSecondary }]} allowFontScaling>
+                                {step.description}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ))}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })
           ) : (
             <EmptyState title="No quests generated" description="Regenerate plan to create quests." />
           )}

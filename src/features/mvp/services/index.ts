@@ -17,6 +17,7 @@ export {
   setMockMeId,
   syncApprovedPlanQuestsMock,
   toggleQuestStepMock,
+  updateQuestRewardMock,
 } from './mock-layer-services';
 
 export type {
@@ -24,6 +25,7 @@ export type {
   GeneratePlanMockInput,
   GetPlansMockInput,
   MockLayerSnapshot,
+  UpdateQuestRewardMockInput,
 } from './mock-layer-services';
 
 export {

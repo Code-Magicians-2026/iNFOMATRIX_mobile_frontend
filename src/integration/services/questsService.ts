@@ -1,18 +1,32 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
-import { completeQuestMock, getQuestsMock, toggleQuestStepMock } from '@/src/features/mvp/services';
+import {
+  completeQuestMock,
+  getQuestsMock,
+  toggleQuestStepMock,
+  updateQuestRewardMock,
+} from '@/src/features/mvp/services';
 import {
   isOfflineTestingModeEnabled,
   persistOfflineStateIfEnabled,
   syncMockLayerContextFromAuth,
 } from '@/src/integration/services/offline-mode';
-import type { Quest, QuestStep } from '@/shared/models/mvp-contracts.model';
+import type { Quest, QuestRewardType, QuestStep } from '@/shared/models/mvp-contracts.model';
+import { isQuestRewardType } from '@/shared/models/quest-reward.model';
 
 const hasAuthenticatedSession = () => Boolean(useAuthStore.getState().session?.accessToken);
 
 const isArchivedQuest = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
 
 const nowIso = () => new Date().toISOString();
+
+export type UpdateQuestRewardInput = {
+  rewardType: QuestRewardType;
+  rewardTitle: string;
+  rewardDescription?: string;
+  rewardValue?: number | null;
+  rewardCurrencyOrUnit?: string | null;
+};
 
 const buildDefaultSteps = (quest: Quest): QuestStep[] => [
   {
@@ -118,6 +132,31 @@ const getQuestsFromPlansCache = (userId: string): Quest[] => {
   return sortQuests(quests);
 };
 
+const normalizeQuestRewardUpdateInput = (input: UpdateQuestRewardInput): UpdateQuestRewardInput => {
+  if (!isQuestRewardType(input.rewardType)) {
+    throw new Error('Reward type is invalid.');
+  }
+
+  const rewardTitle = input.rewardTitle.trim();
+  if (!rewardTitle) {
+    throw new Error('Reward title is required.');
+  }
+
+  const rewardDescription = input.rewardDescription?.trim();
+  const rewardCurrencyOrUnit = input.rewardCurrencyOrUnit?.trim();
+
+  return {
+    rewardType: input.rewardType,
+    rewardTitle,
+    rewardDescription: rewardDescription || undefined,
+    rewardValue:
+      typeof input.rewardValue === 'number' && Number.isFinite(input.rewardValue)
+        ? Math.max(1, Math.round(input.rewardValue))
+        : null,
+    rewardCurrencyOrUnit: rewardCurrencyOrUnit || null,
+  };
+};
+
 export const questsService = {
   getQuests: async (userId: string): Promise<Quest[]> => {
     if (isOfflineTestingModeEnabled()) {
@@ -220,6 +259,41 @@ export const questsService = {
       completedAt: isDone ? (normalizedQuest.completedAt ?? doneAt) : undefined,
       archivedAt: isDone ? (normalizedQuest.archivedAt ?? doneAt) : undefined,
     };
+
+    await persistUpdatedQuestToPlansCache(updatedQuest);
+    return updatedQuest;
+  },
+
+  updateQuestReward: async (questId: string, input: UpdateQuestRewardInput): Promise<Quest> => {
+    const normalizedInput = normalizeQuestRewardUpdateInput(input);
+
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      const updated = await updateQuestRewardMock(questId, normalizedInput);
+      await persistOfflineStateIfEnabled();
+      return updated;
+    }
+
+    const planQuest = usePlansStore
+      .getState()
+      .getPlans()
+      .flatMap((plan) => plan.quests)
+      .find((quest) => quest.id === questId);
+
+    if (!planQuest) {
+      throw new Error(`Quest '${questId}' was not found.`);
+    }
+
+    const normalizedQuest = normalizeQuestForLocal(planQuest);
+    if (isArchivedQuest(normalizedQuest)) {
+      throw new Error('Reward is locked for completed quests.');
+    }
+
+    const updatedQuest: Quest = normalizeQuestForLocal({
+      ...normalizedQuest,
+      ...normalizedInput,
+      rewardUpdatedAt: nowIso(),
+    });
 
     await persistUpdatedQuestToPlansCache(updatedQuest);
     return updatedQuest;

@@ -198,6 +198,63 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().selectedChildId).toBeNull();
   });
 
+  it('refreshFamily prefers nested family object over unrelated root id', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+    });
+
+    getFamilyRequestMock.mockResolvedValue({
+      id: '1f3c6100-3c87-4ff7-a0ef-91a3d6f6744b',
+      family: {
+        id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+        name: 'Horizon Family',
+      },
+    });
+
+    const family = await useAuthStore.getState().refreshFamily();
+
+    expect(family).toEqual({
+      id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+      name: 'Horizon Family',
+    });
+    expect(useAuthStore.getState().family).toEqual(family);
+  });
+
+  it('refreshFamily maps snake_case family payload', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+    });
+
+    getFamilyRequestMock.mockResolvedValue({
+      data: {
+        family_id: 'e8e2e60c-1af2-41af-9059-f9011d0de581',
+        family_name: 'Atlas Family',
+      },
+    });
+
+    const family = await useAuthStore.getState().refreshFamily();
+
+    expect(family).toEqual({
+      id: 'e8e2e60c-1af2-41af-9059-f9011d0de581',
+      name: 'Atlas Family',
+    });
+    expect(useAuthStore.getState().family).toEqual(family);
+  });
+
   it('completePasswordReset stores session using API email', async () => {
     resetPasswordRequestMock.mockResolvedValue({
       accessToken: 'access',

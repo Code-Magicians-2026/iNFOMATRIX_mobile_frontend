@@ -48,6 +48,7 @@ export interface PlanRequest {
 export type QuestStepStatus = 'pending' | 'completed';
 
 export type QuestStatus = 'draft' | 'active' | 'completed' | 'archived';
+export type QuestRewardType = 'money' | 'screen_time' | 'treat' | 'activity' | 'custom';
 
 export interface QuestStep {
   id: string;
@@ -68,6 +69,12 @@ export interface Quest {
   category?: string;
   difficulty: string;
   rewardXp: number;
+  rewardType?: QuestRewardType;
+  rewardTitle?: string;
+  rewardDescription?: string;
+  rewardValue?: number | null;
+  rewardCurrencyOrUnit?: string | null;
+  rewardUpdatedAt?: string;
   estimatedMinutes: number;
   status: QuestStatus;
   stepsCount?: number;
