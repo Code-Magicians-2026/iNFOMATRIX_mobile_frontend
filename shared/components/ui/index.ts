@@ -1,4 +1,5 @@
 export { default as EmptyState } from './EmptyState';
+export { default as CompletionBadge } from './CompletionBadge';
 export { default as LoadingState } from './LoadingState';
 export { default as PrimaryButton } from './PrimaryButton';
 export { default as QuestCard } from './QuestCard';
