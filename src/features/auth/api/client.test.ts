@@ -30,6 +30,26 @@ describe('request', () => {
     expect(headers.get('Content-Type')).toBe('application/json');
   });
 
+  it('does not force content-type for multipart form data requests', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(createResponse(200, { ok: true }, 'application/json'));
+
+    const body = new FormData();
+    body.append('prompt', 'hello');
+
+    await request('/api/test', {
+      method: 'POST',
+      body,
+    });
+
+    const [, options] = fetchMock.mock.calls[0];
+    const headers = options?.headers as Headers;
+
+    expect(headers.get('Accept')).toBe('application/json');
+    expect(headers.get('Content-Type')).toBeNull();
+  });
+
   it('returns undefined on 204', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
 

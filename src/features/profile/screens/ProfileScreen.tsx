@@ -1,28 +1,150 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import type { AppStackParamList } from '@/src/navigation/AppNavigator';
-import { ThemeColors } from '@/shared/styles/theme';
-import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import useThemeStore from '@/context/Theme-store';
+import type { AppStackParamList } from '@/src/navigation/AppNavigator';
+import type { ProgressSummary, UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
+import {
+  EmptyState,
+  LoadingState,
+  PrimaryButton,
+  ScreenContainer,
+  SectionHeader,
+  StatCard,
+} from '@/shared/components/ui';
+import {
+  childrenService,
+  demoModeService,
+  plansService,
+  progressService,
+  userService,
+  type DemoScenario,
+  type DemoScenarioKey,
+} from '@/src/integration/services';
 
-type ProfileNavigation = NativeStackNavigationProp<AppStackParamList, 'Profile'>;
+type ProfileNavigation = NativeStackNavigationProp<AppStackParamList>;
+
+const XP_PER_LEVEL = 300;
+
+const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
+  if (role === 'adult') {
+    return 'adult-1';
+  }
+
+  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
+    return currentUserId;
+  }
+
+  return 'child-1';
+};
+
+const toMetricLabel = (value: string) => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return 'Quests';
+  }
+
+  return normalized[0].toUpperCase() + normalized.slice(1);
+};
 
 const ProfileScreen = () => {
   const navigation = useNavigation<ProfileNavigation>();
   const colors = useThemeStore((s) => s.colors);
-  const isDark = useThemeStore((s) => s.isDark);
-  const { cardMaxWidth, isLandscape, isTablet, spacing } = useResponsiveLayout();
+  const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
+
   const session = useAuthStore((s) => s.session);
+  const role = useAuthStore((s) => s.role);
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const setRole = useAuthStore((s) => s.setRole);
+  const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const logout = useAuthStore((s) => s.logout);
-  const styles = React.useMemo(
-    () => getStyles(colors, isDark, spacing, cardMaxWidth, isTablet, isLandscape),
-    [cardMaxWidth, colors, isDark, isLandscape, isTablet, spacing],
-  );
+
+  const effectiveRole: UserRole = role ?? 'child';
+
+  const styles = React.useMemo(() => getStyles(cardMaxWidth, isTablet, spacing), [cardMaxWidth, isTablet, spacing]);
+
+  const [me, setMe] = React.useState<UserProfile | null>(null);
+  const [progress, setProgress] = React.useState<ProgressSummary | null>(null);
+  const [childrenCount, setChildrenCount] = React.useState(0);
+  const [plansCount, setPlansCount] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [screenError, setScreenError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isDemoModalVisible, setIsDemoModalVisible] = React.useState(false);
+  const [applyingScenarioKey, setApplyingScenarioKey] = React.useState<DemoScenarioKey | null>(null);
+  const [demoError, setDemoError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!role) {
+      void setRole('child');
+    }
+  }, [role, setRole]);
+
+  const loadProfile = React.useCallback(async (showLoader = false) => {
+    if (showLoader) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    try {
+      setScreenError(null);
+
+      const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
+      try {
+        userService.setCurrentUserId(targetMockUserId);
+      } catch {
+        userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+      }
+
+      const meData = await userService.getMe();
+      const progressData = await progressService.getProgress(meData.id);
+
+      setMe(meData);
+      setProgress(progressData);
+
+      if (effectiveRole === 'adult') {
+        const [childrenData, plansData] = await Promise.all([
+          childrenService.getChildren(),
+          plansService.getPlans(),
+        ]);
+        const childIds = new Set(childrenData.map((child) => child.id));
+        const assignedPlans = plansData.filter((plan) =>
+          plan.quests.some((quest) => childIds.has(quest.assignedToUserId)),
+        );
+
+        setChildrenCount(childrenData.length);
+        setPlansCount(assignedPlans.length);
+      } else {
+        setChildrenCount(0);
+        setPlansCount(0);
+      }
+    } catch {
+      setScreenError('Failed to load profile progress. Please try again.');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [currentUser?.id, effectiveRole]);
+
+  React.useEffect(() => {
+    void loadProfile(true);
+  }, [loadProfile]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isLoading) {
+        void loadProfile(false);
+      }
+
+      return undefined;
+    }, [isLoading, loadProfile]),
+  );
 
   const onLogoutPress = async () => {
     setIsSubmitting(true);
@@ -33,192 +155,386 @@ const ProfileScreen = () => {
     }
   };
 
+  const handleApplyDemoScenario = async (scenario: DemoScenario) => {
+    setDemoError(null);
+    setApplyingScenarioKey(scenario.key);
+
+    try {
+      const result = await demoModeService.activateScenario(scenario.key);
+
+      await setRole(result.role);
+      await setSelectedChildId(result.selectedChildId);
+
+      if (result.previewPlan && result.previewRequest && result.previewTargetLabel) {
+        navigation.navigate('PlanPreview', {
+          plan: result.previewPlan,
+          request: result.previewRequest,
+          targetLabel: result.previewTargetLabel,
+        });
+      }
+
+      await loadProfile(false);
+      setIsDemoModalVisible(false);
+    } catch {
+      setDemoError('Failed to apply demo scenario. Please try again.');
+    } finally {
+      setApplyingScenarioKey(null);
+    }
+  };
+
+  const level = progress?.level ?? me?.level ?? 1;
+  const totalXp = progress?.xp ?? me?.xp ?? 0;
+  const streak = progress?.streak ?? me?.streak ?? 0;
+  const completedQuests = progress?.completedQuestsCount ?? 0;
+  const activeQuests = progress?.activeQuestsCount ?? 0;
+
+  const levelStartXp = Math.max(0, (level - 1) * XP_PER_LEVEL);
+  const levelProgressPercent = Math.max(
+    0,
+    Math.min(100, Math.round(((totalXp - levelStartXp) / XP_PER_LEVEL) * 100)),
+  );
+  const xpToNextLevel = Math.max(0, level * XP_PER_LEVEL - totalXp);
+
+  const categoryStats = React.useMemo(
+    () =>
+      Object.entries(progress?.stats ?? {})
+        .filter(([, count]) => count > 0)
+        .sort((left, right) => right[1] - left[1]),
+    [progress?.stats],
+  );
+
+  const strongestMetric = categoryStats[0];
+
+  const childBadges = React.useMemo(() => {
+    const badges: string[] = [];
+
+    if (completedQuests >= 1) {
+      badges.push('First Quest');
+    }
+    if (streak >= 3) {
+      badges.push('Consistency');
+    }
+    if (totalXp >= 500) {
+      badges.push('XP Hunter');
+    }
+    if ((strongestMetric?.[1] ?? 0) >= 3) {
+      badges.push(`${toMetricLabel(strongestMetric?.[0] ?? 'quests')} Specialist`);
+    }
+
+    return badges;
+  }, [completedQuests, streak, strongestMetric, totalXp]);
+
+  if (isLoading) {
+    return (
+      <ScreenContainer centered>
+        <LoadingState label="Loading profile progress..." />
+      </ScreenContainer>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {session ? (
-          <View
-            style={styles.accountCard}
-            accessible
-            importantForAccessibility="yes"
-            accessibilityLabel={`Поточний користувач ${session.email}`}
-          >
-            <Text style={styles.accountLabel} allowFontScaling>
-              Ви увійшли як
+    <ScreenContainer>
+      <SectionHeader
+        title="Profile"
+        subtitle={
+          effectiveRole === 'adult'
+            ? 'Adult progress and family overview'
+            : 'Child progress and achievements'
+        }
+      />
+
+      {screenError ? <EmptyState title="Profile error" description={screenError} /> : null}
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <StatCard title={me?.fullName ?? 'Profile'} subtitle={me?.email ?? 'local profile'} style={styles.card}>
+          <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+            Role: {effectiveRole}
+          </Text>
+          <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+            Total XP: {totalXp}
+          </Text>
+          <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+            Level: {level}
+          </Text>
+          <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+            Streak: {streak}
+          </Text>
+          <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+            Completed quests: {completedQuests}
+          </Text>
+          <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+            Active quests: {activeQuests}
+          </Text>
+        </StatCard>
+
+        <StatCard title="Quest Stats" subtitle="Completed quest metrics" style={styles.card}>
+          {categoryStats.length > 0 ? (
+            categoryStats.map(([metric, count]) => (
+              <Text key={metric} style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+                {toMetricLabel(metric)}: {count}
+              </Text>
+            ))
+          ) : (
+            <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+              Complete quests to build quest stats.
             </Text>
-            <Text style={styles.accountEmail} allowFontScaling>
+          )}
+        </StatCard>
+
+        {effectiveRole === 'adult' ? (
+          <StatCard title="Family Overview" subtitle="Adult-only metrics" style={styles.card}>
+            <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+              Children count: {childrenCount}
+            </Text>
+            <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+              Plans count: {plansCount}
+            </Text>
+          </StatCard>
+        ) : (
+          <StatCard title="Child Progress" subtitle="Level growth and achievements" style={styles.card}>
+            <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+              Progress to next level: {levelProgressPercent}% ({xpToNextLevel} XP left)
+            </Text>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View style={[styles.progressFill, { width: `${levelProgressPercent}%` }]} />
+            </View>
+
+            <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+              Top quest metric: {strongestMetric ? toMetricLabel(strongestMetric[0]) : 'Not enough data'}
+            </Text>
+
+            <View style={styles.badgesWrap}>
+              {childBadges.length > 0 ? (
+                childBadges.map((badge) => (
+                  <View key={badge} style={[styles.badge, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                    <Text style={[styles.badgeText, { color: colors.text }]} allowFontScaling>
+                      {badge}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+                  Complete quests to unlock your first achievement.
+                </Text>
+              )}
+            </View>
+          </StatCard>
+        )}
+
+        <StatCard title="Demo Mode" subtitle="Prepared scenarios for full walkthrough" style={styles.card}>
+          <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+            Use predefined states when backend is unavailable or unstable.
+          </Text>
+          <PrimaryButton
+            label="Open demo scenarios"
+            variant="tertiary"
+            onPress={() => setIsDemoModalVisible(true)}
+            style={styles.scenarioButton}
+          />
+          {demoError ? (
+            <Text style={styles.errorText} allowFontScaling>
+              {demoError}
+            </Text>
+          ) : null}
+        </StatCard>
+
+        <StatCard
+          title={session ? 'Signed in account' : 'Guest mode'}
+          subtitle={session ? 'Session active' : 'Sign in to sync progress'}
+          style={styles.card}
+        >
+          {session ? (
+            <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
               {session.email}
             </Text>
-          </View>
-        ) : null}
+          ) : (
+            <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+              Use login or registration to sync profile data.
+            </Text>
+          )}
+        </StatCard>
 
         {session ? (
-          <Pressable
+          <PrimaryButton
+            label="Вийти"
             onPress={() => {
               void onLogoutPress();
             }}
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-            disabled={isSubmitting}
-            accessibilityRole="button"
-            accessibilityLabel="Вийти з акаунта"
-            accessibilityHint="Завершує поточну сесію користувача"
-            accessibilityState={{ disabled: isSubmitting }}
-            importantForAccessibility="yes"
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.primaryButtonText} allowFontScaling>
-                Вийти
-              </Text>
-            )}
-          </Pressable>
+            loading={isSubmitting}
+            style={styles.card}
+          />
         ) : (
           <>
-            <Pressable
+            <PrimaryButton
+              label="Увійти"
               onPress={() => navigation.navigate('Login', { redirectTo: 'Profile' })}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-              accessibilityRole="button"
-              accessibilityLabel="Увійти"
-              accessibilityHint="Відкриває екран входу"
-              importantForAccessibility="yes"
-            >
-              <Text style={styles.primaryButtonText} allowFontScaling>
-                Увійти
-              </Text>
-            </Pressable>
-
-            <Pressable
+              style={styles.card}
+            />
+            <PrimaryButton
+              label="Реєстрація"
+              variant="secondary"
               onPress={() =>
                 navigation.navigate('Registration', {
                   redirectTo: 'Profile',
                 })
               }
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-              accessibilityRole="button"
-              accessibilityLabel="Реєстрація"
-              accessibilityHint="Відкриває екран реєстрації"
-              importantForAccessibility="yes"
-            >
-              <Text style={styles.secondaryButtonText} allowFontScaling>
-                Реєстрація
-              </Text>
-            </Pressable>
+              style={styles.card}
+            />
           </>
         )}
 
-        <Pressable
+        <PrimaryButton
+          label={isRefreshing ? 'Refreshing...' : 'Refresh progress'}
+          variant="tertiary"
+          disabled={isRefreshing}
+          onPress={() => {
+            void loadProfile(false);
+          }}
+          style={styles.card}
+        />
+
+        <PrimaryButton
+          label="Налаштування"
+          variant="secondary"
           onPress={() => navigation.navigate('Settings')}
-          style={({ pressed }) => [styles.tertiaryButton, pressed && styles.pressed]}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-          accessibilityRole="button"
-          accessibilityLabel="Налаштування"
-          accessibilityHint="Відкриває екран налаштувань"
-          importantForAccessibility="yes"
-        >
-          <Text style={styles.tertiaryButtonText} allowFontScaling>
-            Налаштування
-          </Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
+          style={styles.card}
+        />
+      </ScrollView>
+
+      <Modal
+        visible={isDemoModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsDemoModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <SectionHeader title="Demo Scenarios" subtitle="One tap setup for jury demo" />
+            <ScrollView contentContainerStyle={styles.modalContent}>
+              {demoModeService.scenarios.map((scenario) => {
+                const isApplying = applyingScenarioKey === scenario.key;
+                return (
+                  <View key={scenario.key} style={[styles.scenarioItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                    <Text style={[styles.scenarioTitle, { color: colors.text }]} allowFontScaling>
+                      {scenario.title}
+                    </Text>
+                    <Text style={[styles.scenarioDescription, { color: colors.textSecondary }]} allowFontScaling>
+                      {scenario.description}
+                    </Text>
+                    <PrimaryButton
+                      label={isApplying ? 'Applying...' : 'Apply scenario'}
+                      loading={isApplying}
+                      disabled={Boolean(applyingScenarioKey)}
+                      onPress={() => {
+                        void handleApplyDemoScenario(scenario);
+                      }}
+                    />
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <PrimaryButton
+              label="Close"
+              variant="secondary"
+              disabled={Boolean(applyingScenarioKey)}
+              onPress={() => setIsDemoModalVisible(false)}
+            />
+          </View>
+        </View>
+      </Modal>
+    </ScreenContainer>
   );
 };
 
-const getStyles = (
-  colors: ThemeColors,
-  isDark: boolean,
-  spacing: number,
-  cardMaxWidth: number,
-  isTablet: boolean,
-  isLandscape: boolean,
-) =>
+const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
   StyleSheet.create({
-    safeArea: {
-      flex: 1,
-      backgroundColor: colors.background,
+    content: {
+      gap: 12,
+      paddingBottom: Math.max(16, Math.round(spacing * 1.1)),
     },
-    container: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 14,
-      paddingHorizontal: spacing,
-    },
-    accountCard: {
+    card: {
       width: '100%',
-      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
-      backgroundColor: colors.card,
+      maxWidth: cardMaxWidth,
+      alignSelf: 'center',
+    },
+    metricText: {
+      fontSize: isTablet ? 16 : 14,
+      fontWeight: '600',
+    },
+    scenarioButton: {
+      marginTop: 4,
+    },
+    errorText: {
+      color: '#d93a5a',
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '600',
+      marginTop: 4,
+    },
+    progressTrack: {
+      height: 10,
+      borderRadius: 999,
+      overflow: 'hidden',
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 999,
+      backgroundColor: '#ff2d55',
+    },
+    badgesWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 2,
+    },
+    badge: {
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: isTablet ? 14 : 12,
-      paddingVertical: isTablet ? 18 : 16,
-      paddingHorizontal: isTablet ? 16 : 14,
-      gap: 6,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
       elevation: 1,
     },
-    accountLabel: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      textAlign: 'center',
-    },
-    accountEmail: {
-      fontSize: 16,
-      color: colors.text,
-      textAlign: 'center',
+    badgeText: {
+      fontSize: isTablet ? 14 : 13,
       fontWeight: '700',
     },
-    primaryButton: {
-      width: '100%',
-      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
-      backgroundColor: '#ff2d55',
-      paddingVertical: 14,
-      borderRadius: 10,
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.45)',
       alignItems: 'center',
       justifyContent: 'center',
-      elevation: 2,
+      paddingHorizontal: spacing,
+      paddingVertical: spacing,
     },
-    primaryButtonText: {
-      textAlign: 'center',
-      color: '#ffffff',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    secondaryButton: {
+    modalCard: {
       width: '100%',
-      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
-      backgroundColor: colors.card,
+      maxWidth: cardMaxWidth + 60,
+      maxHeight: '90%',
       borderWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 14,
+      borderRadius: 14,
+      padding: isTablet ? 18 : 14,
+      gap: 10,
+      elevation: 4,
+    },
+    modalContent: {
+      gap: 10,
+      paddingBottom: 4,
+    },
+    scenarioItem: {
+      borderWidth: 1,
       borderRadius: 10,
+      padding: 10,
+      gap: 8,
       elevation: 1,
     },
-    secondaryButtonText: {
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: '600',
+    scenarioTitle: {
+      fontSize: isTablet ? 16 : 14,
+      fontWeight: '700',
     },
-    tertiaryButton: {
-      width: '100%',
-      maxWidth: isLandscape ? cardMaxWidth + 40 : cardMaxWidth,
-      backgroundColor: isDark ? '#2f2f31' : '#e9e9ee',
-      paddingVertical: 14,
-      borderRadius: 10,
-      elevation: 1,
-    },
-    tertiaryButtonText: {
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    pressed: {
-      opacity: 0.9,
+    scenarioDescription: {
+      fontSize: isTablet ? 14 : 12,
+      fontWeight: '500',
     },
   });
 
