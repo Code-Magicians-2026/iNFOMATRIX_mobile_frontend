@@ -125,6 +125,28 @@ const PlanPreviewScreen = () => {
                 <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
                   Estimated minutes: {quest.estimatedMinutes}
                 </Text>
+
+                {(quest.steps?.length ?? 0) > 0 ? (
+                  <View style={styles.stepsWrap}>
+                    <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                      Steps
+                    </Text>
+                    {[...(quest.steps ?? [])]
+                      .sort((left, right) => left.order - right.order)
+                      .map((step, index) => (
+                        <View key={step.id} style={[styles.stepItem, { borderColor: colors.border }]}>
+                          <Text style={[styles.stepTitle, { color: colors.text }]} allowFontScaling>
+                            {index + 1}. {step.title}
+                          </Text>
+                          {step.description ? (
+                            <Text style={[styles.stepDescription, { color: colors.textSecondary }]} allowFontScaling>
+                              {step.description}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))}
+                  </View>
+                ) : null}
               </View>
             ))
           ) : (
@@ -217,6 +239,29 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     questMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
+    },
+    stepsWrap: {
+      marginTop: 8,
+      gap: 6,
+    },
+    stepsHeading: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
+    },
+    stepItem: {
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      gap: 2,
+    },
+    stepTitle: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '700',
+    },
+    stepDescription: {
+      fontSize: isTablet ? 12 : 11,
+      lineHeight: isTablet ? 17 : 15,
     },
     totalMinutes: {
       fontSize: isTablet ? 22 : 20,

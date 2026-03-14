@@ -769,7 +769,12 @@ const QuestsScreen = () => {
                   Steps
                 </Text>
 
-                <View style={styles.stepsList}>
+                <ScrollView
+                  style={styles.stepsScroll}
+                  contentContainerStyle={styles.stepsList}
+                  showsVerticalScrollIndicator
+                  nestedScrollEnabled
+                >
                   {[...(detailsQuest.steps ?? [])]
                     .sort((left, right) => left.order - right.order)
                     .map((step) => {
@@ -824,7 +829,7 @@ const QuestsScreen = () => {
                         </Pressable>
                       );
                     })}
-                </View>
+                </ScrollView>
 
                 {isQuestArchived(detailsQuest) ? (
                   <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
@@ -1015,6 +1020,9 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     stepsHeading: {
       fontSize: isTablet ? 18 : 16,
       fontWeight: '700',
+    },
+    stepsScroll: {
+      maxHeight: isTablet ? 300 : 240,
     },
     stepsList: {
       gap: 8,

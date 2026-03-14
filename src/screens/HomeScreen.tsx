@@ -63,6 +63,23 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
+const extractLastNameFromFullName = (fullName: string | null | undefined): string => {
+  if (!fullName) {
+    return '';
+  }
+
+  const parts = fullName
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0);
+
+  if (parts.length < 2) {
+    return '';
+  }
+
+  return parts[parts.length - 1] ?? '';
+};
+
 const isRecoverableCreateChildError = (error: unknown): boolean => {
   if (error instanceof ApiError) {
     return [400, 408, 409, 500, 502, 503, 504].includes(error.status);
@@ -259,6 +276,12 @@ const HomeScreen = () => {
     }
 
     resetCreateChildForm();
+    const userLastName =
+      extractLastNameFromFullName(currentUser?.fullName) ||
+      extractLastNameFromFullName(me?.fullName);
+    if (userLastName) {
+      setChildLastName(userLastName);
+    }
     setIsCreateChildModalVisible(true);
     void refreshFamily().catch(() => {});
   };
