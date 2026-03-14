@@ -59,6 +59,7 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 const STEP_TOGGLE_VIBRATION_PATTERN = [0, 45, 25, 65];
 const QUEST_VICTORY_VIBRATION_PATTERN = [0, 80, 60, 120, 80, 220];
+const QUESTS_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
 const isQuestArchived = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
 
@@ -116,6 +117,7 @@ const QuestsScreen = () => {
   const [isCompletionBadgeSpotlightVisible, setIsCompletionBadgeSpotlightVisible] = React.useState(false);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
+  const lastRefreshAtRef = React.useRef(0);
   const completionShakeX = React.useRef(new Animated.Value(0)).current;
   const completionScale = React.useRef(new Animated.Value(1)).current;
   const completionSpotlightScale = React.useRef(new Animated.Value(0.45)).current;
@@ -239,6 +241,7 @@ const QuestsScreen = () => {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      lastRefreshAtRef.current = Date.now();
     }
   }, [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId]);
 
@@ -248,7 +251,11 @@ const QuestsScreen = () => {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (!isLoading) {
+      const now = Date.now();
+      const isRefreshCooldownActive =
+        now - lastRefreshAtRef.current < QUESTS_FOCUS_REFRESH_COOLDOWN_MS;
+
+      if (!isLoading && !isRefreshCooldownActive) {
         void refreshData(false);
       }
 

@@ -36,6 +36,7 @@ const QUICK_PROMPTS = [
 
 const BRAND_RED = '#ff2d55';
 const BRAND_RED_BORDER = 'rgba(255, 45, 85, 0.48)';
+const CHAT_CONTEXT_REFRESH_COOLDOWN_MS = 5000;
 
 type TargetMode = 'myself' | 'child';
 
@@ -118,6 +119,7 @@ const AgentChatScreen = () => {
   const [contextError, setContextError] = React.useState<string | null>(null);
   const [generationError, setGenerationError] = React.useState<string | null>(null);
   const hasLoadedContextRef = React.useRef(false);
+  const lastContextRefreshAtRef = React.useRef(0);
 
   React.useEffect(() => {
     if (!role) {
@@ -210,16 +212,22 @@ const AgentChatScreen = () => {
       if (showLoader) {
         setIsLoading(false);
       }
+      lastContextRefreshAtRef.current = Date.now();
     }
   }, [currentUser, effectiveRole, selectedChildId, session?.accessToken, setSelectedChildId]);
 
   useFocusEffect(
     React.useCallback(() => {
       const shouldShowLoader = !hasLoadedContextRef.current;
+      const now = Date.now();
+      const isRefreshCooldownActive =
+        now - lastContextRefreshAtRef.current < CHAT_CONTEXT_REFRESH_COOLDOWN_MS;
       hasLoadedContextRef.current = true;
 
-      void loadBuilderContext(shouldShowLoader);
-      void refreshPermissionsState();
+      if (shouldShowLoader || !isRefreshCooldownActive) {
+        void loadBuilderContext(shouldShowLoader);
+        void refreshPermissionsState();
+      }
 
       return undefined;
     }, [loadBuilderContext, refreshPermissionsState]),

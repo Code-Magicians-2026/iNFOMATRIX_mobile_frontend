@@ -29,6 +29,7 @@ import {
 type ProfileNavigation = NativeStackNavigationProp<AppStackParamList>;
 
 const XP_PER_LEVEL = 300;
+const PROFILE_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
@@ -81,6 +82,7 @@ const ProfileScreen = () => {
   const [applyingScenarioKey, setApplyingScenarioKey] = React.useState<DemoScenarioKey | null>(null);
   const [demoError, setDemoError] = React.useState<string | null>(null);
   const isDemoModeEnabled = demoModeService.isEnabled();
+  const lastProfileRefreshAtRef = React.useRef(0);
 
   React.useEffect(() => {
     if (!role) {
@@ -138,6 +140,7 @@ const ProfileScreen = () => {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      lastProfileRefreshAtRef.current = Date.now();
     }
   }, [currentUser?.id, effectiveRole, refreshFamily, session]);
 
@@ -147,7 +150,11 @@ const ProfileScreen = () => {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (!isLoading) {
+      const now = Date.now();
+      const isRefreshCooldownActive =
+        now - lastProfileRefreshAtRef.current < PROFILE_FOCUS_REFRESH_COOLDOWN_MS;
+
+      if (!isLoading && !isRefreshCooldownActive) {
         void loadProfile(false);
       }
 
