@@ -21,13 +21,6 @@ import {
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
-import {
-  PLAN_BUILDER_INPUT_SCHEMA,
-  PLAN_BUILDER_OUTPUT_SCHEMA,
-  PLAN_BUILDER_SAFETY_RULES,
-  PLAN_BUILDER_SYSTEM_PROMPT,
-  PLAN_BUILDER_TONE_RULES,
-} from '@/src/features/chat/config/ai-transparency';
 import { cameraService, childrenService, plansService, userService } from '@/src/integration/services';
 import type { GeneratePlanInput } from '@/src/integration/services';
 import type { MediaPermissionState } from '@/src/integration/services/cameraService';
@@ -113,16 +106,6 @@ const AgentChatScreen = () => {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [contextError, setContextError] = React.useState<string | null>(null);
   const [generationError, setGenerationError] = React.useState<string | null>(null);
-  const [isTransparencyVisible, setIsTransparencyVisible] = React.useState(false);
-
-  const inputSchemaPreview = React.useMemo(
-    () => JSON.stringify(PLAN_BUILDER_INPUT_SCHEMA, null, 2),
-    [],
-  );
-  const outputSchemaPreview = React.useMemo(
-    () => JSON.stringify(PLAN_BUILDER_OUTPUT_SCHEMA, null, 2),
-    [],
-  );
 
   React.useEffect(() => {
     if (!role) {
@@ -805,13 +788,6 @@ const AgentChatScreen = () => {
           </View>
         </StatCard>
 
-        <PrimaryButton
-          label="AI Transparency (Debug)"
-          variant="tertiary"
-          onPress={() => setIsTransparencyVisible(true)}
-          style={styles.card}
-        />
-
         <Pressable
           onPress={() => {
             void handleGeneratePlan();
@@ -834,63 +810,6 @@ const AgentChatScreen = () => {
         </View>
       </Modal>
 
-      <Modal
-        visible={isTransparencyVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsTransparencyVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SectionHeader
-              title="AI Transparency"
-              subtitle="System prompt, schemas, and safety constraints"
-            />
-
-            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-              <StatCard title="System Prompt Preview" subtitle="Instruction layer">
-                <Text style={[styles.codeText, { color: colors.text }]} allowFontScaling>
-                  {PLAN_BUILDER_SYSTEM_PROMPT}
-                </Text>
-              </StatCard>
-
-              <StatCard title="Input Schema" subtitle="Prompt contract">
-                <Text style={[styles.codeText, { color: colors.text }]} allowFontScaling>
-                  {inputSchemaPreview}
-                </Text>
-              </StatCard>
-
-              <StatCard title="Expected Output Schema" subtitle="Structured plan shape">
-                <Text style={[styles.codeText, { color: colors.text }]} allowFontScaling>
-                  {outputSchemaPreview}
-                </Text>
-              </StatCard>
-
-              <StatCard title="Safety Rules" subtitle="Policy constraints">
-                {PLAN_BUILDER_SAFETY_RULES.map((rule) => (
-                  <Text key={rule} style={[styles.ruleText, { color: colors.text }]} allowFontScaling>
-                    - {rule}
-                  </Text>
-                ))}
-              </StatCard>
-
-              <StatCard title="Child-Friendly Tone Rules" subtitle="Response style guardrails">
-                {PLAN_BUILDER_TONE_RULES.map((rule) => (
-                  <Text key={rule} style={[styles.ruleText, { color: colors.text }]} allowFontScaling>
-                    - {rule}
-                  </Text>
-                ))}
-              </StatCard>
-            </ScrollView>
-
-            <PrimaryButton
-              label="Close"
-              variant="secondary"
-              onPress={() => setIsTransparencyVisible(false)}
-            />
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 };
@@ -1124,16 +1043,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       paddingHorizontal: spacing,
       paddingVertical: spacing,
     },
-    modalCard: {
-      width: "100%",
-      maxWidth: cardMaxWidth + 60,
-      maxHeight: "90%",
-      borderRadius: 14,
-      borderWidth: 1,
-      padding: isTablet ? 18 : 14,
-      gap: 10,
-      elevation: 4,
-    },
     loadingCard: {
       width: "100%",
       maxWidth: cardMaxWidth,
@@ -1141,24 +1050,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderRadius: 14,
       padding: isTablet ? 16 : 12,
       elevation: 4,
-    },
-    modalScroll: {
-      flexGrow: 0,
-    },
-    modalContent: {
-      gap: 10,
-      paddingBottom: 4,
-    },
-    codeText: {
-      fontFamily: "monospace",
-      fontSize: isTablet ? 13 : 12,
-      lineHeight: isTablet ? 19 : 17,
-      fontWeight: "500",
-    },
-    ruleText: {
-      fontSize: isTablet ? 14 : 13,
-      lineHeight: isTablet ? 20 : 18,
-      fontWeight: "500",
     },
   });
 

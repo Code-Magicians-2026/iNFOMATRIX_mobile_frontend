@@ -61,11 +61,13 @@ const HomeScreen = () => {
   );
 
   const role = useAuthStore((s) => s.role);
+  const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const registerChild = useAuthStore((s) => s.registerChild);
+  const refreshFamily = useAuthStore((s) => s.refreshFamily);
 
   const [me, setMe] = React.useState<UserProfile | null>(null);
   const [children, setChildren] = React.useState<ChildProfile[]>([]);
@@ -214,7 +216,16 @@ const HomeScreen = () => {
     setCreateChildError(null);
   };
 
-  const openCreateChildModal = () => {
+  const openCreateChildModal = async () => {
+    if (!session) {
+      setScreenError('Sign in first to create a child profile.');
+      return;
+    }
+
+    try {
+      await refreshFamily();
+    } catch {}
+
     resetCreateChildForm();
     setIsCreateChildModalVisible(true);
   };
@@ -247,34 +258,35 @@ const HomeScreen = () => {
       return;
     }
 
-    const parsedAge = Number(childAge.trim());
-    if (!Number.isFinite(parsedAge) || parsedAge < 3 || parsedAge > 18) {
-      setCreateChildError('Age must be between 3 and 18.');
-      return;
+    const normalizedAge = childAge.trim();
+    if (normalizedAge.length > 0) {
+      const parsedAge = Number(normalizedAge);
+      if (!Number.isFinite(parsedAge) || parsedAge < 3 || parsedAge > 18) {
+        setCreateChildError('Age must be between 3 and 18.');
+        return;
+      }
     }
-
-    const interests = childInterests
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
 
     setIsCreatingChild(true);
     setCreateChildError(null);
     try {
+      const existingChildIds = new Set(children.map((child) => child.id));
+
       await registerChild({
         firstName,
         lastName,
         password: childPassword,
       });
 
-      const createdChild = await childrenService.createChild({
-        fullName,
-        age: Math.round(parsedAge),
-        interests: interests.length > 0 ? interests : undefined,
-        notes: childNotes.trim() || undefined,
-      });
+      const refreshedChildren = await childrenService.getChildren();
+      const normalizedFullName = fullName.toLowerCase();
+      const createdChild =
+        refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+        refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === normalizedFullName);
+      if (createdChild) {
+        await setSelectedChildId(createdChild.id);
+      }
 
-      await setSelectedChildId(createdChild.id);
       setIsCreateChildModalVisible(false);
       resetCreateChildForm();
       await loadDashboard(false);
@@ -498,7 +510,9 @@ const HomeScreen = () => {
               <View style={styles.actionButtonsWrap}>
                 <PrimaryButton
                   label="Create child"
-                  onPress={openCreateChildModal}
+                  onPress={() => {
+                    void openCreateChildModal();
+                  }}
                   variant="secondary"
                   style={styles.actionButton}
                 />
