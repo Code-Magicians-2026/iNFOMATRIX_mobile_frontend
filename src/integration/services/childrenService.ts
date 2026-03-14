@@ -1,9 +1,9 @@
 import useAuthStore from '@/context/Auth-store';
 import { authService } from '@/src/integration/services/authService';
-import { createChildMock, getChildrenMock, type CreateChildMockInput } from '@/src/features/mvp/services';
+import type { RegisterChildRequestDto } from '@/src/features/auth/dto/auth.dto';
 import type { ChildProfile } from '@/shared/models/mvp-contracts.model';
 
-export type CreateChildInput = CreateChildMockInput;
+export type CreateChildInput = RegisterChildRequestDto;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -119,7 +119,7 @@ export const childrenService = {
   getChildren: async (): Promise<ChildProfile[]> => {
     const accessToken = useAuthStore.getState().session?.accessToken;
     if (!accessToken) {
-      return getChildrenMock();
+      throw new Error('Для отримання списку дітей потрібна авторизація.');
     }
 
     const response = await authService.getFamilyChildren(accessToken);
@@ -129,6 +129,23 @@ export const childrenService = {
       .filter((item): item is ChildProfile => item !== null);
   },
 
-  createChild: async (input: CreateChildInput): Promise<ChildProfile> =>
-    createChildMock(input),
+  createChild: async (input: CreateChildInput): Promise<ChildProfile> => {
+    const accessToken = useAuthStore.getState().session?.accessToken;
+    if (!accessToken) {
+      throw new Error('Для створення дитини потрібна авторизація.');
+    }
+
+    await authService.registerChild(input, accessToken);
+    const children = await childrenService.getChildren();
+    const fullName = `${input.firstName} ${input.lastName}`.trim().toLowerCase();
+    const resolved =
+      children.find((child) => child.fullName.trim().toLowerCase() === fullName) ??
+      children[children.length - 1];
+
+    if (!resolved) {
+      throw new Error('Дитину створено, але не вдалося оновити список дітей.');
+    }
+
+    return resolved;
+  },
 };

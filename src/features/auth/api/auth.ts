@@ -64,18 +64,21 @@ export const createFamily = async (
     method: 'POST',
     body: JSON.stringify(payload),
     ...withAuthorization(options),
+    timeoutMs: 20000,
   });
 
 export const getFamily = async (options: AuthorizedRequestOptions): Promise<unknown> =>
   request<unknown>('/api/families', {
     method: 'GET',
     ...withAuthorization(options),
+    timeoutMs: 15000,
   });
 
 export const getFamilyChildren = async (options: AuthorizedRequestOptions): Promise<unknown> =>
   request<unknown>('/api/children', {
     method: 'GET',
     ...withAuthorization(options),
+    timeoutMs: 15000,
   });
 
 export const registerChild = async (
@@ -86,6 +89,7 @@ export const registerChild = async (
     method: 'POST',
     body: JSON.stringify(payload),
     ...withAuthorization(options),
+    timeoutMs: 20000,
   });
 
 export const requestResetPassword = async (

@@ -55,6 +55,9 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const isRole = (value: unknown): value is UserRole => value === 'adult' || value === 'child';
 
 const isValidSession = (value: unknown): value is AuthSession =>
@@ -535,6 +538,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
     if (!family?.id) {
       throw new Error('Не вдалося визначити ID сімʼї. Оновіть профіль сімʼї та спробуйте ще раз.');
+    }
+
+    if (!uuidPattern.test(family.id)) {
+      throw new Error('ID сімʼї має бути UUID. Оновіть дані сімʼї та спробуйте знову.');
     }
 
     await authService.registerChild(

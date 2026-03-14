@@ -31,6 +31,7 @@ import {
 } from '@/src/integration/services';
 
 const XP_PER_LEVEL = 300;
+const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
 const PLAN_PROMPTS = [
   'Build a balanced plan for school progress and healthy routine.',
@@ -83,12 +84,11 @@ const HomeScreen = () => {
   const [approvingPlanId, setApprovingPlanId] = React.useState<string | null>(null);
 
   const [isCreateChildModalVisible, setIsCreateChildModalVisible] = React.useState(false);
-  const [childFullName, setChildFullName] = React.useState('');
+  const [childFirstName, setChildFirstName] = React.useState('');
+  const [childLastName, setChildLastName] = React.useState('');
   const [childPassword, setChildPassword] = React.useState('');
-  const [childAge, setChildAge] = React.useState('');
-  const [childInterests, setChildInterests] = React.useState('');
-  const [childNotes, setChildNotes] = React.useState('');
   const [createChildError, setCreateChildError] = React.useState<string | null>(null);
+  const lastDashboardRefreshAtRef = React.useRef(0);
 
   const [isAiBuilderModalVisible, setIsAiBuilderModalVisible] = React.useState(false);
   const [aiPrompt, setAiPrompt] = React.useState<string>(PLAN_PROMPTS[0]);
@@ -168,6 +168,7 @@ const HomeScreen = () => {
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
+        lastDashboardRefreshAtRef.current = Date.now();
       }
     },
     [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId],
@@ -179,7 +180,11 @@ const HomeScreen = () => {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (!isLoading) {
+      const now = Date.now();
+      const isRefreshCooldownActive =
+        now - lastDashboardRefreshAtRef.current < HOME_FOCUS_REFRESH_COOLDOWN_MS;
+
+      if (!isLoading && !isRefreshCooldownActive) {
         void loadDashboard(false);
       }
 
@@ -208,11 +213,9 @@ const HomeScreen = () => {
   );
 
   const resetCreateChildForm = () => {
-    setChildFullName('');
+    setChildFirstName('');
+    setChildLastName('');
     setChildPassword('');
-    setChildAge('');
-    setChildInterests('');
-    setChildNotes('');
     setCreateChildError(null);
   };
 
@@ -222,12 +225,9 @@ const HomeScreen = () => {
       return;
     }
 
-    try {
-      await refreshFamily();
-    } catch {}
-
     resetCreateChildForm();
     setIsCreateChildModalVisible(true);
+    void refreshFamily().catch(() => {});
   };
 
   const closeCreateChildModal = () => {
@@ -238,10 +238,45 @@ const HomeScreen = () => {
     setIsCreateChildModalVisible(false);
   };
 
+  const syncCreatedChildInBackground = React.useCallback(
+    (existingChildIds: Set<string>, firstName: string, lastName: string) => {
+      const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
+
+      void (async () => {
+        try {
+          const refreshedChildren = await childrenService.getChildren();
+          const createdChild: ChildProfile | null =
+            refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+            refreshedChildren.find(
+              (child) => child.fullName.trim().toLowerCase() === expectedFullName,
+            ) ??
+            null;
+
+          if (createdChild) {
+            await setSelectedChildId(createdChild.id);
+          }
+
+          await loadDashboard(false);
+        } catch {
+          setScreenError(
+            'Child created, but failed to refresh list immediately. Pull to refresh dashboard.',
+          );
+        }
+      })();
+    },
+    [loadDashboard, setSelectedChildId],
+  );
+
   const handleCreateChild = async () => {
-    const fullName = childFullName.trim();
-    if (!fullName) {
-      setCreateChildError('Name is required.');
+    const firstName = childFirstName.trim();
+    const lastName = childLastName.trim();
+    if (!firstName) {
+      setCreateChildError('First name is required.');
+      return;
+    }
+
+    if (!lastName) {
+      setCreateChildError('Last name is required.');
       return;
     }
 
@@ -250,46 +285,19 @@ const HomeScreen = () => {
       return;
     }
 
-    const fullNameParts = fullName.split(/\s+/).filter(Boolean);
-    const firstName = fullNameParts[0] ?? '';
-    const lastName = fullNameParts.length > 1 ? fullNameParts.slice(1).join(' ') : firstName;
-    if (!firstName || !lastName) {
-      setCreateChildError('Enter child first and last name.');
-      return;
-    }
-
-    const normalizedAge = childAge.trim();
-    if (normalizedAge.length > 0) {
-      const parsedAge = Number(normalizedAge);
-      if (!Number.isFinite(parsedAge) || parsedAge < 3 || parsedAge > 18) {
-        setCreateChildError('Age must be between 3 and 18.');
-        return;
-      }
-    }
-
     setIsCreatingChild(true);
     setCreateChildError(null);
     try {
       const existingChildIds = new Set(children.map((child) => child.id));
-
       await registerChild({
         firstName,
         lastName,
         password: childPassword,
       });
 
-      const refreshedChildren = await childrenService.getChildren();
-      const normalizedFullName = fullName.toLowerCase();
-      const createdChild =
-        refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
-        refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === normalizedFullName);
-      if (createdChild) {
-        await setSelectedChildId(createdChild.id);
-      }
-
       setIsCreateChildModalVisible(false);
       resetCreateChildForm();
-      await loadDashboard(false);
+      syncCreatedChildInBackground(existingChildIds, firstName, lastName);
     } catch (error) {
       setCreateChildError(
         getApiErrorMessage(error, 'Failed to create child profile. Please try again.'),
@@ -660,27 +668,28 @@ const HomeScreen = () => {
             </Text>
 
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Name
+              First Name
             </Text>
             <TextInput
-              value={childFullName}
-              onChangeText={setChildFullName}
-              placeholder="Child full name"
+              value={childFirstName}
+              onChangeText={setChildFirstName}
+              placeholder="Child first name"
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              autoCapitalize="words"
               editable={!isCreatingChild}
             />
 
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Age
+              Last Name
             </Text>
             <TextInput
-              value={childAge}
-              onChangeText={setChildAge}
-              placeholder="3-18"
+              value={childLastName}
+              onChangeText={setChildLastName}
+              placeholder="Child last name"
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              keyboardType="number-pad"
+              autoCapitalize="words"
               editable={!isCreatingChild}
             />
 
@@ -696,33 +705,6 @@ const HomeScreen = () => {
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
-              editable={!isCreatingChild}
-            />
-
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Interests
-            </Text>
-            <TextInput
-              value={childInterests}
-              onChangeText={setChildInterests}
-              placeholder="math, science, reading"
-              placeholderTextColor={colors.textSecondary}
-              style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              editable={!isCreatingChild}
-            />
-
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Notes
-            </Text>
-            <TextInput
-              value={childNotes}
-              onChangeText={setChildNotes}
-              placeholder="Any useful note for planning"
-              placeholderTextColor={colors.textSecondary}
-              style={[styles.input, styles.notesInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
               editable={!isCreatingChild}
             />
 
