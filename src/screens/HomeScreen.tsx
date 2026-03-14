@@ -1,11 +1,12 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
 import type {
   ChildProfile,
   GeneratedPlan,
@@ -29,6 +30,7 @@ import {
   questsService,
   userService,
 } from '@/src/integration/services';
+import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const XP_PER_LEVEL = 300;
 const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
@@ -39,19 +41,92 @@ const PLAN_PROMPTS = [
   'Generate a confidence plan focused on consistency and wins.',
 ] as const;
 
-const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
-  if (role === 'adult') {
-    return 'adult-1';
+type HomeNavigation = NativeStackNavigationProp<AppStackParamList>;
+
+const INVALID_LAST_NAME_TOKENS = new Set([
+  'profile',
+  'user',
+  'parent',
+  'adult',
+  'child',
+  'local',
+]);
+
+const extractLastNameFromFullName = (fullName: string | null | undefined): string => {
+  if (!fullName) {
+    return '';
   }
 
-  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
-    return currentUserId;
+  const normalizedFullName = fullName.trim();
+  if (!normalizedFullName) {
+    return '';
   }
 
-  return 'child-1';
+  if (normalizedFullName.toLowerCase().includes('profile')) {
+    return '';
+  }
+
+  const parts = fullName
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0);
+
+  if (parts.length < 2) {
+    return '';
+  }
+
+  const candidate = (parts[parts.length - 1] ?? '').trim();
+  if (!candidate || INVALID_LAST_NAME_TOKENS.has(candidate.toLowerCase())) {
+    return '';
+  }
+
+  return candidate;
+};
+
+const extractLastNameFromFamilyName = (familyName: string | null | undefined): string => {
+  if (!familyName) {
+    return '';
+  }
+
+  const normalized = familyName
+    .trim()
+    .replace(/['’]s$/i, '')
+    .replace(/\s+family$/i, '')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const parts = normalized.split(/\s+/).filter((part) => part.length > 0);
+  const candidate = (parts[parts.length - 1] ?? '').trim();
+  if (!candidate || INVALID_LAST_NAME_TOKENS.has(candidate.toLowerCase())) {
+    return '';
+  }
+
+  return candidate;
+};
+
+const isRecoverableCreateChildError = (error: unknown): boolean => {
+  if (error instanceof ApiError) {
+    return [400, 408, 409, 500, 502, 503, 504].includes(error.status);
+  }
+
+  if (error instanceof Error) {
+    const normalized = error.message.trim().toLowerCase();
+    return (
+      normalized.includes('already') ||
+      normalized.includes('exist') ||
+      normalized.includes('timeout') ||
+      normalized.includes('timed out')
+    );
+  }
+
+  return false;
 };
 
 const HomeScreen = () => {
+  const navigation = useNavigation<HomeNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(
@@ -62,6 +137,7 @@ const HomeScreen = () => {
   const role = useAuthStore((s) => s.role);
   const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const family = useAuthStore((s) => s.family);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
@@ -111,16 +187,20 @@ const HomeScreen = () => {
       try {
         setScreenError(null);
 
-        const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-        try {
-          userService.setCurrentUserId(targetMockUserId);
-        } catch {
-          userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
-        }
-
         if (effectiveRole === 'adult') {
-          const [meData, childrenData, planData] = await Promise.all([
-            userService.getMe(),
+          const meData = await userService.getMe();
+
+          if (!session?.accessToken) {
+            setMe(meData);
+            setChildren([]);
+            setRecentPlans([]);
+            setProgress(null);
+            setTodayQuests([]);
+            setScreenError('Sign in to load family dashboard data.');
+            return;
+          }
+
+          const [childrenData, planData] = await Promise.all([
             childrenService.getChildren(),
             plansService.getPlans({ limit: 6 }),
           ]);
@@ -133,7 +213,7 @@ const HomeScreen = () => {
           const hasSelectedChild = selectedChildId ? childIds.has(selectedChildId) : false;
           const resolvedSelectedChildId = hasSelectedChild ? selectedChildId : null;
           if (selectedChildId && !hasSelectedChild) {
-            await setSelectedChildId(null);
+            void setSelectedChildId(null).catch(() => {});
           }
 
           const selectedProgress = resolvedSelectedChildId
@@ -160,15 +240,19 @@ const HomeScreen = () => {
         setRecentPlans([]);
         setTodayQuests(questData.slice(0, 5));
         setProgress(progressData);
-      } catch {
-        setScreenError('Failed to load dashboard data. Please try again.');
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setScreenError('Session expired. Sign in again to load dashboard data.');
+        } else {
+          setScreenError(getApiErrorMessage(error, 'Failed to load dashboard data. Please try again.'));
+        }
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
         lastDashboardRefreshAtRef.current = Date.now();
       }
     },
-    [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId],
+    [effectiveRole, selectedChildId, session?.accessToken, setSelectedChildId],
   );
 
   React.useEffect(() => {
@@ -223,6 +307,13 @@ const HomeScreen = () => {
     }
 
     resetCreateChildForm();
+    const userLastName =
+      extractLastNameFromFamilyName(family?.name) ||
+      extractLastNameFromFullName(currentUser?.fullName) ||
+      extractLastNameFromFullName(me?.fullName);
+    if (userLastName) {
+      setChildLastName(userLastName);
+    }
     setIsCreateChildModalVisible(true);
     void refreshFamily().catch(() => {});
   };
@@ -234,35 +325,6 @@ const HomeScreen = () => {
 
     setIsCreateChildModalVisible(false);
   };
-
-  const syncCreatedChildInBackground = React.useCallback(
-    (existingChildIds: Set<string>, firstName: string, lastName: string) => {
-      const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
-
-      void (async () => {
-        try {
-          const refreshedChildren = await childrenService.getChildren();
-          const createdChild: ChildProfile | null =
-            refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
-            refreshedChildren.find(
-              (child) => child.fullName.trim().toLowerCase() === expectedFullName,
-            ) ??
-            null;
-
-          if (createdChild) {
-            await setSelectedChildId(createdChild.id);
-          }
-
-          await loadDashboard(false);
-        } catch {
-          setScreenError(
-            'Child created, but failed to refresh list immediately. Pull to refresh dashboard.',
-          );
-        }
-      })();
-    },
-    [loadDashboard, setSelectedChildId],
-  );
 
   const handleCreateChild = async () => {
     const firstName = childFirstName.trim();
@@ -284,18 +346,59 @@ const HomeScreen = () => {
 
     setIsCreatingChild(true);
     setCreateChildError(null);
+    const existingChildIds = new Set(children.map((child) => child.id));
+    const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
+
     try {
-      const existingChildIds = new Set(children.map((child) => child.id));
       await registerChild({
         firstName,
         lastName,
         password: childPassword,
       });
 
+      const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
+      const createdChild =
+        refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+        refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
+        null;
+
+      setChildren(refreshedChildren);
       setIsCreateChildModalVisible(false);
       resetCreateChildForm();
-      syncCreatedChildInBackground(existingChildIds, firstName, lastName);
+
+      if (createdChild) {
+        await Promise.allSettled([
+          setSelectedChildId(createdChild.id),
+          loadDashboard(false),
+        ]);
+      } else {
+        await loadDashboard(false);
+      }
+
+      setScreenError(null);
     } catch (error) {
+      if (isRecoverableCreateChildError(error)) {
+        try {
+          const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
+          const createdChild =
+            refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+            refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
+            null;
+
+          if (createdChild) {
+            setChildren(refreshedChildren);
+            setIsCreateChildModalVisible(false);
+            resetCreateChildForm();
+            await Promise.allSettled([
+              setSelectedChildId(createdChild.id),
+              loadDashboard(false),
+            ]);
+            setScreenError(null);
+            return;
+          }
+        } catch {}
+      }
+
       setCreateChildError(
         getApiErrorMessage(error, 'Failed to create child profile. Please try again.'),
       );
@@ -363,11 +466,20 @@ const HomeScreen = () => {
     try {
       const approvedPlan = await plansService.approvePlan(planId);
       setRecentPlans((prev) => prev.map((plan) => (plan.id === approvedPlan.id ? approvedPlan : plan)));
+      const targetChildId =
+        approvedPlan.quests.find((quest) => quest.assignedToUserId.trim().length > 0)?.assignedToUserId.trim() ?? null;
 
-      if (selectedChild) {
-        const selectedProgress = await progressService.getProgress(selectedChild.id);
-        setProgress(selectedProgress);
+      if (effectiveRole === 'adult' && targetChildId) {
+        const [selectedProgressResult] = await Promise.allSettled([
+          progressService.getProgress(targetChildId),
+          setSelectedChildId(targetChildId),
+        ]);
+        if (selectedProgressResult.status === 'fulfilled') {
+          setProgress(selectedProgressResult.value);
+        }
       }
+
+      navigation.navigate('MainTabs', { screen: 'Quests' });
     } catch {
       setScreenError('Failed to approve generated plan.');
     } finally {

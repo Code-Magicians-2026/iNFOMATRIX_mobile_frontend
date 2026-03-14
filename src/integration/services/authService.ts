@@ -3,6 +3,7 @@ import type {
   CreateFamilyRequestDto,
   EmailDto,
   LoginRequestDto,
+  RefreshTokenRequestDto,
   RegisterChildRequestDto,
   RegisterRequestDto,
   RequestResetPasswordRequestDto,
@@ -16,6 +17,7 @@ import {
   getFamily,
   getFamilyChildren,
   login,
+  refreshToken,
   register,
   registerChild,
   requestResetPassword,
@@ -34,6 +36,10 @@ export const authService = {
 
   confirmEmail: async (payload: ConfirmEmailRequestDto): Promise<TokenDto> => {
     return confirmEmail(payload);
+  },
+
+  refreshToken: async (payload: RefreshTokenRequestDto): Promise<TokenDto> => {
+    return refreshToken(payload);
   },
 
   createFamily: async (

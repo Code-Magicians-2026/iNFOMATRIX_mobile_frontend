@@ -1,10 +1,14 @@
 import useAuthStore from '@/context/Auth-store';
+import { ApiError } from '@/src/features/auth/api/client';
 import { authService } from '@/src/integration/services/authService';
 import type { RegisterChildRequestDto } from '@/src/features/auth/dto/auth.dto';
 import type { ChildProfile } from '@/shared/models/mvp-contracts.model';
 
 export type CreateChildInput = RegisterChildRequestDto;
 const CHILDREN_CACHE_TTL_MS = 20_000;
+type GetChildrenOptions = {
+  forceRefresh?: boolean;
+};
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -123,6 +127,55 @@ const cloneChildProfile = (child: ChildProfile): ChildProfile => ({
 
 const cloneChildren = (children: ChildProfile[]) => children.map(cloneChildProfile);
 
+const isUnauthorizedError = (error: unknown): boolean =>
+  error instanceof ApiError && (error.status === 401 || error.status === 403);
+
+const tryRefreshAccessToken = async (): Promise<string | null> => {
+  const authState = useAuthStore.getState();
+  const session = authState.session;
+  if (!session?.accessToken || !session.refreshToken) {
+    return null;
+  }
+
+  try {
+    const token = await authService.refreshToken({
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+    });
+    await authState.createSessionFromToken(token, session.email);
+    return useAuthStore.getState().session?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const withAuthRecovery = async <T>(request: (accessToken: string) => Promise<T>): Promise<{
+  payload: T;
+  accessToken: string;
+}> => {
+  const initialAccessToken = useAuthStore.getState().session?.accessToken;
+  if (!initialAccessToken) {
+    throw new Error('Для виконання запиту потрібна авторизація.');
+  }
+
+  try {
+    const payload = await request(initialAccessToken);
+    return { payload, accessToken: initialAccessToken };
+  } catch (error) {
+    if (!isUnauthorizedError(error)) {
+      throw error;
+    }
+
+    const refreshedAccessToken = await tryRefreshAccessToken();
+    if (!refreshedAccessToken || refreshedAccessToken === initialAccessToken) {
+      throw error;
+    }
+
+    const payload = await request(refreshedAccessToken);
+    return { payload, accessToken: refreshedAccessToken };
+  }
+};
+
 let childrenCache:
   | {
       accessToken: string;
@@ -135,70 +188,90 @@ let inFlightChildrenRequest:
   | {
       accessToken: string;
       promise: Promise<ChildProfile[]>;
+      requestId: number;
     }
   | null = null;
+let childrenRequestId = 0;
 
 export const childrenService = {
-  getChildren: async (): Promise<ChildProfile[]> => {
+  getChildren: async (options: GetChildrenOptions = {}): Promise<ChildProfile[]> => {
     const accessToken = useAuthStore.getState().session?.accessToken;
     if (!accessToken) {
       throw new Error('Для отримання списку дітей потрібна авторизація.');
     }
 
+    const forceRefresh = options.forceRefresh === true;
     const now = Date.now();
     const isFreshCache =
+      !forceRefresh &&
       childrenCache?.accessToken === accessToken &&
       now - childrenCache.fetchedAt < CHILDREN_CACHE_TTL_MS;
     if (isFreshCache && childrenCache) {
       return cloneChildren(childrenCache.children);
     }
 
-    if (inFlightChildrenRequest?.accessToken === accessToken) {
+    if (!forceRefresh && inFlightChildrenRequest?.accessToken === accessToken) {
       const children = await inFlightChildrenRequest.promise;
       return cloneChildren(children);
     }
 
+    const requestId = childrenRequestId + 1;
+    childrenRequestId = requestId;
+    let resolvedRequestAccessToken = accessToken;
     const requestPromise = (async () => {
-      const response = await authService.getFamilyChildren(accessToken);
+      const { payload: response, accessToken: resolvedAccessToken } = await withAuthRecovery(
+        (token) => authService.getFamilyChildren(token),
+      );
+      resolvedRequestAccessToken = resolvedAccessToken;
       const rawChildren = extractChildrenList(response);
-      const children = rawChildren
+      return rawChildren
         .map((item, index) => toChildProfile(item, index))
         .filter((item): item is ChildProfile => item !== null);
-
-      childrenCache = {
-        accessToken,
-        fetchedAt: Date.now(),
-        children: cloneChildren(children),
-      };
-
-      return children;
     })();
 
     inFlightChildrenRequest = {
       accessToken,
       promise: requestPromise,
+      requestId,
     };
 
     try {
       const children = await requestPromise;
+      if (inFlightChildrenRequest?.requestId === requestId) {
+        childrenCache = {
+          accessToken: resolvedRequestAccessToken,
+          fetchedAt: Date.now(),
+          children: cloneChildren(children),
+        };
+      }
       return cloneChildren(children);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        (error.status === 504 || error.status === 408) &&
+        childrenCache?.accessToken === accessToken
+      ) {
+        return cloneChildren(childrenCache.children);
+      }
+
+      throw error;
     } finally {
-      if (inFlightChildrenRequest?.promise === requestPromise) {
+      if (inFlightChildrenRequest?.requestId === requestId) {
         inFlightChildrenRequest = null;
       }
     }
   },
 
   createChild: async (input: CreateChildInput): Promise<ChildProfile> => {
-    const accessToken = useAuthStore.getState().session?.accessToken;
-    if (!accessToken) {
+    const session = useAuthStore.getState().session;
+    if (!session?.accessToken) {
       throw new Error('Для створення дитини потрібна авторизація.');
     }
 
-    await authService.registerChild(input, accessToken);
+    await withAuthRecovery((token) => authService.registerChild(input, token));
     childrenCache = null;
     inFlightChildrenRequest = null;
-    const children = await childrenService.getChildren();
+    const children = await childrenService.getChildren({ forceRefresh: true });
     const fullName = `${input.firstName} ${input.lastName}`.trim().toLowerCase();
     const resolved =
       children.find((child) => child.fullName.trim().toLowerCase() === fullName) ??

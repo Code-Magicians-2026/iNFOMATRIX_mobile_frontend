@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
-import { resetMockLayerState, setMockMeId } from '@/src/features/mvp/services';
 
 import { plansService } from './plansService';
 
@@ -15,8 +14,6 @@ const createResponse = (status: number, body: unknown, contentType = 'applicatio
 describe('plansService.uploadPhotoAndGenerate', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
-    resetMockLayerState();
-    setMockMeId('adult-1');
     await usePlansStore.getState().clear();
     useAuthStore.setState({
       session: null,
@@ -28,31 +25,28 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     });
   });
 
-  it('generates plan when photo is provided', async () => {
-    const plan = await plansService.uploadPhotoAndGenerate({
-      targetUserId: 'child-1',
-      prompt: 'Create tidy room and homework plan.',
-      category: 'routine',
-      photo: {
-        uri: 'file:///camera/room.jpg',
-        mimeType: 'image/jpeg',
-        fileName: 'room.jpg',
-      },
-    });
-
-    expect(plan.status).toBe('draft');
-    expect(plan.summary).toContain('using camera context');
+  it('requires auth token for uploadPhotoAndGenerate', async () => {
+    await expect(
+      plansService.uploadPhotoAndGenerate({
+        targetUserId: 'child-1',
+        prompt: 'Create tidy room and homework plan.',
+        category: 'routine',
+        photo: {
+          uri: 'file:///camera/room.jpg',
+          mimeType: 'image/jpeg',
+          fileName: 'room.jpg',
+        },
+      }),
+    ).rejects.toThrow('Sign in is required to generate AI plans.');
   });
 
-  it('generates plan when photo is missing', async () => {
-    const plan = await plansService.uploadPhotoAndGenerate({
-      targetUserId: 'child-1',
-      prompt: 'Create tidy room and homework plan.',
-      category: 'routine',
-    });
-
-    expect(plan.status).toBe('draft');
-    expect(plan.summary).not.toContain('using camera context');
+  it('requires auth token for generatePlan', async () => {
+    await expect(
+      plansService.generatePlan({
+        targetUserId: 'child-1',
+        prompt: 'Create tidy room and homework plan.',
+      }),
+    ).rejects.toThrow('Sign in is required to generate AI plans.');
   });
 
   it('uses swagger contract /api/ai/quest with Prompt multipart and auth token', async () => {
@@ -111,7 +105,7 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     expect(body.get('prompt')).toBeNull();
   });
 
-  it('maps full swagger plan payload with all quests and stores it in local zustand cache', async () => {
+  it('maps full swagger plan payload into one quest with multiple steps and stores it in local zustand cache', async () => {
     useAuthStore.setState({
       session: {
         email: 'adult@example.com',
@@ -164,9 +158,10 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     });
 
     expect(plan.status).toBe('draft');
-    expect(plan.quests).toHaveLength(2);
-    expect(plan.quests[0]?.title).toBe('Artifact Collection');
+    expect(plan.quests).toHaveLength(1);
+    expect(plan.quests[0]?.title).toBe('Quest: The Grand Cleanup After the Gathering');
     expect(plan.quests[0]?.stepsCount).toBeGreaterThan(0);
+    expect(plan.quests[0]?.stepsCount).toBe(2);
     expect(plan.totalEstimatedMinutes).toBe(20);
 
     const cachedPlans = await plansService.getPlans({ limit: 10 });
@@ -231,7 +226,8 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     });
 
     expect(plan.status).toBe('draft');
-    expect(plan.quests).toHaveLength(2);
+    expect(plan.quests).toHaveLength(1);
+    expect(plan.quests[0]?.stepsCount).toBe(2);
     expect(plan.totalEstimatedMinutes).toBe(27);
 
     const [calledUrl, options] = fetchMock.mock.calls[0] ?? [];

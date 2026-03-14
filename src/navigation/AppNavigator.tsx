@@ -88,6 +88,11 @@ export default function AppNavigator() {
               title="Plan Preview"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
             />
           ),
         })}
@@ -101,6 +106,11 @@ export default function AppNavigator() {
               title="Settings"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
             />
           ),
         })}
@@ -114,6 +124,11 @@ export default function AppNavigator() {
               title="Earned Badges"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
             />
           ),
         })}
@@ -127,6 +142,11 @@ export default function AppNavigator() {
               title="Увійти"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
             />
           ),
         })}
@@ -140,6 +160,11 @@ export default function AppNavigator() {
               title="Реєстрація"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
             />
           ),
         })}
@@ -153,6 +178,11 @@ export default function AppNavigator() {
               title="Підтвердження пошти"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
             />
           ),
         })}
@@ -166,6 +196,11 @@ export default function AppNavigator() {
               title="Відновлення пароля"
               showBackButton
               onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
             />
           ),
         })}

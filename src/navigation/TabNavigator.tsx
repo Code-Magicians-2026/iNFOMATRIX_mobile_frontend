@@ -36,7 +36,8 @@ export default function TabNavigator() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        lazy: false,
+        lazy: true,
+        freezeOnBlur: true,
         tabBarActiveTintColor: '#ff2d55',
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {

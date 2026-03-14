@@ -10,7 +10,8 @@ import {
   Vibration,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -43,22 +44,12 @@ import {
   pickRandomBadgeImageKey,
   type BadgeImageKey,
 } from '@/shared/components/ui/badge-catalog';
-
-const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
-  if (role === 'adult') {
-    return 'adult-1';
-  }
-
-  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
-    return currentUserId;
-  }
-
-  return 'child-1';
-};
+import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 const STEP_TOGGLE_VIBRATION_PATTERN = [0, 45, 25, 65];
 const QUEST_VICTORY_VIBRATION_PATTERN = [0, 80, 60, 120, 80, 220];
+const QUESTS_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
 const isQuestArchived = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
 
@@ -87,13 +78,15 @@ type CompletionFeedback = {
   streak: number;
 };
 
+type QuestsNavigation = NativeStackNavigationProp<AppStackParamList>;
+
 const QuestsScreen = () => {
+  const navigation = useNavigation<QuestsNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(() => getStyles(cardMaxWidth, isTablet, spacing), [cardMaxWidth, isTablet, spacing]);
 
   const role = useAuthStore((s) => s.role);
-  const currentUser = useAuthStore((s) => s.currentUser);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
@@ -116,6 +109,7 @@ const QuestsScreen = () => {
   const [isCompletionBadgeSpotlightVisible, setIsCompletionBadgeSpotlightVisible] = React.useState(false);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
+  const lastRefreshAtRef = React.useRef(0);
   const completionShakeX = React.useRef(new Animated.Value(0)).current;
   const completionScale = React.useRef(new Animated.Value(1)).current;
   const completionSpotlightScale = React.useRef(new Animated.Value(0.45)).current;
@@ -137,13 +131,6 @@ const QuestsScreen = () => {
     try {
       setScreenError(null);
 
-      const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-      try {
-        userService.setCurrentUserId(targetMockUserId);
-      } catch {
-        userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
-      }
-
       if (effectiveRole === 'adult') {
         const [meData, childrenData] = await Promise.all([
           userService.getMe(),
@@ -151,30 +138,53 @@ const QuestsScreen = () => {
         ]);
         setChildren(childrenData);
 
-        if (childrenData.length === 0) {
-          setTargetUserId(null);
-          setTargetLabel(meData.fullName);
-          setQuests([]);
-          setProgress(null);
-          return null;
-        }
-
         const selectedChildCandidate = preferredChildId ?? selectedChildId;
+        const isSelfTarget = selectedChildCandidate === meData.id;
         const isSelectedChildValid = selectedChildCandidate
           ? childrenData.some((child) => child.id === selectedChildCandidate)
           : false;
-        const resolvedSelectedChildId = isSelectedChildValid ? selectedChildCandidate : null;
+        const resolvedSelectedChildId = isSelectedChildValid
+          ? selectedChildCandidate
+          : isSelfTarget
+            ? meData.id
+            : null;
 
-        if (selectedChildId && !isSelectedChildValid) {
-          await setSelectedChildId(null);
+        if (selectedChildId && !isSelectedChildValid && !isSelfTarget) {
+          void setSelectedChildId(null).catch(() => {});
         }
 
         if (!resolvedSelectedChildId) {
+          const [selfQuests, selfProgress] = await Promise.all([
+            questsService.getQuests(meData.id),
+            progressService.getProgress(meData.id),
+          ]);
+
+          if (selfQuests.length > 0) {
+            setTargetUserId(meData.id);
+            setTargetLabel(meData.fullName);
+            setQuests(selfQuests);
+            setProgress(selfProgress);
+            return selfProgress;
+          }
+
           setTargetUserId(null);
-          setTargetLabel('No active child');
+          setTargetLabel(childrenData.length === 0 ? meData.fullName : 'No active child');
           setQuests([]);
-          setProgress(null);
+          setProgress(childrenData.length === 0 ? selfProgress : null);
           return null;
+        }
+
+        if (resolvedSelectedChildId === meData.id) {
+          const [selfQuests, selfProgress] = await Promise.all([
+            questsService.getQuests(meData.id),
+            progressService.getProgress(meData.id),
+          ]);
+
+          setTargetUserId(meData.id);
+          setTargetLabel(meData.fullName);
+          setQuests(selfQuests);
+          setProgress(selfProgress);
+          return selfProgress;
         }
 
         const activeChild = childrenData.find((child) => child.id === resolvedSelectedChildId);
@@ -216,8 +226,9 @@ const QuestsScreen = () => {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      lastRefreshAtRef.current = Date.now();
     }
-  }, [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId]);
+  }, [effectiveRole, selectedChildId, setSelectedChildId]);
 
   React.useEffect(() => {
     void refreshData(true);
@@ -225,7 +236,11 @@ const QuestsScreen = () => {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (!isLoading) {
+      const now = Date.now();
+      const isRefreshCooldownActive =
+        now - lastRefreshAtRef.current < QUESTS_FOCUS_REFRESH_COOLDOWN_MS;
+
+      if (!isLoading && !isRefreshCooldownActive) {
         void refreshData(false);
       }
 
@@ -440,8 +455,10 @@ const QuestsScreen = () => {
   const handleSelectChild = async (childId: string) => {
     setScreenError(null);
     try {
-      await setSelectedChildId(childId);
-      await refreshData(false, childId);
+      await Promise.allSettled([
+        setSelectedChildId(childId),
+        refreshData(false, childId),
+      ]);
     } catch {
       setScreenError('Could not switch child profile.');
     }
@@ -475,6 +492,12 @@ const QuestsScreen = () => {
                 ? 'Execution mode: complete assigned quests and earn XP'
                 : 'Parent mode: review and update selected child quests'
             }
+          />
+
+          <PrimaryButton
+            label="AI"
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Chat' })}
+            style={styles.aiTopButton}
           />
 
           {effectiveRole === 'adult' ? (
@@ -739,7 +762,12 @@ const QuestsScreen = () => {
                   Steps
                 </Text>
 
-                <View style={styles.stepsList}>
+                <ScrollView
+                  style={styles.stepsScroll}
+                  contentContainerStyle={styles.stepsList}
+                  showsVerticalScrollIndicator
+                  nestedScrollEnabled
+                >
                   {[...(detailsQuest.steps ?? [])]
                     .sort((left, right) => left.order - right.order)
                     .map((step) => {
@@ -794,7 +822,7 @@ const QuestsScreen = () => {
                         </Pressable>
                       );
                     })}
-                </View>
+                </ScrollView>
 
                 {isQuestArchived(detailsQuest) ? (
                   <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
@@ -909,6 +937,11 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       gap: 18,
       paddingBottom: Math.max(120, spacing + 88),
     },
+    aiTopButton: {
+      width: '100%',
+      maxWidth: cardMaxWidth,
+      alignSelf: 'center',
+    },
     scrollTopButton: {
       position: 'absolute',
       right: spacing,
@@ -985,6 +1018,9 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     stepsHeading: {
       fontSize: isTablet ? 18 : 16,
       fontWeight: '700',
+    },
+    stepsScroll: {
+      maxHeight: isTablet ? 300 : 240,
     },
     stepsList: {
       gap: 8,

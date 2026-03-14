@@ -66,6 +66,22 @@ describe('request', () => {
     expect(headers.get('Authorization')).toBe('Bearer token-123');
   });
 
+  it('normalizes accessToken when bearer prefix is already present', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(createResponse(200, { ok: true }, 'application/json'));
+
+    await request('/api/test', {
+      method: 'GET',
+      accessToken: '  Bearer token-abc  ',
+    });
+
+    const [, options] = fetchMock.mock.calls[0];
+    const headers = options?.headers as Headers;
+
+    expect(headers.get('Authorization')).toBe('Bearer token-abc');
+  });
+
   it('returns undefined on 204', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
 

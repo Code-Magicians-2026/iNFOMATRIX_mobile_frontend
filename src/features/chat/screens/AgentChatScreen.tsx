@@ -36,6 +36,7 @@ const QUICK_PROMPTS = [
 
 const BRAND_RED = '#ff2d55';
 const BRAND_RED_BORDER = 'rgba(255, 45, 85, 0.48)';
+const CHAT_CONTEXT_REFRESH_COOLDOWN_MS = 5000;
 
 type TargetMode = 'myself' | 'child';
 
@@ -57,18 +58,6 @@ const resolvePermissionDescription = (state: MediaPermissionState, source: 'came
   return `${source === 'camera' ? 'Camera' : 'Gallery'} access denied.`;
 };
 
-const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
-  if (role === 'adult') {
-    return 'adult-1';
-  }
-
-  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
-    return currentUserId;
-  }
-
-  return 'child-1';
-};
-
 const buildFallbackMeProfile = (role: UserRole): UserProfile => ({
   id: role === 'adult' ? 'adult-self' : 'child-self',
   fullName: role === 'adult' ? 'Adult Profile' : 'Child Profile',
@@ -81,6 +70,23 @@ const buildFallbackMeProfile = (role: UserRole): UserProfile => ({
 });
 
 const normalizePromptValue = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const resolvePhotoAchievementLabel = (photo: CapturedPhoto): string => {
+  const width = photo.width ?? 0;
+  const height = photo.height ?? 0;
+  const megapixels = (width * height) / 1_000_000;
+  const fileSizeMb = (photo.fileSize ?? 0) / (1024 * 1024);
+
+  if (megapixels >= 6) {
+    return 'Achievement: Eagle Eye';
+  }
+
+  if (fileSizeMb >= 4) {
+    return 'Achievement: Detail Hunter';
+  }
+
+  return 'Achievement: Scene Scout';
+};
 
 const AgentChatScreen = () => {
   const navigation = useNavigation<ChatNavigation>();
@@ -103,6 +109,7 @@ const AgentChatScreen = () => {
   const [me, setMe] = React.useState<UserProfile | null>(null);
   const [children, setChildren] = React.useState<ChildProfile[]>([]);
   const [targetMode, setTargetMode] = React.useState<TargetMode>('myself');
+  const hasManualTargetModeRef = React.useRef(false);
 
   const [prompt, setPrompt] = React.useState('');
   const [selectedQuickPromptIndex, setSelectedQuickPromptIndex] = React.useState<number | null>(null);
@@ -117,6 +124,7 @@ const AgentChatScreen = () => {
   const [contextError, setContextError] = React.useState<string | null>(null);
   const [generationError, setGenerationError] = React.useState<string | null>(null);
   const hasLoadedContextRef = React.useRef(false);
+  const lastContextRefreshAtRef = React.useRef(0);
 
   React.useEffect(() => {
     if (!role) {
@@ -148,13 +156,6 @@ const AgentChatScreen = () => {
       let childrenData: ChildProfile[] = [];
 
       if (!meData) {
-        const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-        try {
-          userService.setCurrentUserId(targetMockUserId);
-        } catch {
-          userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
-        }
-
         meData = await userService.getMe();
       }
 
@@ -180,7 +181,7 @@ const AgentChatScreen = () => {
 
       if (childrenData.length === 0) {
         setTargetMode('myself');
-        await setSelectedChildId(null);
+        void setSelectedChildId(null).catch(() => {});
         return;
       }
 
@@ -190,11 +191,15 @@ const AgentChatScreen = () => {
       const fallbackChildId = childrenData[0]?.id ?? null;
       const resolvedChildId = isSelectedChildValid ? selectedChildId : fallbackChildId;
       if (resolvedChildId !== selectedChildId) {
-        await setSelectedChildId(resolvedChildId);
+        void setSelectedChildId(resolvedChildId).catch(() => {});
       }
       setTargetMode((currentMode) => {
-        if (currentMode === 'myself') {
-          return 'myself';
+        if (hasManualTargetModeRef.current) {
+          if (currentMode === 'child' && !resolvedChildId) {
+            return 'myself';
+          }
+
+          return currentMode;
         }
 
         return resolvedChildId ? 'child' : 'myself';
@@ -205,16 +210,22 @@ const AgentChatScreen = () => {
       if (showLoader) {
         setIsLoading(false);
       }
+      lastContextRefreshAtRef.current = Date.now();
     }
   }, [currentUser, effectiveRole, selectedChildId, session?.accessToken, setSelectedChildId]);
 
   useFocusEffect(
     React.useCallback(() => {
       const shouldShowLoader = !hasLoadedContextRef.current;
+      const now = Date.now();
+      const isRefreshCooldownActive =
+        now - lastContextRefreshAtRef.current < CHAT_CONTEXT_REFRESH_COOLDOWN_MS;
       hasLoadedContextRef.current = true;
 
-      void loadBuilderContext(shouldShowLoader);
-      void refreshPermissionsState();
+      if (shouldShowLoader || !isRefreshCooldownActive) {
+        void loadBuilderContext(shouldShowLoader);
+        void refreshPermissionsState();
+      }
 
       return undefined;
     }, [loadBuilderContext, refreshPermissionsState]),
@@ -254,6 +265,10 @@ const AgentChatScreen = () => {
   }, [prompt]);
 
   const resolvedQuickPromptIndex = selectedQuickPromptIndex ?? activeQuickPromptIndex;
+  const photoAchievementLabel = React.useMemo(
+    () => (capturedPhoto ? resolvePhotoAchievementLabel(capturedPhoto) : null),
+    [capturedPhoto],
+  );
 
   const assignPreparedPhoto = async (photo: CapturedPhoto | null) => {
     if (!photo) {
@@ -460,6 +475,7 @@ const AgentChatScreen = () => {
             <View key={`target-mode-${targetMode}-${selectedChildId ?? 'none'}`} style={styles.optionRow}>
               <Pressable
                 onPress={() => {
+                  hasManualTargetModeRef.current = true;
                   setTargetMode('myself');
                   setGenerationError(null);
                 }}
@@ -485,6 +501,7 @@ const AgentChatScreen = () => {
                   if (!canUseChildTarget) {
                     return;
                   }
+                  hasManualTargetModeRef.current = true;
 
                   if (!selectedChild && children[0]) {
                     void setSelectedChildId(children[0].id);
@@ -526,6 +543,7 @@ const AgentChatScreen = () => {
                       onPress={() => {
                         const firstChild = children[0];
                         if (firstChild) {
+                          hasManualTargetModeRef.current = true;
                           void setSelectedChildId(firstChild.id);
                           setTargetMode('child');
                           setGenerationError(null);
@@ -542,6 +560,7 @@ const AgentChatScreen = () => {
                         <Pressable
                           key={child.id}
                           onPress={() => {
+                            hasManualTargetModeRef.current = true;
                             void setSelectedChildId(child.id);
                             setTargetMode('child');
                             setGenerationError(null);
@@ -664,12 +683,36 @@ const AgentChatScreen = () => {
                   ) : null}
                 </View>
               </View>
+              {photoAchievementLabel ? (
+                <View
+                  style={[
+                    styles.achievementChip,
+                    { borderColor: colors.border, backgroundColor: colors.background },
+                  ]}
+                >
+                  <Text style={[styles.achievementText, { color: colors.text }]} allowFontScaling>
+                    {photoAchievementLabel}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : (
-            <EmptyState
-              title="No photo attached"
-              description="Use Take photo or Choose from gallery to add AI context."
-            />
+            <View style={styles.photoContainer}>
+              <EmptyState
+                title="No photo attached"
+                description="Use Take photo or Choose from gallery to add AI context."
+              />
+              <View
+                style={[
+                  styles.achievementChip,
+                  { borderColor: colors.border, backgroundColor: colors.background },
+                ]}
+              >
+                <Text style={[styles.achievementText, { color: colors.textSecondary }]} allowFontScaling>
+                  Achievement locked: Scene Scout
+                </Text>
+              </View>
+            </View>
           )}
 
           <View style={styles.photoPrimaryActions}>
@@ -922,6 +965,18 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     photoMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: "500",
+    },
+    achievementChip: {
+      borderWidth: 1,
+      borderRadius: 999,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      elevation: 1,
+    },
+    achievementText: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "700",
     },
     photoActions: {
       flexDirection: "row",

@@ -1,17 +1,28 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
 import { generateQuestByPrompt, generateQuestByPromptWithPhoto } from '@/src/features/chat/api/quest';
-import {
-  approvePlanMock,
-  generatePlanMock,
-  getPlansMock,
-  type GeneratePlanMockInput,
-  type GetPlansMockInput,
-} from '@/src/features/mvp/services';
 import type { GeneratedPlan, Quest, QuestStatus, QuestStep } from '@/shared/models/mvp-contracts.model';
 
-export type GeneratePlanInput = GeneratePlanMockInput;
-export type GetPlansInput = GetPlansMockInput;
+export type GeneratePlanInput = {
+  targetUserId: string;
+  prompt: string;
+  category?: string;
+  intensity?: string;
+  photo?: {
+    uri: string;
+    width?: number;
+    height?: number;
+    fileName?: string;
+    mimeType?: string;
+    fileSize?: number;
+    previewUri?: string;
+  };
+};
+
+export type GetPlansInput = {
+  targetUserId?: string;
+  limit?: number;
+};
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -210,8 +221,12 @@ const buildStepsFromPayload = (
   questId: string,
   questTitle: string,
   questDescription: string,
+  forcedStepCandidates?: unknown[],
 ): QuestStep[] => {
-  const stepCandidates = pickArray(payload, ['steps', 'questSteps', 'subtasks', 'tasks']) ?? [];
+  const stepCandidates =
+    forcedStepCandidates ??
+    pickArray(payload, ['steps', 'questSteps', 'subtasks', 'tasks']) ??
+    [];
   const parsedSteps = stepCandidates
     .map((step, index) => {
       if (typeof step === 'string') {
@@ -269,6 +284,7 @@ const buildQuestFromPayload = (
   input: GeneratePlanInput,
   index: number,
   defaultStatus: QuestStatus,
+  forcedStepCandidates?: unknown[],
 ): Quest => {
   const nowIso = new Date().toISOString();
   const normalizedPrompt = input.prompt.trim();
@@ -286,7 +302,7 @@ const buildQuestFromPayload = (
   const description =
     pickString(payload, ['description', 'details', 'text', 'content']) ??
     normalizedPrompt;
-  const steps = buildStepsFromPayload(payload, id, title, description);
+  const steps = buildStepsFromPayload(payload, id, title, description, forcedStepCandidates);
   const completedStepsCount = steps.filter((step) => step.status === 'completed').length;
 
   return {
@@ -321,21 +337,22 @@ const buildPlanFromApiResponse = (
     null;
   const hasQuestArray = Array.isArray(questCandidates) && questCandidates.length > 0;
   const defaultPlanStatus = hasQuestArray ? 'draft' : 'approved';
-
-  const questPayloads: UnknownRecord[] = hasQuestArray
-    ? questCandidates
-        .filter((item): item is UnknownRecord => isObject(item))
-    : [extractQuestPayload(response) ?? planPayload];
-
-  const quests = questPayloads.map((payload, index) =>
-    buildQuestFromPayload(payload, input, index, 'draft'),
+  const baseQuestPayload = extractQuestPayload(response) ?? planPayload;
+  const primaryQuestPayload = isObject(baseQuestPayload) ? baseQuestPayload : planPayload;
+  const quest = buildQuestFromPayload(
+    primaryQuestPayload,
+    input,
+    0,
+    'draft',
+    hasQuestArray ? questCandidates : undefined,
   );
+  const quests = [quest];
 
   const summary =
     pickString(planPayload, ['summary']) ??
     extractResponseSummary(planPayload) ??
     extractResponseSummary(response) ??
-    `Generated ${quests.length} quest${quests.length > 1 ? 's' : ''} from prompt.`;
+    `Generated one quest with ${quest.stepsCount ?? quest.steps?.length ?? 0} steps from prompt.`;
   const totalEstimatedMinutes =
     pickNumber(planPayload, ['totalEstimatedMinutes', 'estimatedMinutes', 'durationMinutes']) ??
     quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0);
@@ -346,7 +363,7 @@ const buildPlanFromApiResponse = (
   const planId = rawPlanId.startsWith('plan-') ? rawPlanId : `plan-${rawPlanId}`;
   const title =
     pickString(planPayload, ['title', 'name']) ??
-    (quests.length === 1 ? `AI Quest: ${quests[0].title}` : `AI Quest Plan (${quests.length})`);
+    `AI Quest: ${quest.title}`;
   const childMessage =
     pickString(planPayload, ['childMessage', 'message', 'heroMessage']) ??
     'Quest plan generated. Start with the first step.';
@@ -387,7 +404,7 @@ export const buildGeneratePlanFormData = (input: GeneratePlanInput): FormData =>
 const generatePlanViaApiContract = async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
   const accessToken = useAuthStore.getState().session?.accessToken;
   if (!accessToken) {
-    return generatePlanMock(input);
+    throw new Error('Sign in is required to generate AI plans.');
   }
 
   const normalizedPrompt = input.prompt.trim();
@@ -409,11 +426,6 @@ const generatePlanViaApiContract = async (input: GeneratePlanInput): Promise<Gen
 
 export const plansService = {
   getPlans: async (input: GetPlansInput = {}): Promise<GeneratedPlan[]> => {
-    const accessToken = useAuthStore.getState().session?.accessToken;
-    if (!accessToken) {
-      return getPlansMock(input);
-    }
-
     const plans = usePlansStore.getState().getPlans();
     return applyGetPlansFilters(plans, input);
   },
@@ -426,14 +438,11 @@ export const plansService = {
   },
 
   approvePlan: async (planId: string): Promise<GeneratedPlan> => {
-    const accessToken = useAuthStore.getState().session?.accessToken;
-    if (accessToken) {
-      const approvedPlan = await usePlansStore.getState().approvePlan(planId);
-      if (approvedPlan) {
-        return approvedPlan;
-      }
+    const approvedPlan = await usePlansStore.getState().approvePlan(planId);
+    if (approvedPlan) {
+      return approvedPlan;
     }
 
-    return approvePlanMock(planId);
+    throw new Error(`Plan '${planId}' was not found.`);
   },
 };

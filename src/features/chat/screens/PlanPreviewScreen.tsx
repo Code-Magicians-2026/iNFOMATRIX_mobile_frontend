@@ -4,6 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
+import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
@@ -24,6 +25,8 @@ const PlanPreviewScreen = () => {
   const route = useRoute<PlanPreviewRoute>();
   const navigation = useNavigation<PlanPreviewNavigation>();
   const colors = useThemeStore((s) => s.colors);
+  const role = useAuthStore((s) => s.role);
+  const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(
     () => getStyles(cardMaxWidth, isTablet, spacing),
@@ -47,7 +50,13 @@ const PlanPreviewScreen = () => {
       setScreenError(null);
       const approved = await plansService.approvePlan(plan.id);
       setPlan(approved);
+      const targetChildId =
+        approved.quests.find((quest) => quest.assignedToUserId.trim().length > 0)?.assignedToUserId.trim() ?? null;
+      if (role === 'adult' && targetChildId) {
+        await setSelectedChildId(targetChildId);
+      }
       setFeedback('Plan approved and quests activated.');
+      navigation.navigate('MainTabs', { screen: 'Quests' });
     } catch (error) {
       setScreenError(getApiErrorMessage(error, 'Failed to approve this plan.'));
     } finally {
@@ -116,6 +125,28 @@ const PlanPreviewScreen = () => {
                 <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
                   Estimated minutes: {quest.estimatedMinutes}
                 </Text>
+
+                {(quest.steps?.length ?? 0) > 0 ? (
+                  <View style={styles.stepsWrap}>
+                    <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                      Steps
+                    </Text>
+                    {[...(quest.steps ?? [])]
+                      .sort((left, right) => left.order - right.order)
+                      .map((step, index) => (
+                        <View key={step.id} style={[styles.stepItem, { borderColor: colors.border }]}>
+                          <Text style={[styles.stepTitle, { color: colors.text }]} allowFontScaling>
+                            {index + 1}. {step.title}
+                          </Text>
+                          {step.description ? (
+                            <Text style={[styles.stepDescription, { color: colors.textSecondary }]} allowFontScaling>
+                              {step.description}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))}
+                  </View>
+                ) : null}
               </View>
             ))
           ) : (
@@ -208,6 +239,29 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     questMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
+    },
+    stepsWrap: {
+      marginTop: 8,
+      gap: 6,
+    },
+    stepsHeading: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
+    },
+    stepItem: {
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      gap: 2,
+    },
+    stepTitle: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '700',
+    },
+    stepDescription: {
+      fontSize: isTablet ? 12 : 11,
+      lineHeight: isTablet ? 17 : 15,
     },
     totalMinutes: {
       fontSize: isTablet ? 22 : 20,
