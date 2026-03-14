@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import type {
   CapturedPhoto,
   ChildProfile,
@@ -21,13 +22,6 @@ import {
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
-import {
-  PLAN_BUILDER_INPUT_SCHEMA,
-  PLAN_BUILDER_OUTPUT_SCHEMA,
-  PLAN_BUILDER_SAFETY_RULES,
-  PLAN_BUILDER_SYSTEM_PROMPT,
-  PLAN_BUILDER_TONE_RULES,
-} from '@/src/features/chat/config/ai-transparency';
 import { cameraService, childrenService, plansService, userService } from '@/src/integration/services';
 import type { GeneratePlanInput } from '@/src/integration/services';
 import type { MediaPermissionState } from '@/src/integration/services/cameraService';
@@ -40,8 +34,6 @@ const QUICK_PROMPTS = [
   'Make homework feel like a game',
 ] as const;
 
-const INTENSITY_OPTIONS = ['low', 'medium', 'high'] as const;
-type IntensityOption = (typeof INTENSITY_OPTIONS)[number];
 const BRAND_RED = '#ff2d55';
 const BRAND_RED_BORDER = 'rgba(255, 45, 85, 0.48)';
 
@@ -77,6 +69,17 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
   return 'child-1';
 };
 
+const buildFallbackMeProfile = (role: UserRole): UserProfile => ({
+  id: role === 'adult' ? 'adult-self' : 'child-self',
+  fullName: role === 'adult' ? 'Adult Profile' : 'Child Profile',
+  email: `${role}@local.infomatrix`,
+  role,
+  level: 1,
+  xp: 0,
+  streak: 0,
+  avatarType: role === 'adult' ? 'mentor' : 'adventurer',
+});
+
 const normalizePromptValue = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
 const AgentChatScreen = () => {
@@ -89,6 +92,7 @@ const AgentChatScreen = () => {
   );
 
   const role = useAuthStore((s) => s.role);
+  const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
@@ -102,7 +106,6 @@ const AgentChatScreen = () => {
 
   const [prompt, setPrompt] = React.useState('');
   const [selectedQuickPromptIndex, setSelectedQuickPromptIndex] = React.useState<number | null>(null);
-  const [intensity, setIntensity] = React.useState<IntensityOption>('medium');
   const [capturedPhoto, setCapturedPhoto] = React.useState<CapturedPhoto | null>(null);
   const [cameraPermissionState, setCameraPermissionState] =
     React.useState<MediaPermissionState>('undetermined');
@@ -113,16 +116,7 @@ const AgentChatScreen = () => {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [contextError, setContextError] = React.useState<string | null>(null);
   const [generationError, setGenerationError] = React.useState<string | null>(null);
-  const [isTransparencyVisible, setIsTransparencyVisible] = React.useState(false);
-
-  const inputSchemaPreview = React.useMemo(
-    () => JSON.stringify(PLAN_BUILDER_INPUT_SCHEMA, null, 2),
-    [],
-  );
-  const outputSchemaPreview = React.useMemo(
-    () => JSON.stringify(PLAN_BUILDER_OUTPUT_SCHEMA, null, 2),
-    [],
-  );
+  const hasLoadedContextRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!role) {
@@ -136,27 +130,45 @@ const AgentChatScreen = () => {
     setGalleryPermissionState(status.gallery);
   }, []);
 
-  React.useEffect(() => {
-    void refreshPermissionsState();
-  }, [refreshPermissionsState]);
-
-  const loadBuilderContext = React.useCallback(async () => {
-    setIsLoading(true);
+  const loadBuilderContext = React.useCallback(async (showLoader: boolean) => {
+    if (showLoader) {
+      setIsLoading(true);
+    }
 
     try {
       setContextError(null);
 
-      const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-      try {
-        userService.setCurrentUserId(targetMockUserId);
-      } catch {
-        userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+      const isAuthenticated = Boolean(session?.accessToken);
+      let meData: UserProfile | null = currentUser
+        ? {
+            ...currentUser,
+            role: effectiveRole,
+          }
+        : null;
+      let childrenData: ChildProfile[] = [];
+
+      if (!meData) {
+        const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
+        try {
+          userService.setCurrentUserId(targetMockUserId);
+        } catch {
+          userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
+        }
+
+        meData = await userService.getMe();
       }
 
-      const [meData, childrenData] = await Promise.all([
-        userService.getMe(),
-        effectiveRole === 'adult' ? childrenService.getChildren() : Promise.resolve([]),
-      ]);
+      if (effectiveRole === 'adult' && isAuthenticated) {
+        try {
+          childrenData = await childrenService.getChildren();
+        } catch {
+          childrenData = [];
+        }
+      }
+
+      if (!meData) {
+        meData = buildFallbackMeProfile(effectiveRole);
+      }
 
       setMe(meData);
       setChildren(childrenData);
@@ -180,21 +192,28 @@ const AgentChatScreen = () => {
       if (resolvedChildId !== selectedChildId) {
         await setSelectedChildId(resolvedChildId);
       }
-      setTargetMode(resolvedChildId ? 'child' : 'myself');
-    } catch {
-      setContextError('Failed to load AI Plan Builder context.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId]);
+      setTargetMode((currentMode) => {
+        if (currentMode === 'myself') {
+          return 'myself';
+        }
 
-  React.useEffect(() => {
-    void loadBuilderContext();
-  }, [loadBuilderContext]);
+        return resolvedChildId ? 'child' : 'myself';
+      });
+    } catch {
+      setContextError('Failed to load AI Builder context.');
+    } finally {
+      if (showLoader) {
+        setIsLoading(false);
+      }
+    }
+  }, [currentUser, effectiveRole, selectedChildId, session?.accessToken, setSelectedChildId]);
 
   useFocusEffect(
     React.useCallback(() => {
-      void loadBuilderContext();
+      const shouldShowLoader = !hasLoadedContextRef.current;
+      hasLoadedContextRef.current = true;
+
+      void loadBuilderContext(shouldShowLoader);
       void refreshPermissionsState();
 
       return undefined;
@@ -207,15 +226,17 @@ const AgentChatScreen = () => {
   );
 
   const canUseChildTarget = effectiveRole === 'adult' && children.length > 0;
-  const resolvedIntensity: IntensityOption = INTENSITY_OPTIONS.includes(intensity)
-    ? intensity
-    : 'medium';
   const activeTargetLabel = targetMode === 'myself'
     ? me?.fullName ?? 'Myself'
     : selectedChild?.fullName ?? 'No active child';
   const isChildTargetWithoutSelection =
     targetMode === 'child' && canUseChildTarget && !selectedChild;
-  const isGenerateDisabled = isGenerating || prompt.trim().length === 0;
+  const resolvedMyselfTargetUserId = me?.id ?? currentUser?.id ?? null;
+  const isGenerateDisabled =
+    isGenerating ||
+    prompt.trim().length === 0 ||
+    (targetMode === 'child' && !selectedChild) ||
+    (targetMode === 'myself' && !resolvedMyselfTargetUserId);
   const isCameraBlocked = cameraPermissionState === 'blocked';
   const isGalleryBlocked = galleryPermissionState === 'blocked';
   const shouldShowPermissionHelp =
@@ -353,9 +374,13 @@ const AgentChatScreen = () => {
       return;
     }
 
-    const targetUserId = targetMode === 'myself' ? me?.id : selectedChild?.id;
+    const targetUserId = targetMode === 'myself' ? resolvedMyselfTargetUserId : selectedChild?.id;
     if (!targetUserId) {
-      setGenerationError('No active child selected. Select child target before generation.');
+      setGenerationError(
+        targetMode === 'myself'
+          ? 'Active profile not loaded yet. Refresh and try again.'
+          : 'No active child selected. Select child target before generation.',
+      );
       return;
     }
 
@@ -366,7 +391,6 @@ const AgentChatScreen = () => {
       const request: GeneratePlanInput = {
         targetUserId,
         prompt: normalizedPrompt,
-        intensity: resolvedIntensity,
         ...(capturedPhoto ? { photo: capturedPhoto } : {}),
       };
 
@@ -379,8 +403,10 @@ const AgentChatScreen = () => {
         request,
         targetLabel: activeTargetLabel,
       });
-    } catch {
-      setGenerationError('Generation failed. Please try again.');
+    } catch (error) {
+      setGenerationError(
+        getApiErrorMessage(error, 'Generation failed. Please try again.'),
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -738,42 +764,6 @@ const AgentChatScreen = () => {
           </View>
         </StatCard>
 
-        <StatCard title="Intensity" subtitle="How demanding the plan should be" style={styles.card}>
-          <View key={`intensity-${resolvedIntensity}`} style={styles.optionRow}>
-            {INTENSITY_OPTIONS.map((item) => {
-              const isSelected = resolvedIntensity === item;
-              const optionLabel = item.charAt(0).toUpperCase() + item.slice(1);
-              return (
-                <Pressable
-                  key={item}
-                  onPress={() => {
-                    setIntensity(item);
-                    setGenerationError(null);
-                  }}
-                  style={[
-                    styles.optionChip,
-                    {
-                      borderColor: isSelected ? BRAND_RED : BRAND_RED_BORDER,
-                      backgroundColor: isSelected ? BRAND_RED : colors.background,
-                    },
-                  ]}
-                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                >
-                  <Text
-                    style={[styles.optionChipLabel, { color: isSelected ? '#ffffff' : BRAND_RED }]}
-                    allowFontScaling
-                  >
-                    {optionLabel}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={[styles.helperTextStrong, { color: BRAND_RED }]} allowFontScaling>
-            Selected intensity: {resolvedIntensity.charAt(0).toUpperCase() + resolvedIntensity.slice(1)}
-          </Text>
-        </StatCard>
-
         <StatCard title="Quick Prompts" subtitle="Tap to prefill" style={styles.card}>
           <View key={`quick-prompts-${resolvedQuickPromptIndex ?? 'none'}`} style={styles.quickPromptList}>
             {QUICK_PROMPTS.map((quickPrompt, index) => {
@@ -805,13 +795,6 @@ const AgentChatScreen = () => {
           </View>
         </StatCard>
 
-        <PrimaryButton
-          label="AI Transparency (Debug)"
-          variant="tertiary"
-          onPress={() => setIsTransparencyVisible(true)}
-          style={styles.card}
-        />
-
         <Pressable
           onPress={() => {
             void handleGeneratePlan();
@@ -834,63 +817,6 @@ const AgentChatScreen = () => {
         </View>
       </Modal>
 
-      <Modal
-        visible={isTransparencyVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsTransparencyVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SectionHeader
-              title="AI Transparency"
-              subtitle="System prompt, schemas, and safety constraints"
-            />
-
-            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-              <StatCard title="System Prompt Preview" subtitle="Instruction layer">
-                <Text style={[styles.codeText, { color: colors.text }]} allowFontScaling>
-                  {PLAN_BUILDER_SYSTEM_PROMPT}
-                </Text>
-              </StatCard>
-
-              <StatCard title="Input Schema" subtitle="Prompt contract">
-                <Text style={[styles.codeText, { color: colors.text }]} allowFontScaling>
-                  {inputSchemaPreview}
-                </Text>
-              </StatCard>
-
-              <StatCard title="Expected Output Schema" subtitle="Structured plan shape">
-                <Text style={[styles.codeText, { color: colors.text }]} allowFontScaling>
-                  {outputSchemaPreview}
-                </Text>
-              </StatCard>
-
-              <StatCard title="Safety Rules" subtitle="Policy constraints">
-                {PLAN_BUILDER_SAFETY_RULES.map((rule) => (
-                  <Text key={rule} style={[styles.ruleText, { color: colors.text }]} allowFontScaling>
-                    - {rule}
-                  </Text>
-                ))}
-              </StatCard>
-
-              <StatCard title="Child-Friendly Tone Rules" subtitle="Response style guardrails">
-                {PLAN_BUILDER_TONE_RULES.map((rule) => (
-                  <Text key={rule} style={[styles.ruleText, { color: colors.text }]} allowFontScaling>
-                    - {rule}
-                  </Text>
-                ))}
-              </StatCard>
-            </ScrollView>
-
-            <PrimaryButton
-              label="Close"
-              variant="secondary"
-              onPress={() => setIsTransparencyVisible(false)}
-            />
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 };
@@ -1111,11 +1037,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     micButtonDisabled: {
       opacity: 0.7,
     },
-    helperTextStrong: {
-      fontSize: isTablet ? 13 : 12,
-      fontWeight: "700",
-      marginTop: 2,
-    },
     modalBackdrop: {
       flex: 1,
       backgroundColor: "rgba(0, 0, 0, 0.45)",
@@ -1124,16 +1045,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       paddingHorizontal: spacing,
       paddingVertical: spacing,
     },
-    modalCard: {
-      width: "100%",
-      maxWidth: cardMaxWidth + 60,
-      maxHeight: "90%",
-      borderRadius: 14,
-      borderWidth: 1,
-      padding: isTablet ? 18 : 14,
-      gap: 10,
-      elevation: 4,
-    },
     loadingCard: {
       width: "100%",
       maxWidth: cardMaxWidth,
@@ -1141,24 +1052,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderRadius: 14,
       padding: isTablet ? 16 : 12,
       elevation: 4,
-    },
-    modalScroll: {
-      flexGrow: 0,
-    },
-    modalContent: {
-      gap: 10,
-      paddingBottom: 4,
-    },
-    codeText: {
-      fontFamily: "monospace",
-      fontSize: isTablet ? 13 : 12,
-      lineHeight: isTablet ? 19 : 17,
-      fontWeight: "500",
-    },
-    ruleText: {
-      fontSize: isTablet ? 14 : 13,
-      lineHeight: isTablet ? 20 : 18,
-      fontWeight: "500",
     },
   });
 

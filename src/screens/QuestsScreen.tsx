@@ -23,6 +23,7 @@ import type {
   UserRole,
 } from '@/shared/models/mvp-contracts.model';
 import {
+  CompletionBadge,
   EmptyState,
   LoadingState,
   PrimaryButton,
@@ -37,6 +38,11 @@ import {
   questsService,
   userService,
 } from '@/src/integration/services';
+import earnedBadgesStorage from '@/src/features/profile/services/earnedBadgesStorage';
+import {
+  pickRandomBadgeImageKey,
+  type BadgeImageKey,
+} from '@/shared/components/ui/badge-catalog';
 
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
@@ -74,6 +80,8 @@ const isQuestDone = (quest: Quest) => {
 
 type CompletionFeedback = {
   questTitle: string;
+  difficulty: string;
+  badgeImageKey: BadgeImageKey;
   rewardXp: number;
   totalXp: number;
   streak: number;
@@ -105,10 +113,13 @@ const QuestsScreen = () => {
   const [togglingStepId, setTogglingStepId] = React.useState<string | null>(null);
   const [detailsQuestId, setDetailsQuestId] = React.useState<string | null>(null);
   const [completionFeedback, setCompletionFeedback] = React.useState<CompletionFeedback | null>(null);
+  const [isCompletionBadgeSpotlightVisible, setIsCompletionBadgeSpotlightVisible] = React.useState(false);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
   const completionShakeX = React.useRef(new Animated.Value(0)).current;
   const completionScale = React.useRef(new Animated.Value(1)).current;
+  const completionSpotlightScale = React.useRef(new Animated.Value(0.45)).current;
+  const completionSpotlightOpacity = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     if (!role) {
@@ -277,9 +288,21 @@ const QuestsScreen = () => {
 
       const movedToArchive = !isQuestArchived(questToUpdate) && isQuestArchived(updatedQuest);
       if (movedToArchive && refreshedProgress) {
+        let earnedBadgeImageKey = pickRandomBadgeImageKey();
+        try {
+          const earnedBadge = await earnedBadgesStorage.registerEarnedBadge({
+            userId: updatedQuest.assignedToUserId,
+            questId: updatedQuest.id,
+            difficulty: updatedQuest.difficulty,
+          });
+          earnedBadgeImageKey = earnedBadge.imageKey;
+        } catch {}
+
         Vibration.vibrate(QUEST_VICTORY_VIBRATION_PATTERN);
         setCompletionFeedback({
           questTitle: updatedQuest.title,
+          difficulty: updatedQuest.difficulty,
+          badgeImageKey: earnedBadgeImageKey,
           rewardXp: updatedQuest.rewardXp,
           totalXp: refreshedProgress.xp,
           streak: refreshedProgress.streak,
@@ -294,11 +317,54 @@ const QuestsScreen = () => {
 
   React.useEffect(() => {
     if (!completionFeedback) {
+      setIsCompletionBadgeSpotlightVisible(false);
       return undefined;
     }
 
     completionShakeX.setValue(0);
     completionScale.setValue(1);
+    setIsCompletionBadgeSpotlightVisible(true);
+    completionSpotlightScale.setValue(0.45);
+    completionSpotlightOpacity.setValue(0);
+
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(completionSpotlightOpacity, {
+          toValue: 1,
+          duration: 150,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.delay(880),
+        Animated.timing(completionSpotlightOpacity, {
+          toValue: 0,
+          duration: 220,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.sequence([
+        Animated.timing(completionSpotlightScale, {
+          toValue: 1.18,
+          duration: 230,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionSpotlightScale, {
+          toValue: 1,
+          duration: 180,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.delay(640),
+        Animated.timing(completionSpotlightScale, {
+          toValue: 0.9,
+          duration: 200,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
 
     Animated.parallel([
       Animated.sequence([
@@ -349,12 +415,27 @@ const QuestsScreen = () => {
       ]),
     ]).start();
 
+    const spotlightTimer = setTimeout(() => {
+      setIsCompletionBadgeSpotlightVisible(false);
+      completionSpotlightScale.setValue(1);
+      completionSpotlightOpacity.setValue(0);
+    }, 1260);
+
     const timer = setTimeout(() => {
       setCompletionFeedback(null);
     }, 4200);
 
-    return () => clearTimeout(timer);
-  }, [completionFeedback, completionScale, completionShakeX]);
+    return () => {
+      clearTimeout(spotlightTimer);
+      clearTimeout(timer);
+    };
+  }, [
+    completionFeedback,
+    completionScale,
+    completionShakeX,
+    completionSpotlightOpacity,
+    completionSpotlightScale,
+  ]);
 
   const handleSelectChild = async (childId: string) => {
     setScreenError(null);
@@ -576,6 +657,33 @@ const QuestsScreen = () => {
         </Pressable>
       ) : null}
 
+      {completionFeedback && isCompletionBadgeSpotlightVisible ? (
+        <Modal visible transparent animationType="fade">
+          <View style={styles.completionSpotlightBackdrop} pointerEvents="none">
+            <Animated.View
+              style={[
+                styles.completionSpotlightCard,
+                {
+                  opacity: completionSpotlightOpacity,
+                  transform: [{ scale: completionSpotlightScale }],
+                },
+              ]}
+            >
+              <CompletionBadge
+                difficulty={completionFeedback.difficulty}
+                imageKey={completionFeedback.badgeImageKey}
+                imageSize={isTablet ? 150 : 136}
+                showLabel={false}
+                style={styles.completionSpotlightBadge}
+              />
+              <Text style={styles.completionSpotlightLabel} allowFontScaling>
+                Badge unlocked
+              </Text>
+            </Animated.View>
+          </View>
+        </Modal>
+      ) : null}
+
       <Modal
         visible={Boolean(detailsQuestId)}
         transparent
@@ -739,6 +847,37 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontSize: isTablet ? 22 : 20,
       fontWeight: '900',
       lineHeight: isTablet ? 24 : 22,
+    },
+    completionSpotlightBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(8, 11, 16, 0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing,
+      paddingVertical: spacing,
+    },
+    completionSpotlightCard: {
+      width: isTablet ? 250 : 220,
+      height: isTablet ? 250 : 220,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      padding: 16,
+      elevation: 14,
+    },
+    completionSpotlightBadge: {
+      marginTop: 0,
+      backgroundColor: 'transparent',
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      elevation: 0,
+    },
+    completionSpotlightLabel: {
+      color: '#ff2d55',
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: '800',
     },
     childList: {
       gap: 8,

@@ -57,8 +57,10 @@ const ProfileScreen = () => {
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
 
   const session = useAuthStore((s) => s.session);
+  const family = useAuthStore((s) => s.family);
   const role = useAuthStore((s) => s.role);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const refreshFamily = useAuthStore((s) => s.refreshFamily);
   const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const logout = useAuthStore((s) => s.logout);
@@ -105,6 +107,12 @@ const ProfileScreen = () => {
       const meData = await userService.getMe();
       const progressData = await progressService.getProgress(meData.id);
 
+      if (session) {
+        try {
+          await refreshFamily();
+        } catch {}
+      }
+
       setMe(meData);
       setProgress(progressData);
 
@@ -130,7 +138,7 @@ const ProfileScreen = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [currentUser?.id, effectiveRole]);
+  }, [currentUser?.id, effectiveRole, refreshFamily, session]);
 
   React.useEffect(() => {
     void loadProfile(true);
@@ -204,6 +212,7 @@ const ProfileScreen = () => {
   );
 
   const strongestMetric = categoryStats[0];
+  const canOpenEarnedBadges = Boolean(me?.id);
 
   const childBadges = React.useMemo(() => {
     const badges: string[] = [];
@@ -318,8 +327,31 @@ const ProfileScreen = () => {
                 </Text>
               )}
             </View>
+
           </StatCard>
         )}
+
+        <StatCard title="Earned Badges" subtitle="Saved badge collection" style={styles.card}>
+          <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+            Open your saved badges collected from completed quests.
+          </Text>
+          <PrimaryButton
+            label="Переглянути отримані бейджі"
+            variant="secondary"
+            disabled={!canOpenEarnedBadges}
+            onPress={() => {
+              if (!me?.id) {
+                return;
+              }
+
+              navigation.navigate('EarnedBadges', {
+                userId: me.id,
+                displayName: me.fullName,
+              });
+            }}
+            style={styles.earnedBadgesButton}
+          />
+        </StatCard>
 
         <StatCard title="Demo Mode" subtitle="Prepared scenarios for full walkthrough" style={styles.card}>
           <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
@@ -344,9 +376,17 @@ const ProfileScreen = () => {
           style={styles.card}
         >
           {session ? (
-            <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-              {session.email}
-            </Text>
+            <>
+              <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+                {session.email}
+              </Text>
+              <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+                Family ID: {family?.id ?? 'not linked'}
+              </Text>
+              <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+                Family Name: {family?.name ?? 'not set'}
+              </Text>
+            </>
           ) : (
             <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
               Use login or registration to sync profile data.
@@ -498,6 +538,9 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     badgeText: {
       fontSize: isTablet ? 14 : 13,
       fontWeight: '700',
+    },
+    earnedBadgesButton: {
+      marginTop: 6,
     },
     modalBackdrop: {
       flex: 1,

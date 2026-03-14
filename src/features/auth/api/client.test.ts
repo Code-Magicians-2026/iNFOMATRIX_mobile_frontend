@@ -50,6 +50,22 @@ describe('request', () => {
     expect(headers.get('Content-Type')).toBeNull();
   });
 
+  it('adds bearer authorization header when accessToken is provided', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(createResponse(200, { ok: true }, 'application/json'));
+
+    await request('/api/test', {
+      method: 'GET',
+      accessToken: 'token-123',
+    });
+
+    const [, options] = fetchMock.mock.calls[0];
+    const headers = options?.headers as Headers;
+
+    expect(headers.get('Authorization')).toBe('Bearer token-123');
+  });
+
   it('returns undefined on 204', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
 
@@ -91,6 +107,35 @@ describe('request', () => {
       expect.objectContaining({
         status: 401,
         message: 'Unauthorized',
+      }),
+    );
+  });
+
+  it('parses json payload from text/plain success responses', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createResponse(200, { accessToken: 'a', refreshToken: null, expiresIn: 3600 }, 'text/plain'),
+    );
+
+    const result = await request<{ accessToken: string; refreshToken: string | null; expiresIn: number }>(
+      '/api/test',
+    );
+
+    expect(result).toEqual({
+      accessToken: 'a',
+      refreshToken: null,
+      expiresIn: 3600,
+    });
+  });
+
+  it('extracts problem detail from json string in text/plain errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createResponse(400, { detail: 'Invalid confirmation token' }, 'text/plain'),
+    );
+
+    await expect(request('/api/test')).rejects.toEqual(
+      expect.objectContaining({
+        status: 400,
+        message: 'Invalid confirmation token',
       }),
     );
   });

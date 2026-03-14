@@ -1,7 +1,8 @@
 export interface RegisterRequestDto {
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
-  fullName: string;
 }
 
 export interface LoginRequestDto {
@@ -39,4 +40,15 @@ export interface TokenDto {
   tokenType?: string | null;
   email?: string | null;
   userId?: string;
+}
+
+export interface CreateFamilyRequestDto {
+  name: string;
+}
+
+export interface RegisterChildRequestDto {
+  firstName: string;
+  lastName: string;
+  password: string;
+  familyId: string;
 }

@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import {
   EmptyState,
   LoadingState,
@@ -34,16 +35,21 @@ const PlanPreviewScreen = () => {
   const [isRegenerating, setIsRegenerating] = React.useState(false);
   const [feedback, setFeedback] = React.useState<string | null>(null);
   const [screenError, setScreenError] = React.useState<string | null>(null);
+  const canApprove = plan.status === 'draft';
 
   const handleApprove = async () => {
+    if (!canApprove) {
+      return;
+    }
+
     setIsApproving(true);
     try {
       setScreenError(null);
       const approved = await plansService.approvePlan(plan.id);
       setPlan(approved);
       setFeedback('Plan approved and quests activated.');
-    } catch {
-      setScreenError('Failed to approve this plan.');
+    } catch (error) {
+      setScreenError(getApiErrorMessage(error, 'Failed to approve this plan.'));
     } finally {
       setIsApproving(false);
     }
@@ -56,8 +62,8 @@ const PlanPreviewScreen = () => {
       const regenerated = await plansService.generatePlan(route.params.request);
       setPlan(regenerated);
       setFeedback('Plan regenerated. Review new quests below.');
-    } catch {
-      setScreenError('Failed to regenerate plan.');
+    } catch (error) {
+      setScreenError(getApiErrorMessage(error, 'Failed to regenerate plan.'));
     } finally {
       setIsRegenerating(false);
     }
@@ -98,6 +104,9 @@ const PlanPreviewScreen = () => {
                 <Text style={[styles.questTitle, { color: colors.text }]} allowFontScaling>
                   {quest.title}
                 </Text>
+                <Text style={[styles.questDescription, { color: colors.textSecondary }]} allowFontScaling>
+                  {quest.description}
+                </Text>
                 <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
                   Difficulty: {quest.difficulty}
                 </Text>
@@ -121,15 +130,17 @@ const PlanPreviewScreen = () => {
         </StatCard>
 
         <View style={[styles.actionsRow, styles.card]}>
-          <Pressable
-            onPress={handleApprove}
-            style={styles.approveButton}
-            android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
-          >
-            <Text style={styles.approveButtonLabel} allowFontScaling>
-              Approve
-            </Text>
-          </Pressable>
+          {canApprove ? (
+            <Pressable
+              onPress={handleApprove}
+              style={styles.approveButton}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+            >
+              <Text style={styles.approveButtonLabel} allowFontScaling>
+                Approve
+              </Text>
+            </Pressable>
+          ) : null}
 
           <Pressable
             onPress={handleRegenerate}
@@ -187,6 +198,11 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     questTitle: {
       fontSize: isTablet ? 15 : 14,
       fontWeight: '700',
+      marginBottom: 2,
+    },
+    questDescription: {
+      fontSize: isTablet ? 13 : 12,
+      lineHeight: isTablet ? 19 : 17,
       marginBottom: 2,
     },
     questMeta: {

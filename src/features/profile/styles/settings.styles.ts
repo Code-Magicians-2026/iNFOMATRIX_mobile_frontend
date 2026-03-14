@@ -30,6 +30,17 @@ export const getStyles = (
       gap: 12,
       marginBottom: spacing,
     },
+    settingBlock: {
+      width: '100%',
+      maxWidth: isLandscape ? (isTablet ? 720 : 560) : isTablet ? 620 : 420,
+      paddingHorizontal: isTablet ? 20 : 14,
+      paddingVertical: isTablet ? 18 : 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      marginBottom: spacing,
+    },
     label: {
       fontSize: isTablet ? 22 : 20,
       color: c.text,
