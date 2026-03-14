@@ -11,6 +11,7 @@ import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 
 import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
+import usePlansStore from '@/context/Plans-store';
 import { queryClient } from '@/src/features/auth/api/queryClient';
 import AppErrorBoundary from '@/shared/components/AppErrorBoundary';
 
@@ -20,6 +21,7 @@ export default function RootLayout() {
   const colors = useThemeStore((s) => s.colors);
   const loadTheme = useThemeStore((s) => s.loadTheme);
   const hydrateAuth = useAuthStore((s) => s.hydrate);
+  const hydratePlans = usePlansStore((s) => s.hydrate);
   const paperTheme = React.useMemo(
     () =>
       isDark
@@ -51,7 +53,8 @@ export default function RootLayout() {
   React.useEffect(() => {
     void loadTheme();
     void hydrateAuth();
-  }, [hydrateAuth, loadTheme]);
+    void hydratePlans();
+  }, [hydrateAuth, hydratePlans, loadTheme]);
 
   return (
     <GestureHandlerRootView style={styles.root}>

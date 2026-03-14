@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import useAuthStore from '@/context/Auth-store';
+import usePlansStore from '@/context/Plans-store';
 import { resetMockLayerState, setMockMeId } from '@/src/features/mvp/services';
 
 import { plansService } from './plansService';
@@ -12,10 +13,11 @@ const createResponse = (status: number, body: unknown, contentType = 'applicatio
   });
 
 describe('plansService.uploadPhotoAndGenerate', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
     resetMockLayerState();
     setMockMeId('adult-1');
+    await usePlansStore.getState().clear();
     useAuthStore.setState({
       session: null,
       currentUser: null,
@@ -95,6 +97,7 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     expect(plan.status).toBe('approved');
     expect(plan.quests).toHaveLength(1);
     expect(plan.quests[0]?.title).toBe('Focus Sprint');
+    expect(plan.quests[0]?.stepsCount).toBeGreaterThan(0);
     expect(plan.totalEstimatedMinutes).toBe(35);
 
     const [calledUrl, options] = fetchMock.mock.calls[0] ?? [];
@@ -106,5 +109,67 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     const body = options?.body as FormData;
     expect(body.get('Prompt')).toBe('Create a focused study quest.');
     expect(body.get('prompt')).toBeNull();
+  });
+
+  it('maps full swagger plan payload with all quests and stores it in local zustand cache', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'token-quest',
+        refreshToken: 'refresh-quest',
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'adult-api-1',
+        fullName: 'Adult API',
+        email: 'adult@example.com',
+        role: 'adult',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'mentor',
+      },
+      role: 'adult',
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createResponse(200, {
+        title: 'Quest: The Grand Cleanup After the Gathering',
+        summary: 'Visual assessment pending user image.',
+        childMessage: 'Hero, your mission is to restore the realm.',
+        quests: [
+          {
+            title: 'Artifact Collection',
+            description: 'Gather all cups and plates. Return them to kitchen.',
+            difficulty: 'medium',
+            rewardXp: 150,
+            estimatedMinutes: 12,
+          },
+          {
+            title: 'Surface Polish',
+            description: 'Wipe down tables and counters.',
+            difficulty: 'low',
+            rewardXp: 100,
+            estimatedMinutes: 8,
+          },
+        ],
+        totalEstimatedMinutes: 20,
+      }),
+    );
+
+    const plan = await plansService.generatePlan({
+      targetUserId: 'child-api-1',
+      prompt: 'Clean the room after guests.',
+    });
+
+    expect(plan.status).toBe('draft');
+    expect(plan.quests).toHaveLength(2);
+    expect(plan.quests[0]?.title).toBe('Artifact Collection');
+    expect(plan.quests[0]?.stepsCount).toBeGreaterThan(0);
+    expect(plan.totalEstimatedMinutes).toBe(20);
+
+    const cachedPlans = await plansService.getPlans({ limit: 10 });
+    expect(cachedPlans.some((cachedPlan) => cachedPlan.id === plan.id)).toBe(true);
   });
 });

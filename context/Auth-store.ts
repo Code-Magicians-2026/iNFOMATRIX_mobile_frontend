@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
+import usePlansStore from '@/context/Plans-store';
 import { ApiError } from '@/src/features/auth/api/client';
 import type { TokenDto } from '@/src/features/auth/dto/auth.dto';
 import type { AuthSession } from '@/src/features/auth/models/auth-session.model';
@@ -623,6 +624,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
     } catch {}
+    await usePlansStore.getState().clear();
   },
 }));
 

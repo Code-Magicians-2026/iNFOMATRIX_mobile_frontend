@@ -1,4 +1,5 @@
 import useAuthStore from '@/context/Auth-store';
+import usePlansStore from '@/context/Plans-store';
 import { generateQuestByPrompt } from '@/src/features/chat/api/quest';
 import {
   approvePlanMock,
@@ -7,7 +8,7 @@ import {
   type GeneratePlanMockInput,
   type GetPlansMockInput,
 } from '@/src/features/mvp/services';
-import type { GeneratedPlan, Quest, QuestStatus } from '@/shared/models/mvp-contracts.model';
+import type { GeneratedPlan, Quest, QuestStatus, QuestStep } from '@/shared/models/mvp-contracts.model';
 
 export type GeneratePlanInput = GeneratePlanMockInput;
 export type GetPlansInput = GetPlansMockInput;
@@ -45,6 +46,17 @@ const pickNumber = (source: UnknownRecord, keys: string[]): number | null => {
   return null;
 };
 
+const pickArray = (source: UnknownRecord, keys: string[]): unknown[] | null => {
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
 const toQuestStatus = (value: string | null): QuestStatus => {
   const normalized = value?.trim().toLowerCase();
   if (
@@ -60,7 +72,7 @@ const toQuestStatus = (value: string | null): QuestStatus => {
 };
 
 const extractQuestPayload = (payload: unknown, depth = 0): UnknownRecord | null => {
-  if (depth > 5 || payload === null || payload === undefined) {
+  if (depth > 6 || payload === null || payload === undefined) {
     return null;
   }
 
@@ -87,6 +99,7 @@ const extractQuestPayload = (payload: unknown, depth = 0): UnknownRecord | null 
     'rewardXp',
     'estimatedMinutes',
     'durationMinutes',
+    'steps',
   ].some((key) => Object.prototype.hasOwnProperty.call(payload, key));
   if (looksLikeQuest) {
     return payload;
@@ -102,6 +115,53 @@ const extractQuestPayload = (payload: unknown, depth = 0): UnknownRecord | null 
   ];
   for (const candidate of nestedCandidates) {
     const parsed = extractQuestPayload(candidate, depth + 1);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return payload;
+};
+
+const extractPlanPayload = (payload: unknown, depth = 0): UnknownRecord | null => {
+  if (depth > 6 || payload === null || payload === undefined) {
+    return null;
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const parsed = extractPlanPayload(item, depth + 1);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  if (!isObject(payload)) {
+    return null;
+  }
+
+  const hasPlanLikeShape =
+    Array.isArray(payload.quests) ||
+    Object.prototype.hasOwnProperty.call(payload, 'totalEstimatedMinutes') ||
+    Object.prototype.hasOwnProperty.call(payload, 'childMessage') ||
+    Object.prototype.hasOwnProperty.call(payload, 'summary');
+
+  if (hasPlanLikeShape) {
+    return payload;
+  }
+
+  const nestedCandidates = [
+    payload.plan,
+    payload.data,
+    payload.result,
+    payload.value,
+    payload.response,
+    payload.item,
+  ];
+  for (const candidate of nestedCandidates) {
+    const parsed = extractPlanPayload(candidate, depth + 1);
     if (parsed) {
       return parsed;
     }
@@ -127,11 +187,89 @@ const buildQuestTitleFromPrompt = (prompt: string) => {
   return `${trimmed.slice(0, 53)}...`;
 };
 
-const buildQuestFromApiResponse = (
-  response: unknown,
+const buildFallbackStepTitlesFromDescription = (description: string): string[] => {
+  const fragments = description
+    .split(/[.;]\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 3);
+
+  if (fragments.length >= 2) {
+    return fragments;
+  }
+
+  return [
+    'Prepare for the quest',
+    'Complete the main action',
+    'Review and finalize',
+  ];
+};
+
+const buildStepsFromPayload = (
+  payload: UnknownRecord,
+  questId: string,
+  questTitle: string,
+  questDescription: string,
+): QuestStep[] => {
+  const stepCandidates = pickArray(payload, ['steps', 'questSteps', 'subtasks', 'tasks']) ?? [];
+  const parsedSteps = stepCandidates
+    .map((step, index) => {
+      if (typeof step === 'string') {
+        const trimmed = step.trim();
+        if (!trimmed) {
+          return null;
+        }
+
+        return {
+          id: `${questId}-step-${index + 1}`,
+          questId,
+          title: trimmed,
+          order: index + 1,
+          status: 'pending' as const,
+        };
+      }
+
+      if (!isObject(step)) {
+        return null;
+      }
+
+      const title = pickString(step, ['title', 'name', 'task', 'label']) ?? `Step ${index + 1}`;
+      const description = pickString(step, ['description', 'details', 'text']) ?? undefined;
+      const order = pickNumber(step, ['order', 'index', 'position']) ?? index + 1;
+
+      return {
+        id: pickString(step, ['id', 'stepId']) ?? `${questId}-step-${index + 1}`,
+        questId,
+        title,
+        description,
+        order: Math.max(1, Math.round(order)),
+        status: toQuestStatus(pickString(step, ['status'])) === 'completed' ? 'completed' : 'pending',
+        completedAt: pickString(step, ['completedAt']) ?? undefined,
+      };
+    })
+    .filter((step): step is QuestStep => step !== null)
+    .sort((left, right) => left.order - right.order);
+
+  if (parsedSteps.length > 0) {
+    return parsedSteps;
+  }
+
+  const fallbackTitles = buildFallbackStepTitlesFromDescription(questDescription);
+  return fallbackTitles.map((title, index) => ({
+    id: `${questId}-step-${index + 1}`,
+    questId,
+    title: title || `${questTitle} step ${index + 1}`,
+    order: index + 1,
+    status: 'pending',
+  }));
+};
+
+const buildQuestFromPayload = (
+  payload: UnknownRecord,
   input: GeneratePlanInput,
+  index: number,
+  defaultStatus: QuestStatus,
 ): Quest => {
-  const payload = extractQuestPayload(response) ?? {};
   const nowIso = new Date().toISOString();
   const normalizedPrompt = input.prompt.trim();
   const assignedToUserId =
@@ -140,41 +278,103 @@ const buildQuestFromApiResponse = (
     'self-user';
   const rewardXp = pickNumber(payload, ['rewardXp', 'xpReward', 'reward', 'xp']) ?? 70;
   const estimatedMinutes = pickNumber(payload, ['estimatedMinutes', 'durationMinutes', 'duration']) ?? 30;
+  const id =
+    pickString(payload, ['id', 'questId', 'Id', 'QuestId']) ?? `quest-api-${Date.now()}-${index + 1}`;
+  const title =
+    pickString(payload, ['title', 'name', 'taskTitle', 'questTitle']) ??
+    `${buildQuestTitleFromPrompt(normalizedPrompt)} #${index + 1}`;
+  const description =
+    pickString(payload, ['description', 'details', 'text', 'content']) ??
+    normalizedPrompt;
+  const steps = buildStepsFromPayload(payload, id, title, description);
+  const completedStepsCount = steps.filter((step) => step.status === 'completed').length;
 
   return {
-    id: pickString(payload, ['id', 'questId', 'Id', 'QuestId']) ?? `quest-api-${Date.now()}`,
+    id,
     assignedToUserId,
-    title:
-      pickString(payload, ['title', 'name', 'taskTitle', 'questTitle']) ??
-      buildQuestTitleFromPrompt(normalizedPrompt),
-    description:
-      pickString(payload, ['description', 'details', 'text', 'content']) ??
-      normalizedPrompt,
+    title,
+    description,
     category: pickString(payload, ['category', 'type']) ?? undefined,
     difficulty: pickString(payload, ['difficulty', 'level']) ?? 'medium',
     rewardXp: Math.max(1, Math.round(rewardXp)),
     estimatedMinutes: Math.max(1, Math.round(estimatedMinutes)),
-    status: toQuestStatus(pickString(payload, ['status', 'questStatus'])),
+    status: (() => {
+      const rawStatus = pickString(payload, ['status', 'questStatus']);
+      return rawStatus ? toQuestStatus(rawStatus) : defaultStatus;
+    })(),
+    steps,
+    stepsCount: steps.length,
+    completedStepsCount,
     originalTask: normalizedPrompt,
     createdAt: pickString(payload, ['createdAt', 'createdOn']) ?? nowIso,
   };
 };
 
-const buildPlanFromApiQuest = (response: unknown, quest: Quest): GeneratedPlan => {
+const buildPlanFromApiResponse = (
+  response: unknown,
+  input: GeneratePlanInput,
+): GeneratedPlan => {
+  const planPayload = extractPlanPayload(response) ?? {};
+  const questCandidates =
+    pickArray(planPayload, ['quests', 'items', 'tasks', 'missions']) ??
+    pickArray(planPayload, ['data']) ??
+    null;
+  const hasQuestArray = Array.isArray(questCandidates) && questCandidates.length > 0;
+  const defaultPlanStatus = hasQuestArray ? 'draft' : 'approved';
+
+  const questPayloads: UnknownRecord[] = hasQuestArray
+    ? questCandidates
+        .filter((item): item is UnknownRecord => isObject(item))
+    : [extractQuestPayload(response) ?? planPayload];
+
+  const quests = questPayloads.map((payload, index) =>
+    buildQuestFromPayload(payload, input, index, 'draft'),
+  );
+
   const summary =
+    pickString(planPayload, ['summary']) ??
+    extractResponseSummary(planPayload) ??
     extractResponseSummary(response) ??
-    `Generated 1 quest from prompt.`;
+    `Generated ${quests.length} quest${quests.length > 1 ? 's' : ''} from prompt.`;
+  const totalEstimatedMinutes =
+    pickNumber(planPayload, ['totalEstimatedMinutes', 'estimatedMinutes', 'durationMinutes']) ??
+    quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0);
+  const rawPlanId =
+    pickString(planPayload, ['id', 'planId', 'Id', 'PlanId']) ??
+    quests[0]?.id ??
+    `${Date.now()}`;
+  const planId = rawPlanId.startsWith('plan-') ? rawPlanId : `plan-${rawPlanId}`;
+  const title =
+    pickString(planPayload, ['title', 'name']) ??
+    (quests.length === 1 ? `AI Quest: ${quests[0].title}` : `AI Quest Plan (${quests.length})`);
+  const childMessage =
+    pickString(planPayload, ['childMessage', 'message', 'heroMessage']) ??
+    'Quest plan generated. Start with the first step.';
+  const status = hasQuestArray
+    ? pickString(planPayload, ['status', 'planStatus']) ?? defaultPlanStatus
+    : defaultPlanStatus;
 
   return {
-    id: `plan-${quest.id}`,
-    title: `AI Quest: ${quest.title}`,
+    id: planId,
+    title,
     summary,
-    childMessage: 'Quest generated. Start with the first step.',
-    quests: [quest],
-    totalEstimatedMinutes: quest.estimatedMinutes,
-    // API endpoint creates a ready quest, so preview does not require separate approval.
-    status: 'approved',
+    childMessage,
+    quests,
+    totalEstimatedMinutes: Math.max(1, Math.round(totalEstimatedMinutes)),
+    status,
   };
+};
+
+const applyGetPlansFilters = (plans: GeneratedPlan[], input: GetPlansInput = {}): GeneratedPlan[] => {
+  const filteredPlans = input.targetUserId
+    ? plans.filter((plan) =>
+        plan.quests.some((quest) => quest.assignedToUserId === input.targetUserId),
+      )
+    : plans;
+
+  return typeof input.limit === 'number' && input.limit > 0
+    ? filteredPlans.slice(0, input.limit)
+    : filteredPlans;
 };
 
 // Swagger contract helper for /api/ai/quest multipart payload.
@@ -196,16 +396,24 @@ const generatePlanViaApiContract = async (input: GeneratePlanInput): Promise<Gen
   }
 
   const response = await generateQuestByPrompt(normalizedPrompt, accessToken);
-  const quest = buildQuestFromApiResponse(response, {
+  const plan = buildPlanFromApiResponse(response, {
     ...input,
     prompt: normalizedPrompt,
   });
-  return buildPlanFromApiQuest(response, quest);
+  await usePlansStore.getState().upsertPlan(plan);
+  return plan;
 };
 
 export const plansService = {
-  getPlans: async (input: GetPlansInput = {}): Promise<GeneratedPlan[]> =>
-    getPlansMock(input),
+  getPlans: async (input: GetPlansInput = {}): Promise<GeneratedPlan[]> => {
+    const accessToken = useAuthStore.getState().session?.accessToken;
+    if (!accessToken) {
+      return getPlansMock(input);
+    }
+
+    const plans = usePlansStore.getState().getPlans();
+    return applyGetPlansFilters(plans, input);
+  },
 
   generatePlan: async (input: GeneratePlanInput): Promise<GeneratedPlan> =>
     generatePlanViaApiContract(input),
@@ -215,6 +423,15 @@ export const plansService = {
     return generatePlanViaApiContract(input);
   },
 
-  approvePlan: async (planId: string): Promise<GeneratedPlan> =>
-    approvePlanMock(planId),
+  approvePlan: async (planId: string): Promise<GeneratedPlan> => {
+    const accessToken = useAuthStore.getState().session?.accessToken;
+    if (accessToken) {
+      const approvedPlan = await usePlansStore.getState().approvePlan(planId);
+      if (approvedPlan) {
+        return approvedPlan;
+      }
+    }
+
+    return approvePlanMock(planId);
+  },
 };
