@@ -54,6 +54,7 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 const nowIso = () => new Date().toISOString();
 
 const isArchivedQuestStatus = (status: QuestStatus) => status === 'archived' || status === 'completed';
+const isApprovedPlanStatus = (status: string) => status.trim().toLowerCase() === 'approved';
 
 const cloneQuestStep = (step: QuestStep): QuestStep => ({ ...step });
 
@@ -647,6 +648,69 @@ export const approvePlanMock = async (planId: string): Promise<GeneratedPlan> =>
   }
 
   return clonePlan(normalizePlan(approvedPlan));
+};
+
+export const syncApprovedPlanQuestsMock = (plans: GeneratedPlan[]) => {
+  if (!Array.isArray(plans) || plans.length === 0) {
+    return;
+  }
+
+  const approvedPlans = plans
+    .filter((plan) => isApprovedPlanStatus(plan.status))
+    .map((plan) => {
+      const activatedQuests = plan.quests.map((quest) => {
+        const normalized = normalizeQuest(quest);
+        if (normalized.status === 'draft') {
+          return normalizeQuest({ ...normalized, status: 'active' });
+        }
+
+        if (normalized.status === 'completed') {
+          return normalizeQuest({ ...normalized, status: 'archived' });
+        }
+
+        return normalized;
+      });
+
+      return normalizePlan({
+        ...plan,
+        status: 'approved',
+        quests: activatedQuests,
+      });
+    });
+
+  if (approvedPlans.length === 0) {
+    return;
+  }
+
+  const planById = new Map<string, GeneratedPlan>();
+  state.plans.forEach((plan) => {
+    planById.set(plan.id, plan);
+  });
+  approvedPlans.forEach((plan) => {
+    planById.set(plan.id, plan);
+  });
+  state.plans = Array.from(planById.values()).map(normalizePlan);
+
+  const impactedUserIds = new Set<string>();
+  approvedPlans.forEach((plan) => {
+    plan.quests.forEach((quest) => {
+      impactedUserIds.add(quest.assignedToUserId);
+      const existingQuestIndex = state.quests.findIndex((item) => item.id === quest.id);
+      if (existingQuestIndex >= 0) {
+        state.quests[existingQuestIndex] = normalizeQuest({
+          ...state.quests[existingQuestIndex],
+          ...quest,
+        });
+        return;
+      }
+
+      state.quests = [cloneQuest(normalizeQuest(quest)), ...state.quests];
+    });
+  });
+
+  impactedUserIds.forEach((userId) => {
+    refreshProgressCounters(userId);
+  });
 };
 
 export const getQuestsMock = async (userId: string): Promise<Quest[]> => {

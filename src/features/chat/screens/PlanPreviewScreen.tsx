@@ -4,6 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
+import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
@@ -24,6 +25,8 @@ const PlanPreviewScreen = () => {
   const route = useRoute<PlanPreviewRoute>();
   const navigation = useNavigation<PlanPreviewNavigation>();
   const colors = useThemeStore((s) => s.colors);
+  const role = useAuthStore((s) => s.role);
+  const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(
     () => getStyles(cardMaxWidth, isTablet, spacing),
@@ -47,7 +50,13 @@ const PlanPreviewScreen = () => {
       setScreenError(null);
       const approved = await plansService.approvePlan(plan.id);
       setPlan(approved);
+      const targetChildId =
+        approved.quests.find((quest) => quest.assignedToUserId.trim().length > 0)?.assignedToUserId.trim() ?? null;
+      if (role === 'adult' && targetChildId) {
+        await setSelectedChildId(targetChildId);
+      }
       setFeedback('Plan approved and quests activated.');
+      navigation.navigate('MainTabs', { screen: 'Quests' });
     } catch (error) {
       setScreenError(getApiErrorMessage(error, 'Failed to approve this plan.'));
     } finally {

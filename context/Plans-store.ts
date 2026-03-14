@@ -8,9 +8,11 @@ interface PlansState {
   isHydrated: boolean;
   hydrate: () => Promise<void>;
   getPlans: () => GeneratedPlan[];
+  getApprovedQuestsByUser: (userId: string) => Quest[];
   upsertPlan: (plan: GeneratedPlan) => Promise<void>;
   upsertPlans: (plans: GeneratedPlan[]) => Promise<void>;
   approvePlan: (planId: string) => Promise<GeneratedPlan | null>;
+  upsertQuestInPlans: (quest: Quest) => Promise<boolean>;
   clear: () => Promise<void>;
 }
 
@@ -125,6 +127,8 @@ const clonePlan = (plan: GeneratedPlan): GeneratedPlan => ({
   quests: plan.quests.map(cloneQuest),
 });
 
+const isApprovedPlan = (plan: GeneratedPlan) => plan.status.trim().toLowerCase() === 'approved';
+
 const persistPlans = async (plans: GeneratedPlan[]) => {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(plans));
@@ -184,6 +188,22 @@ const usePlansStore = create<PlansState>((set, get) => ({
 
   getPlans: () => get().plans.map(clonePlan),
 
+  getApprovedQuestsByUser: (userId: string) => {
+    const normalizedUserId = userId.trim();
+    if (!normalizedUserId) {
+      return [];
+    }
+
+    return get()
+      .plans
+      .filter((plan) => isApprovedPlan(plan))
+      .flatMap((plan) =>
+        plan.quests
+          .filter((quest) => quest.assignedToUserId === normalizedUserId)
+          .map(cloneQuest),
+      );
+  },
+
   upsertPlan: async (plan: GeneratedPlan) => {
     const merged = upsertMany(get().plans, [plan]);
     set({ plans: merged });
@@ -217,6 +237,37 @@ const usePlansStore = create<PlansState>((set, get) => ({
     set({ plans: next });
     await persistPlans(next);
     return clonePlan(activated);
+  },
+
+  upsertQuestInPlans: async (quest: Quest) => {
+    const current = get().plans;
+    let hasChanges = false;
+    const next = current.map((plan) => {
+      const questIndex = plan.quests.findIndex((planQuest) => planQuest.id === quest.id);
+      if (questIndex < 0) {
+        return plan;
+      }
+
+      hasChanges = true;
+      const updatedQuests = [
+        ...plan.quests.slice(0, questIndex),
+        cloneQuest(quest),
+        ...plan.quests.slice(questIndex + 1),
+      ];
+
+      return {
+        ...plan,
+        quests: updatedQuests,
+      };
+    });
+
+    if (!hasChanges) {
+      return false;
+    }
+
+    set({ plans: next });
+    await persistPlans(next);
+    return true;
   },
 
   clear: async () => {

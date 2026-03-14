@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -29,6 +30,7 @@ import {
   questsService,
   userService,
 } from '@/src/integration/services';
+import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const XP_PER_LEVEL = 300;
 const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
@@ -38,6 +40,8 @@ const PLAN_PROMPTS = [
   'Create a motivational quest sequence with short achievable steps.',
   'Generate a confidence plan focused on consistency and wins.',
 ] as const;
+
+type HomeNavigation = NativeStackNavigationProp<AppStackParamList>;
 
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
@@ -52,6 +56,7 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
 };
 
 const HomeScreen = () => {
+  const navigation = useNavigation<HomeNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(
@@ -363,11 +368,19 @@ const HomeScreen = () => {
     try {
       const approvedPlan = await plansService.approvePlan(planId);
       setRecentPlans((prev) => prev.map((plan) => (plan.id === approvedPlan.id ? approvedPlan : plan)));
+      const targetChildId =
+        approvedPlan.quests.find((quest) => quest.assignedToUserId.trim().length > 0)?.assignedToUserId.trim() ?? null;
 
-      if (selectedChild) {
-        const selectedProgress = await progressService.getProgress(selectedChild.id);
+      if (effectiveRole === 'adult' && targetChildId) {
+        await setSelectedChildId(targetChildId);
+      }
+
+      if (effectiveRole === 'adult' && targetChildId) {
+        const selectedProgress = await progressService.getProgress(targetChildId);
         setProgress(selectedProgress);
       }
+
+      navigation.navigate('MainTabs', { screen: 'Quests' });
     } catch {
       setScreenError('Failed to approve generated plan.');
     } finally {
