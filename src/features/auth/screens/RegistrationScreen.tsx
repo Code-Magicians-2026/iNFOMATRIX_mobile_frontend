@@ -37,7 +37,8 @@ const RegistrationScreen = () => {
   const navigation = useNavigation<RegistrationNavigation>();
   const route = useRoute<RegistrationRoute>();
 
-  const [fullName, setFullName] = React.useState('');
+  const [firstName, setFirstName] = React.useState('');
+  const [lastName, setLastName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
@@ -45,22 +46,30 @@ const RegistrationScreen = () => {
   const registerMutation = useMutation({
     mutationKey: ['auth', 'register'],
     mutationFn: ({
-      fullName,
+      firstName,
+      lastName,
       email,
       password,
     }: {
-      fullName: string;
+      firstName: string;
+      lastName: string;
       email: string;
       password: string;
-    }) => register(fullName, email, password),
+    }) => register(firstName, lastName, email, password),
   });
 
   const onRegisterPress = async () => {
-    const normalizedFullName = fullName.trim();
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (normalizedFullName.length < 2) {
-      setError("Введіть повне ім'я (мінімум 2 символи).");
+    if (normalizedFirstName.length < 2) {
+      setError("Введіть ім'я (мінімум 2 символи).");
+      return;
+    }
+
+    if (normalizedLastName.length < 2) {
+      setError("Введіть прізвище (мінімум 2 символи).");
       return;
     }
 
@@ -83,11 +92,17 @@ const RegistrationScreen = () => {
 
     try {
       await registerMutation.mutateAsync({
-        fullName: normalizedFullName,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
         email: normalizedEmail,
         password,
       });
-      navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
+      navigation.dispatch(
+        StackActions.replace('ConfirmEmail', {
+          initialEmail: normalizedEmail,
+          redirectTo: route.params?.redirectTo ?? 'Profile',
+        }),
+      );
     } catch (registrationError) {
       setError(getApiErrorMessage(registrationError, 'Не вдалося зареєструватися.'));
     }
@@ -97,7 +112,7 @@ const RegistrationScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.keyboardWrapper}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View
           style={styles.card}
@@ -113,19 +128,38 @@ const RegistrationScreen = () => {
           </Text>
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              {"Повне ім'я"}
+              Ім&apos;я
             </Text>
             <TextInput
               style={styles.input}
-              value={fullName}
-              onChangeText={setFullName}
+              value={firstName}
+              onChangeText={setFirstName}
               autoCapitalize="words"
               autoCorrect={false}
-              placeholder="Ім'я Прізвище"
+              placeholder="Ім'я"
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
-              accessibilityLabel="Повне ім'я"
-              accessibilityHint="Поле для введення повного імені"
+              accessibilityLabel="Ім'я"
+              accessibilityHint="Поле для введення імені"
+              importantForAccessibility="yes"
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Прізвище
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={lastName}
+              onChangeText={setLastName}
+              autoCapitalize="words"
+              autoCorrect={false}
+              placeholder="Прізвище"
+              placeholderTextColor={colors.textSecondary}
+              editable={!registerMutation.isPending}
+              accessibilityLabel="Прізвище"
+              accessibilityHint="Поле для введення прізвища"
               importantForAccessibility="yes"
             />
           </View>
@@ -187,7 +221,11 @@ const RegistrationScreen = () => {
           </View>
 
           {error ? (
-            <Text style={styles.errorText} accessibilityRole="alert" allowFontScaling>
+            <Text
+              style={styles.errorText}
+              accessibilityRole="alert"
+              allowFontScaling
+            >
               {error}
             </Text>
           ) : null}
@@ -197,8 +235,11 @@ const RegistrationScreen = () => {
               void onRegisterPress();
             }}
             disabled={registerMutation.isPending}
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.pressed,
+            ]}
+            android_ripple={{ color: "rgba(0, 0, 0, 0.1)" }}
             accessibilityRole="button"
             accessibilityLabel="Кнопка реєстрації"
             accessibilityHint="Створює новий акаунт"
@@ -217,15 +258,18 @@ const RegistrationScreen = () => {
           <Pressable
             onPress={() => {
               navigation.dispatch(
-                StackActions.replace('Login', {
+                StackActions.replace("Login", {
                   initialEmail: email.trim().toLowerCase(),
-                  redirectTo: route.params?.redirectTo ?? 'Profile',
+                  redirectTo: route.params?.redirectTo ?? "Profile",
                 }),
               );
             }}
             disabled={registerMutation.isPending}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && styles.pressed,
+            ]}
+            android_ripple={{ color: "rgba(0, 0, 0, 0.1)" }}
             accessibilityRole="button"
             accessibilityLabel="Кнопка входу"
             accessibilityHint="Переходить на екран входу"

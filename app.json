@@ -29,6 +29,13 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow iNFOMATRIX to use your camera for AI plan generation.",
+          "photosPermission": "Allow iNFOMATRIX to access your photos for AI plan generation."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

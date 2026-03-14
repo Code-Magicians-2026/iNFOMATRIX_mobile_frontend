@@ -169,7 +169,14 @@ const ResetPasswordScreen = () => {
 
     try {
       await resetPasswordMutation.mutateAsync({ email: normalizedEmail, newPassword });
-      navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
+      const redirectTo = route.params?.redirectTo ?? 'Profile';
+      if (redirectTo === 'Settings') {
+        navigation.dispatch(StackActions.popTo('Settings'));
+        return;
+      }
+
+      navigation.dispatch(StackActions.popTo('MainTabs'));
+      navigation.navigate('MainTabs', { screen: 'Profile' });
     } catch (resetError) {
       setError(getApiErrorMessage(resetError, 'Не вдалося оновити пароль.'));
     }

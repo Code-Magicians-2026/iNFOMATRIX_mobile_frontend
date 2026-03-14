@@ -8,6 +8,9 @@ const {
   registerRequestMock,
   confirmEmailRequestMock,
   resetPasswordRequestMock,
+  createFamilyRequestMock,
+  getFamilyRequestMock,
+  registerChildRequestMock,
 } = vi.hoisted(() => ({
   getItemMock: vi.fn(),
   setItemMock: vi.fn(),
@@ -16,6 +19,9 @@ const {
   registerRequestMock: vi.fn(),
   confirmEmailRequestMock: vi.fn(),
   resetPasswordRequestMock: vi.fn(),
+  createFamilyRequestMock: vi.fn(),
+  getFamilyRequestMock: vi.fn(),
+  registerChildRequestMock: vi.fn(),
 }));
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -26,11 +32,16 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-vi.mock('@/src/features/auth/api/auth', () => ({
-  login: loginRequestMock,
-  register: registerRequestMock,
-  confirmEmail: confirmEmailRequestMock,
-  resetPassword: resetPasswordRequestMock,
+vi.mock('@/src/integration/services/authService', () => ({
+  authService: {
+    login: loginRequestMock,
+    register: registerRequestMock,
+    confirmEmail: confirmEmailRequestMock,
+    resetPassword: resetPasswordRequestMock,
+    createFamily: createFamilyRequestMock,
+    getFamily: getFamilyRequestMock,
+    registerChild: registerChildRequestMock,
+  },
 }));
 
 import useAuthStore from '@/context/Auth-store';
@@ -38,10 +49,19 @@ import useAuthStore from '@/context/Auth-store';
 describe('Auth store', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useAuthStore.setState({ session: null, isHydrated: false });
+    useAuthStore.setState({
+      session: null,
+      currentUser: null,
+      role: null,
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: false,
+    });
+    getFamilyRequestMock.mockResolvedValue(null);
   });
 
-  it('hydrates valid session from storage', async () => {
+  it('hydrates legacy session payload and migrates it', async () => {
     getItemMock.mockResolvedValue(
       JSON.stringify({
         email: 'user@example.com',
@@ -55,19 +75,26 @@ describe('Auth store', () => {
     await useAuthStore.getState().hydrate();
 
     expect(useAuthStore.getState().session?.email).toBe('user@example.com');
+    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.email).toBe('user@example.com');
+    expect(useAuthStore.getState().family).toBeNull();
     expect(useAuthStore.getState().isHydrated).toBe(true);
+    expect(setItemMock).toHaveBeenCalledTimes(1);
   });
 
-  it('clears session when stored payload is invalid', async () => {
+  it('clears state when stored payload is invalid', async () => {
     getItemMock.mockResolvedValue(JSON.stringify({ email: 'x@example.com', accessToken: null }));
 
     await useAuthStore.getState().hydrate();
 
     expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().currentUser).toBeNull();
+    expect(useAuthStore.getState().role).toBeNull();
+    expect(useAuthStore.getState().family).toBeNull();
     expect(useAuthStore.getState().isHydrated).toBe(true);
   });
 
-  it('login stores session and persists it', async () => {
+  it('login stores session, role, currentUser and persists envelope', async () => {
     loginRequestMock.mockResolvedValue({
       accessToken: 'access',
       refreshToken: 'refresh',
@@ -85,10 +112,19 @@ describe('Auth store', () => {
       expiresIn: 3600,
       tokenType: 'Bearer',
     });
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().role).toBe('adult');
+    expect(useAuthStore.getState().currentUser?.fullName).toBe('User');
+    expect(getFamilyRequestMock).toHaveBeenCalledWith('access');
+    expect(setItemMock).toHaveBeenCalled();
+
+    const lastPersistedCall = setItemMock.mock.calls.at(-1) as [string, string];
+    const [, persistedJson] = lastPersistedCall;
+    const persisted = JSON.parse(persistedJson) as { role: string; currentUser: { email: string } };
+    expect(persisted.role).toBe('adult');
+    expect(persisted.currentUser.email).toBe('user@example.com');
   });
 
-  it('throws when login response has no tokens', async () => {
+  it('throws when login response has no access token', async () => {
     loginRequestMock.mockResolvedValue({
       accessToken: null,
       refreshToken: null,
@@ -97,43 +133,40 @@ describe('Auth store', () => {
     });
 
     await expect(useAuthStore.getState().login('user@example.com', 'secret')).rejects.toThrow(
-      'Сервер не повернув токени доступу.',
+      'Сервер не повернув access token.',
     );
   });
 
-  it('register performs auto-login and stores session', async () => {
+  it('register stores pending family name and does not create session', async () => {
     registerRequestMock.mockResolvedValue({ email: 'user@example.com' });
-    loginRequestMock.mockResolvedValue({
-      accessToken: 'access',
-      refreshToken: 'refresh',
-      expiresIn: 3600,
-      tokenType: null,
-    });
 
-    await useAuthStore.getState().register('User Name', 'user@example.com', 'secret');
+    await useAuthStore.getState().register('User', 'Name', 'user@example.com', 'secret');
     expect(registerRequestMock).toHaveBeenCalledWith({
-      fullName: 'User Name',
+      firstName: 'User',
+      lastName: 'Name',
       email: 'user@example.com',
       password: 'secret',
     });
-    expect(loginRequestMock).toHaveBeenCalledWith({ email: 'user@example.com', password: 'secret' });
-    expect(useAuthStore.getState().session?.accessToken).toBe('access');
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(createFamilyRequestMock).not.toHaveBeenCalled();
+    expect(loginRequestMock).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().family).toBeNull();
+    expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
+    expect(setItemMock).not.toHaveBeenCalled();
   });
 
-  it('register throws localized message when auto-login fails', async () => {
-    registerRequestMock.mockResolvedValue({ email: 'user@example.com' });
-    loginRequestMock.mockRejectedValue(new Error('Bad credentials'));
+  it('register forwards API error', async () => {
+    registerRequestMock.mockRejectedValue(new Error('Email exists'));
 
     await expect(
-      useAuthStore.getState().register('User Name', 'user@example.com', 'secret'),
-    ).rejects.toThrow('Акаунт створено, але автовхід не вдався. Увійдіть вручну.');
+      useAuthStore.getState().register('User', 'Name', 'user@example.com', 'secret'),
+    ).rejects.toThrow('Email exists');
   });
 
   it('confirmEmail stores session using provided email fallback', async () => {
     confirmEmailRequestMock.mockResolvedValue({
       accessToken: 'access',
-      refreshToken: 'refresh',
+      refreshToken: null,
       expiresIn: 3600,
       email: null,
     });
@@ -143,11 +176,26 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().session).toEqual({
       email: 'user@example.com',
       accessToken: 'access',
-      refreshToken: 'refresh',
+      refreshToken: null,
       expiresIn: 3600,
       tokenType: 'Bearer',
     });
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().currentUser?.email).toBe('user@example.com');
+    expect(getFamilyRequestMock).toHaveBeenCalledWith('access');
+    expect(setItemMock).toHaveBeenCalled();
+  });
+
+  it('supports role switch and child selection for adult flow', async () => {
+    await useAuthStore.getState().setRole('adult');
+
+    expect(useAuthStore.getState().role).toBe('adult');
+    expect(useAuthStore.getState().currentUser?.role).toBe('adult');
+
+    await useAuthStore.getState().setSelectedChildId('child-42');
+    expect(useAuthStore.getState().selectedChildId).toBe('child-42');
+
+    await useAuthStore.getState().setRole('child');
+    expect(useAuthStore.getState().selectedChildId).toBeNull();
   });
 
   it('completePasswordReset stores session using API email', async () => {
@@ -161,10 +209,12 @@ describe('Auth store', () => {
     await useAuthStore.getState().completePasswordReset('user@example.com', 'new-password');
 
     expect(useAuthStore.getState().session?.email).toBe('reset@example.com');
-    expect(setItemMock).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().currentUser?.email).toBe('reset@example.com');
+    expect(getFamilyRequestMock).toHaveBeenCalledWith('access');
+    expect(setItemMock).toHaveBeenCalled();
   });
 
-  it('logout clears session and removes persisted key', async () => {
+  it('logout clears all auth and role-based state', async () => {
     useAuthStore.setState({
       session: {
         email: 'user@example.com',
@@ -173,12 +223,31 @@ describe('Auth store', () => {
         expiresIn: 3600,
         tokenType: 'Bearer',
       },
+      currentUser: {
+        id: 'user-1',
+        fullName: 'User One',
+        email: 'user@example.com',
+        role: 'adult',
+        level: 2,
+        xp: 120,
+        streak: 3,
+        avatarType: 'mentor',
+      },
+      role: 'adult',
+      selectedChildId: 'child-7',
+      family: { id: 'family-1', name: 'Family One' },
+      pendingFamilyName: null,
       isHydrated: true,
     });
 
     await useAuthStore.getState().logout();
 
     expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().currentUser).toBeNull();
+    expect(useAuthStore.getState().role).toBeNull();
+    expect(useAuthStore.getState().selectedChildId).toBeNull();
+    expect(useAuthStore.getState().family).toBeNull();
     expect(removeItemMock).toHaveBeenCalledTimes(1);
   });
 });
+

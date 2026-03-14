@@ -62,7 +62,14 @@ const LoginScreen = () => {
 
     try {
       await loginMutation.mutateAsync({ email: normalizedEmail, password });
-      navigation.dispatch(StackActions.popTo(route.params?.redirectTo ?? 'Profile'));
+      const redirectTo = route.params?.redirectTo ?? 'Profile';
+      if (redirectTo === 'Settings') {
+        navigation.dispatch(StackActions.popTo('Settings'));
+        return;
+      }
+
+      navigation.dispatch(StackActions.popTo('MainTabs'));
+      navigation.navigate('MainTabs', { screen: 'Profile' });
     } catch (loginError) {
       setError(getApiErrorMessage(loginError, 'Не вдалося увійти.'));
     }
