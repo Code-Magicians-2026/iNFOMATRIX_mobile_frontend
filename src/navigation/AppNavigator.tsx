@@ -8,6 +8,7 @@ import ConfirmEmailScreen from '@/src/features/auth/screens/ConfirmEmailScreen';
 import LoginScreen from '@/src/features/auth/screens/LoginScreen';
 import ResetPasswordScreen from '@/src/features/auth/screens/ResetPasswordScreen';
 import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
+import EarnedBadgesScreen from '@/src/features/profile/screens/EarnedBadgesScreen';
 import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
 import PlanPreviewScreen from '@/src/features/chat/screens/PlanPreviewScreen';
 import type { GeneratedPlan } from '@/shared/models/mvp-contracts.model';
@@ -23,6 +24,7 @@ export type TabParamList = {
 export type AppStackParamList = {
   MainTabs: NavigatorScreenParams<TabParamList> | undefined;
   Settings: undefined;
+  EarnedBadges: { userId: string; displayName?: string };
   PlanPreview: {
     plan: GeneratedPlan;
     request: GeneratePlanInput;
@@ -97,6 +99,19 @@ export default function AppNavigator() {
           header: () => (
             <Header
               title="Settings"
+              showBackButton
+              onBackPress={() => navigation.goBack()}
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="EarnedBadges"
+        component={EarnedBadgesScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <Header
+              title="Earned Badges"
               showBackButton
               onBackPress={() => navigation.goBack()}
             />
