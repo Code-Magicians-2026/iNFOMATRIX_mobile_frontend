@@ -40,7 +40,7 @@ export interface GeneratePlanMockInput {
   targetUserId: string;
   prompt: string;
   category?: string;
-  intensity: string;
+  intensity?: string;
   photo?: CapturedPhoto;
 }
 
@@ -304,8 +304,6 @@ const sortQuests = (quests: Quest[]) => {
   });
 };
 
-const normalizeIntensity = (value: string) => value.trim().toLowerCase();
-
 const normalizeCapturedPhoto = (photo?: CapturedPhoto): CapturedPhoto | undefined => {
   if (!photo?.uri.trim()) {
     return undefined;
@@ -323,12 +321,10 @@ const normalizeCapturedPhoto = (photo?: CapturedPhoto): CapturedPhoto | undefine
 };
 
 const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] => {
-  const intensity = normalizeIntensity(input.intensity);
-
-  const questCount = intensity === 'high' ? 4 : intensity === 'low' ? 2 : 3;
-  const baseReward = intensity === 'high' ? 90 : intensity === 'low' ? 50 : 70;
-  const baseDuration = intensity === 'high' ? 35 : intensity === 'low' ? 20 : 28;
-  const difficulty = intensity === 'high' ? 'hard' : intensity === 'low' ? 'easy' : 'medium';
+  const questCount = 3;
+  const baseReward = 70;
+  const baseDuration = 28;
+  const difficulty = 'medium';
   const nowMs = Date.now();
 
   return Array.from({ length: questCount }, (_, index) => {
@@ -496,24 +492,63 @@ export const createChildMock = async (input: CreateChildMockInput): Promise<Chil
 export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<GeneratedPlan> => {
   await wait(MOCK_DELAY_MS);
 
-  const targetUser = state.users.find((user) => user.id === input.targetUserId && user.role === 'child');
-  if (!targetUser) {
-    throw new Error(`Target user '${input.targetUserId}' was not found or is not a child.`);
+  const normalizedTargetUserId = input.targetUserId.trim();
+  if (!normalizedTargetUserId) {
+    throw new Error('Target user id is required.');
   }
 
-  if (!input.prompt.trim()) {
+  const targetUserFromState = state.users.find((user) => user.id === normalizedTargetUserId);
+  const targetUser = targetUserFromState ?? (() => {
+    const me = getCurrentMeFromState();
+    const ownerAdultId = me.role === 'adult' ? me.id : me.createdByAdultId ?? 'adult-1';
+    const syntheticName = `Target ${state.users.length + 1}`;
+
+    const syntheticUser: UserProfile = {
+      id: normalizedTargetUserId,
+      fullName: syntheticName,
+      email: `${normalizedTargetUserId}@mock.infomatrix.app`,
+      role: 'child',
+      createdByAdultId: ownerAdultId,
+      level: 1,
+      xp: 0,
+      streak: 0,
+      avatarType: 'adventurer',
+    };
+
+    const syntheticChild: ChildProfile = {
+      id: normalizedTargetUserId,
+      fullName: syntheticName,
+      age: 10,
+      createdByAdultId: ownerAdultId,
+      level: 1,
+      xp: 0,
+      streak: 0,
+    };
+
+    state.users = [syntheticUser, ...state.users];
+    if (!state.children.some((child) => child.id === normalizedTargetUserId)) {
+      state.children = [syntheticChild, ...state.children];
+    }
+    ensureProgressState(normalizedTargetUserId);
+
+    return syntheticUser;
+  })();
+
+  const normalizedPrompt = input.prompt.trim();
+  if (!normalizedPrompt) {
     throw new Error('Plan prompt is required.');
   }
 
   const normalizedPhoto = normalizeCapturedPhoto(input.photo);
+  const normalizedIntensity = input.intensity?.trim();
 
   planRequestCounter += 1;
   const request: PlanRequest = {
     id: `plan-request-${Date.now()}-${planRequestCounter}`,
-    targetUserId: input.targetUserId,
-    prompt: input.prompt.trim(),
+    targetUserId: normalizedTargetUserId,
+    prompt: normalizedPrompt,
     category: input.category?.trim() || undefined,
-    intensity: input.intensity.trim() || 'medium',
+    ...(normalizedIntensity ? { intensity: normalizedIntensity } : {}),
     photo: normalizedPhoto,
     status: 'generated',
   };
@@ -522,12 +557,19 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
 
   planCounter += 1;
   const planId = `plan-${Date.now()}-${planCounter}`;
-  const quests = buildPlanQuests(input, planId);
+  const quests = buildPlanQuests(
+    {
+      ...input,
+      targetUserId: normalizedTargetUserId,
+      prompt: normalizedPrompt,
+    },
+    planId,
+  );
 
   const generatedPlan: GeneratedPlan = {
     id: planId,
     title: `${targetUser.fullName}: AI Plan`,
-    summary: `Generated ${quests.length} quests with ${request.intensity} intensity${normalizedPhoto ? ' using camera context.' : '.'}`,
+    summary: `Generated ${quests.length} quests${normalizedPhoto ? ' using camera context.' : '.'}`,
     childMessage: `You can do this, ${targetUser.fullName}. Start with one quest and keep going.`,
     quests,
     totalEstimatedMinutes: quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0),

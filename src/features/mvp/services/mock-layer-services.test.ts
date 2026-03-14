@@ -100,6 +100,19 @@ describe('mock-layer-services', () => {
     expect(plans[0]?.id).toBe(generatedPlan.id);
   });
 
+  it('generates plan for unknown API child id', async () => {
+    const targetUserId = '1f9f6505-2d72-4712-8ca9-8189d7f6d18b';
+    const generatedPlan = await generatePlanMock({
+      targetUserId,
+      prompt: 'Build a short after-school routine with focus and cleanup.',
+      category: 'routine',
+    });
+
+    expect(generatedPlan.status).toBe('draft');
+    expect(generatedPlan.quests.length).toBeGreaterThan(0);
+    expect(generatedPlan.quests.every((quest) => quest.assignedToUserId === targetUserId)).toBe(true);
+  });
+
   it('applies adult_no_children demo scenario with empty children list', async () => {
     const result = await applyDemoScenarioMock('adult_no_children');
     const me = await getMeMock();
