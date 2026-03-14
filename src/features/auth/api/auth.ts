@@ -58,12 +58,12 @@ export const refreshToken = async (payload: RefreshTokenRequestDto): Promise<Tok
 
 export const createFamily = async (
   payload: CreateFamilyRequestDto,
-  options?: AuthorizedRequestOptions,
+  options: AuthorizedRequestOptions,
 ): Promise<UnknownApiObject | null> =>
   request<UnknownApiObject | null>('/api/families', {
     method: 'POST',
     body: JSON.stringify(payload),
-    ...(options ? withAuthorization(options) : {}),
+    ...withAuthorization(options),
   });
 
 export const getFamily = async (options: AuthorizedRequestOptions): Promise<unknown> =>

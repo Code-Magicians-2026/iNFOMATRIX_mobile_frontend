@@ -38,8 +38,8 @@ export const authService = {
 
   createFamily: async (
     payload: CreateFamilyRequestDto,
-    accessToken?: string,
-  ): Promise<unknown> => createFamily(payload, accessToken ? { accessToken } : undefined),
+    accessToken: string,
+  ): Promise<unknown> => createFamily(payload, { accessToken }),
 
   getFamily: async (accessToken: string): Promise<unknown> => getFamily({ accessToken }),
 
