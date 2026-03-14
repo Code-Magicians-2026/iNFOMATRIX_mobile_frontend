@@ -424,7 +424,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
         set({
           session: null,
           currentUser: null,
-          role: null,
+          role: persistedRole,
           selectedChildId: null,
           family: null,
           pendingFamilyName: persistedPendingFamilyName,
@@ -480,13 +480,15 @@ const useAuthStore = create<AuthState>((set, get) => ({
     const pendingPayload: PersistedAuthEnvelope = {
       session: null,
       currentUser: null,
-      role: null,
+      role: 'adult',
       selectedChildId: null,
       family: null,
       pendingFamilyName: resolvedFamilyName,
     };
 
     set({
+      role: 'adult',
+      selectedChildId: null,
       pendingFamilyName: resolvedFamilyName,
       family: null,
     });

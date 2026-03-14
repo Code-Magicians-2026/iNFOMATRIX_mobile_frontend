@@ -150,12 +150,17 @@ describe('Auth store', () => {
     expect(createFamilyRequestMock).not.toHaveBeenCalled();
     expect(loginRequestMock).not.toHaveBeenCalled();
     expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().role).toBe('adult');
     expect(useAuthStore.getState().family).toBeNull();
     expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
     expect(setItemMock).toHaveBeenCalledTimes(1);
     const [, persistedJson] = setItemMock.mock.calls[0] as [string, string];
-    const persisted = JSON.parse(persistedJson) as { pendingFamilyName: string | null };
+    const persisted = JSON.parse(persistedJson) as {
+      pendingFamilyName: string | null;
+      role: string | null;
+    };
     expect(persisted.pendingFamilyName).toBe("Name's");
+    expect(persisted.role).toBe('adult');
   });
 
   it('hydrate restores pendingFamilyName even without active session', async () => {
@@ -163,7 +168,7 @@ describe('Auth store', () => {
       JSON.stringify({
         session: null,
         currentUser: null,
-        role: null,
+        role: 'adult',
         selectedChildId: null,
         family: null,
         pendingFamilyName: "Name's",
@@ -173,6 +178,7 @@ describe('Auth store', () => {
     await useAuthStore.getState().hydrate();
 
     expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().role).toBe('adult');
     expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
     expect(useAuthStore.getState().isHydrated).toBe(true);
   });
