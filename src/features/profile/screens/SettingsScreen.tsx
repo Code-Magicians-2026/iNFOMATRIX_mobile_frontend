@@ -1,6 +1,7 @@
 import React from 'react';
-import { SafeAreaView, Switch, Text, View } from 'react-native';
+import { Pressable, SafeAreaView, Switch, Text, View } from 'react-native';
 
+import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useOfflineTestingStore from '@/context/OfflineTesting-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
@@ -14,6 +15,9 @@ const SettingsScreen = () => {
   const isOfflineTestingMode = useOfflineTestingStore((s) => s.isOfflineTestingMode);
   const isOfflineTestingHydrated = useOfflineTestingStore((s) => s.isHydrated);
   const setOfflineTestingMode = useOfflineTestingStore((s) => s.setOfflineTestingMode);
+  const role = useAuthStore((s) => s.role);
+  const setRole = useAuthStore((s) => s.setRole);
+  const effectiveRole = role ?? 'child';
   const { isLandscape, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(
     () => getStyles(colors, spacing, isTablet, isLandscape),
@@ -47,6 +51,76 @@ const SettingsScreen = () => {
           accessibilityHint="Вмикає локальний офлайн режим із mock даними"
         />
       </View>
+
+      {isOfflineTestingMode && isOfflineTestingHydrated ? (
+        <View
+          style={styles.settingBlock}
+          accessible
+          importantForAccessibility="yes"
+          accessibilityLabel="Debug перемикач ролі"
+        >
+          <View style={styles.labelWrap}>
+            <Text style={styles.label} allowFontScaling>
+              Debug role
+            </Text>
+            <Text style={styles.description} allowFontScaling>
+              Available only in offline testing mode
+            </Text>
+          </View>
+          <View style={styles.roleChipsRow}>
+            <Pressable
+              onPress={() => {
+                void setRole('adult');
+              }}
+              style={[
+                styles.roleChip,
+                {
+                  borderColor: effectiveRole === 'adult' ? '#ff2d55' : colors.border,
+                  backgroundColor: effectiveRole === 'adult' ? '#ff2d55' : colors.background,
+                },
+              ]}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              accessibilityRole="button"
+              accessibilityLabel="Увімкнути роль adult"
+            >
+              <Text
+                style={[
+                  styles.roleChipLabel,
+                  { color: effectiveRole === 'adult' ? '#ffffff' : colors.text },
+                ]}
+                allowFontScaling
+              >
+                Adult
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void setRole('child');
+              }}
+              style={[
+                styles.roleChip,
+                {
+                  borderColor: effectiveRole === 'child' ? '#ff2d55' : colors.border,
+                  backgroundColor: effectiveRole === 'child' ? '#ff2d55' : colors.background,
+                },
+              ]}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              accessibilityRole="button"
+              accessibilityLabel="Увімкнути роль child"
+            >
+              <Text
+                style={[
+                  styles.roleChipLabel,
+                  { color: effectiveRole === 'child' ? '#ffffff' : colors.text },
+                ]}
+                allowFontScaling
+              >
+                Child
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <View
         style={styles.settingRow}

@@ -21,7 +21,6 @@ import type {
   ProgressSummary,
   Quest,
   UserProfile,
-  UserRole,
 } from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
@@ -189,7 +188,7 @@ type FamilyResolutionDebug = {
 
 const formatChildAge = (age: number): string => (age > 0 ? String(age) : 'x');
 
-const HomeScreen = () => {
+const AdultHomeScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
@@ -198,12 +197,10 @@ const HomeScreen = () => {
     [cardMaxWidth, isTablet, spacing],
   );
 
-  const role = useAuthStore((s) => s.role);
   const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
   const family = useAuthStore((s) => s.family);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
-  const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const registerChild = useAuthStore((s) => s.registerChild);
   const refreshFamily = useAuthStore((s) => s.refreshFamily);
@@ -232,13 +229,7 @@ const HomeScreen = () => {
   const [aiPrompt, setAiPrompt] = React.useState<string>(PLAN_PROMPTS[0]);
   const [aiBuilderError, setAiBuilderError] = React.useState<string | null>(null);
 
-  const effectiveRole: UserRole = role ?? 'child';
-
-  React.useEffect(() => {
-    if (!role) {
-      void setRole('child');
-    }
-  }, [role, setRole]);
+  const effectiveRole = 'adult' as const;
 
   const loadDashboard = React.useCallback(
     async (showLoader = false) => {
@@ -651,55 +642,8 @@ const HomeScreen = () => {
     <ScreenContainer>
       <SectionHeader
         title="Home"
-        subtitle={
-          effectiveRole === 'adult'
-            ? `Adult dashboard: ${me?.fullName ?? 'Parent'}`
-            : `Hello, ${me?.fullName ?? 'Hero'}!`
-        }
+        subtitle={`Adult dashboard: ${me?.fullName ?? 'Parent'}`}
       />
-
-      <View style={[styles.roleSwitcher, { borderColor: colors.border, backgroundColor: colors.card }]}> 
-        <Pressable
-          onPress={() => {
-            void setRole('adult');
-          }}
-          style={[
-            styles.roleChip,
-            {
-              backgroundColor: effectiveRole === 'adult' ? '#ff2d55' : colors.background,
-              borderColor: effectiveRole === 'adult' ? '#ff2d55' : colors.border,
-            },
-          ]}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-        >
-          <Text
-            style={[styles.roleChipLabel, { color: effectiveRole === 'adult' ? '#ffffff' : colors.text }]}
-            allowFontScaling
-          >
-            Adult
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            void setRole('child');
-          }}
-          style={[
-            styles.roleChip,
-            {
-              backgroundColor: effectiveRole === 'child' ? '#ff2d55' : colors.background,
-              borderColor: effectiveRole === 'child' ? '#ff2d55' : colors.border,
-            },
-          ]}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-        >
-          <Text
-            style={[styles.roleChipLabel, { color: effectiveRole === 'child' ? '#ffffff' : colors.text }]}
-            allowFontScaling
-          >
-            Child
-          </Text>
-        </Pressable>
-      </View>
 
       {screenError ? <EmptyState title="Dashboard error" description={screenError} /> : null}
 
@@ -1361,4 +1305,4 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
   });
 
-export default HomeScreen;
+export default AdultHomeScreen;

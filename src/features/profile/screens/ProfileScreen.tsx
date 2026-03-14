@@ -17,6 +17,7 @@ import {
   ScreenContainer,
   SectionHeader,
   StatCard,
+  UpgradePlanBanner,
 } from '@/shared/components/ui';
 import {
   childrenService,
@@ -230,6 +231,13 @@ const ProfileScreen = () => {
       {screenError ? <EmptyState title="Profile error" description={screenError} /> : null}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <UpgradePlanBanner
+          style={styles.card}
+          onOpenFailed={() => {
+            setScreenError('Failed to open pricing page. Please try again.');
+          }}
+        />
+
         <StatCard title={me?.fullName ?? 'Profile'} subtitle={me?.email ?? 'local profile'} style={styles.card}>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
             Role: {effectiveRole}

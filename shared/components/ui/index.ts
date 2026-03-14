@@ -7,3 +7,4 @@ export { default as QuestRewardEditor } from './QuestRewardEditor';
 export { default as ScreenContainer } from './ScreenContainer';
 export { default as SectionHeader } from './SectionHeader';
 export { default as StatCard } from './StatCard';
+export { default as UpgradePlanBanner } from './UpgradePlanBanner';

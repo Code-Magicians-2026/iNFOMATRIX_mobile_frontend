@@ -2,17 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import React from 'react';
 
-import type { TabParamList } from '@/src/navigation/AppNavigator';
+import type { MainTabParamList } from '@/src/navigation/AppNavigator';
 import AgentChatScreen from '@/src/features/chat/screens/AgentChatScreen';
 import ProfileScreen from '@/src/features/profile/screens/ProfileScreen';
 import HomeScreen from '@/src/screens/HomeScreen';
 import QuestsScreen from '@/src/screens/QuestsScreen';
 import useThemeStore from '@/context/Theme-store';
 
-const Tab = createBottomTabNavigator<TabParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const getTabIcon = (
-  routeName: keyof TabParamList,
+  routeName: keyof MainTabParamList,
 ): keyof typeof Ionicons.glyphMap => {
   switch (routeName) {
     case 'Home':
@@ -46,7 +46,7 @@ export default function TabNavigator() {
         },
         tabBarIcon: ({ color, size }) => (
           <Ionicons
-            name={getTabIcon(route.name as keyof TabParamList)}
+            name={getTabIcon(route.name as keyof MainTabParamList)}
             size={size}
             color={color}
           />
