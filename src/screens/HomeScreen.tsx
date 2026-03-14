@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import type {
   ChildProfile,
   GeneratedPlan,
@@ -64,6 +65,7 @@ const HomeScreen = () => {
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
+  const registerChild = useAuthStore((s) => s.registerChild);
 
   const [me, setMe] = React.useState<UserProfile | null>(null);
   const [children, setChildren] = React.useState<ChildProfile[]>([]);
@@ -80,13 +82,14 @@ const HomeScreen = () => {
 
   const [isCreateChildModalVisible, setIsCreateChildModalVisible] = React.useState(false);
   const [childFullName, setChildFullName] = React.useState('');
+  const [childPassword, setChildPassword] = React.useState('');
   const [childAge, setChildAge] = React.useState('');
   const [childInterests, setChildInterests] = React.useState('');
   const [childNotes, setChildNotes] = React.useState('');
   const [createChildError, setCreateChildError] = React.useState<string | null>(null);
 
   const [isAiBuilderModalVisible, setIsAiBuilderModalVisible] = React.useState(false);
-  const [aiPrompt, setAiPrompt] = React.useState(PLAN_PROMPTS[0]);
+  const [aiPrompt, setAiPrompt] = React.useState<string>(PLAN_PROMPTS[0]);
   const [aiIntensity, setAiIntensity] = React.useState<(typeof PLAN_INTENSITY_OPTIONS)[number]>('medium');
   const [aiBuilderError, setAiBuilderError] = React.useState<string | null>(null);
 
@@ -204,6 +207,7 @@ const HomeScreen = () => {
 
   const resetCreateChildForm = () => {
     setChildFullName('');
+    setChildPassword('');
     setChildAge('');
     setChildInterests('');
     setChildNotes('');
@@ -230,6 +234,19 @@ const HomeScreen = () => {
       return;
     }
 
+    if (childPassword.length < 6) {
+      setCreateChildError('Child password must be at least 6 characters.');
+      return;
+    }
+
+    const fullNameParts = fullName.split(/\s+/).filter(Boolean);
+    const firstName = fullNameParts[0] ?? '';
+    const lastName = fullNameParts.length > 1 ? fullNameParts.slice(1).join(' ') : firstName;
+    if (!firstName || !lastName) {
+      setCreateChildError('Enter child first and last name.');
+      return;
+    }
+
     const parsedAge = Number(childAge.trim());
     if (!Number.isFinite(parsedAge) || parsedAge < 3 || parsedAge > 18) {
       setCreateChildError('Age must be between 3 and 18.');
@@ -244,6 +261,12 @@ const HomeScreen = () => {
     setIsCreatingChild(true);
     setCreateChildError(null);
     try {
+      await registerChild({
+        firstName,
+        lastName,
+        password: childPassword,
+      });
+
       const createdChild = await childrenService.createChild({
         fullName,
         age: Math.round(parsedAge),
@@ -255,8 +278,10 @@ const HomeScreen = () => {
       setIsCreateChildModalVisible(false);
       resetCreateChildForm();
       await loadDashboard(false);
-    } catch {
-      setCreateChildError('Failed to create child profile. Please try again.');
+    } catch (error) {
+      setCreateChildError(
+        getApiErrorMessage(error, 'Failed to create child profile. Please try again.'),
+      );
     } finally {
       setIsCreatingChild(false);
     }
@@ -642,6 +667,21 @@ const HomeScreen = () => {
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
               keyboardType="number-pad"
+              editable={!isCreatingChild}
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Child Password
+            </Text>
+            <TextInput
+              value={childPassword}
+              onChangeText={setChildPassword}
+              placeholder="Minimum 6 characters"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
               editable={!isCreatingChild}
             />
 

@@ -17,7 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import type { ThemeColors } from '@/shared/styles/theme';
 
@@ -40,6 +40,7 @@ const ConfirmEmailScreen = () => {
   const [email, setEmail] = React.useState(route.params?.initialEmail ?? '');
   const [token, setToken] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
+  const [didTimeoutOnce, setDidTimeoutOnce] = React.useState(false);
 
   const confirmEmailMutation = useMutation({
     mutationKey: ['auth', 'confirm-email'],
@@ -49,7 +50,7 @@ const ConfirmEmailScreen = () => {
 
   const onConfirmPress = async () => {
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedToken = token.trim();
+    const normalizedToken = token.replace(/\s+/g, '').trim();
 
     if (!emailPattern.test(normalizedEmail)) {
       setError('Введіть коректну електронну пошту.');
@@ -68,6 +69,7 @@ const ConfirmEmailScreen = () => {
         email: normalizedEmail,
         token: normalizedToken,
       });
+      setDidTimeoutOnce(false);
       const redirectTo = route.params?.redirectTo ?? 'Profile';
       if (redirectTo === 'Settings') {
         navigation.dispatch(StackActions.popTo('Settings'));
@@ -77,6 +79,21 @@ const ConfirmEmailScreen = () => {
       navigation.dispatch(StackActions.popTo('MainTabs'));
       navigation.navigate('MainTabs', { screen: 'Profile' });
     } catch (confirmError) {
+      if (confirmError instanceof ApiError && (confirmError.status === 504 || confirmError.status === 408)) {
+        setDidTimeoutOnce(true);
+        setError(
+          'Підтвердження ще обробляється на сервері. Не відправляйте код повторно одразу. Зачекайте 30-60 с і спробуйте увійти.',
+        );
+        return;
+      }
+
+      if (confirmError instanceof ApiError && confirmError.status === 401 && didTimeoutOnce) {
+        setError(
+          'Ймовірно попередня спроба вже підтвердила пошту, а код став одноразовим. Спробуйте увійти.',
+        );
+        return;
+      }
+
       setError(getApiErrorMessage(confirmError, 'Не вдалося підтвердити пошту.'));
     }
   };
@@ -115,7 +132,7 @@ const ConfirmEmailScreen = () => {
               placeholderTextColor={colors.textSecondary}
               editable={!confirmEmailMutation.isPending}
               accessibilityLabel="Електронна пошта"
-              accessibilityHint="Поле для email, який потрібно підтвердити"
+              accessibilityHint="Email, на який отримано код підтвердження"
               importantForAccessibility="yes"
             />
           </View>
@@ -130,6 +147,7 @@ const ConfirmEmailScreen = () => {
               onChangeText={setToken}
               autoCapitalize="none"
               autoCorrect={false}
+              autoComplete="one-time-code"
               placeholder="Введіть код із листа"
               placeholderTextColor={colors.textSecondary}
               editable={!confirmEmailMutation.isPending}
