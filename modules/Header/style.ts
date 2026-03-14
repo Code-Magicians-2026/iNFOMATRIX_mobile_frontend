@@ -30,6 +30,24 @@ export const getStyles = (isDark: boolean, isAuthenticated: boolean) => {
       fontWeight: '600',
       color: text,
     },
+    titleWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      maxWidth: '62%',
+    },
+    offlineBadge: {
+      borderRadius: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      backgroundColor: '#ff2d55',
+    },
+    offlineBadgeText: {
+      color: '#ffffff',
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+    },
     sideButton: {
       width: 36,
       height: 36,

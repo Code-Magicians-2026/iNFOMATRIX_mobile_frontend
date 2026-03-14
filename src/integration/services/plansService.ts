@@ -1,6 +1,12 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
 import { generateQuestByPrompt, generateQuestByPromptWithPhoto } from '@/src/features/chat/api/quest';
+import { approvePlanMock, generatePlanMock, getPlansMock } from '@/src/features/mvp/services';
+import {
+  isOfflineTestingModeEnabled,
+  persistOfflineStateIfEnabled,
+  syncMockLayerContextFromAuth,
+} from '@/src/integration/services/offline-mode';
 import type { GeneratedPlan, Quest, QuestStatus, QuestStep } from '@/shared/models/mvp-contracts.model';
 
 export type GeneratePlanInput = {
@@ -426,18 +432,45 @@ const generatePlanViaApiContract = async (input: GeneratePlanInput): Promise<Gen
 
 export const plansService = {
   getPlans: async (input: GetPlansInput = {}): Promise<GeneratedPlan[]> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      return getPlansMock(input);
+    }
+
     const plans = usePlansStore.getState().getPlans();
     return applyGetPlansFilters(plans, input);
   },
 
-  generatePlan: async (input: GeneratePlanInput): Promise<GeneratedPlan> =>
-    generatePlanViaApiContract(input),
+  generatePlan: async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      const plan = await generatePlanMock(input);
+      await persistOfflineStateIfEnabled();
+      return plan;
+    }
+
+    return generatePlanViaApiContract(input);
+  },
 
   uploadPhotoAndGenerate: async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      const plan = await generatePlanMock(input);
+      await persistOfflineStateIfEnabled();
+      return plan;
+    }
+
     return generatePlanViaApiContract(input);
   },
 
   approvePlan: async (planId: string): Promise<GeneratedPlan> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      const approved = await approvePlanMock(planId);
+      await persistOfflineStateIfEnabled();
+      return approved;
+    }
+
     const approvedPlan = await usePlansStore.getState().approvePlan(planId);
     if (approvedPlan) {
       return approvedPlan;

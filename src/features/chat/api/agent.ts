@@ -1,4 +1,6 @@
 import { request } from '@/src/features/auth/api/client';
+import { getAgentResponseMock } from '@/src/features/mvp/services';
+import { isOfflineTestingModeEnabled, syncMockLayerContextFromAuth } from '@/src/integration/services/offline-mode';
 
 const EMPTY_AI_RESPONSE_FALLBACK = 'Сервер не повернув текст відповіді.';
 
@@ -31,6 +33,11 @@ export const sendPromptToAgent = async (
   prompt: string,
   authorization?: string,
 ): Promise<string> => {
+  if (isOfflineTestingModeEnabled()) {
+    syncMockLayerContextFromAuth();
+    return getAgentResponseMock(prompt);
+  }
+
   const headers = authorization ? { Authorization: authorization } : undefined;
   const payload: AgentRequestDto = { prompt };
 

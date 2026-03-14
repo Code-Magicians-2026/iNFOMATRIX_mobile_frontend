@@ -6,6 +6,7 @@ export { plansService } from './plansService';
 export { buildGeneratePlanFormData } from './plansService';
 export { questsService } from './questsService';
 export { progressService } from './progressService';
+export { leaderboardService } from './leaderboardService';
 
 export type { CreateChildInput } from './childrenService';
 export type { GeneratePlanInput, GetPlansInput } from './plansService';

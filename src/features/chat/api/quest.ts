@@ -1,4 +1,6 @@
 import { request } from '@/src/features/auth/api/client';
+import { getAgentResponseMock, getVisionVerificationMock } from '@/src/features/mvp/services';
+import { isOfflineTestingModeEnabled, syncMockLayerContextFromAuth } from '@/src/integration/services/offline-mode';
 import type { CapturedPhoto } from '@/shared/models/mvp-contracts.model';
 
 type ReactNativeFormFile = {
@@ -42,6 +44,12 @@ export const generateQuestByPrompt = async (
   prompt: string,
   accessToken: string,
 ): Promise<unknown> => {
+  if (isOfflineTestingModeEnabled()) {
+    syncMockLayerContextFromAuth();
+    const response = await getAgentResponseMock(prompt);
+    return { summary: response, source: 'offline-demo' };
+  }
+
   const formData = new FormData();
   formData.append('Prompt', prompt);
 
@@ -58,6 +66,20 @@ export const generateQuestByPromptWithPhoto = async (
   photo: CapturedPhoto,
   accessToken: string,
 ): Promise<unknown> => {
+  if (isOfflineTestingModeEnabled()) {
+    syncMockLayerContextFromAuth();
+    const [response, vision] = await Promise.all([
+      getAgentResponseMock(prompt),
+      getVisionVerificationMock(),
+    ]);
+    return {
+      summary: response,
+      vision,
+      photoUri: photo.uri,
+      source: 'offline-demo',
+    };
+  }
+
   const formData = new FormData();
   formData.append('Prompt', prompt);
 

@@ -11,6 +11,7 @@ import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 
 import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
+import useOfflineTestingStore from '@/context/OfflineTesting-store';
 import usePlansStore from '@/context/Plans-store';
 import { queryClient } from '@/src/features/auth/api/queryClient';
 import AppErrorBoundary from '@/shared/components/AppErrorBoundary';
@@ -22,6 +23,7 @@ export default function RootLayout() {
   const loadTheme = useThemeStore((s) => s.loadTheme);
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const hydratePlans = usePlansStore((s) => s.hydrate);
+  const hydrateOfflineTesting = useOfflineTestingStore((s) => s.hydrate);
   const paperTheme = React.useMemo(
     () =>
       isDark
@@ -54,7 +56,8 @@ export default function RootLayout() {
     void loadTheme();
     void hydrateAuth();
     void hydratePlans();
-  }, [hydrateAuth, hydratePlans, loadTheme]);
+    void hydrateOfflineTesting();
+  }, [hydrateAuth, hydrateOfflineTesting, hydratePlans, loadTheme]);
 
   return (
     <GestureHandlerRootView style={styles.root}>

@@ -58,7 +58,8 @@ describe('mock-layer-services', () => {
     });
 
     expect(generatedPlan.status).toBe('draft');
-    expect(generatedPlan.summary).toContain('using camera context');
+    expect(generatedPlan.summary).toContain('AI demo');
+    expect(generatedPlan.summary).toContain('Vision demo');
 
     const approvedPlan = await approvePlanMock(generatedPlan.id);
     const childQuests = await getQuestsMock('child-1');
