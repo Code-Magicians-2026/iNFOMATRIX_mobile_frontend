@@ -45,4 +45,12 @@ export const getStyles = (
       fontSize: isTablet ? 22 : 20,
       color: c.text,
     },
+    labelWrap: {
+      flex: 1,
+      gap: 4,
+    },
+    description: {
+      fontSize: isTablet ? 14 : 13,
+      color: c.textSecondary,
+    },
   });

@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { getStyles } from './style';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import useAuthStore from '@/context/Auth-store';
+import useOfflineTestingStore from '@/context/OfflineTesting-store';
 
 type HeaderProps = {
   title: string;
@@ -23,6 +24,7 @@ const Header = ({
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const isAuthenticated = useAuthStore((s) => Boolean(s.session?.accessToken));
+  const isOfflineTestingMode = useOfflineTestingStore((s) => s.isOfflineTestingMode);
   const styles = React.useMemo(() => getStyles(isDark, isAuthenticated), [isAuthenticated, isDark]);
   const sessionEmail = useAuthStore((s) => s.session?.email ?? '');
   const profileInitial = React.useMemo(() => {
@@ -65,9 +67,18 @@ const Header = ({
         <View style={styles.sideButtonPlaceholder} />
       )}
 
-      <Text style={styles.title} allowFontScaling>
-        {title}
-      </Text>
+      <View style={styles.titleWrap}>
+        <Text style={styles.title} allowFontScaling>
+          {title}
+        </Text>
+        {isOfflineTestingMode ? (
+          <View style={styles.offlineBadge}>
+            <Text style={styles.offlineBadgeText} allowFontScaling={false}>
+              OFFLINE
+            </Text>
+          </View>
+        ) : null}
+      </View>
 
       {onProfilePress ? (
         <Pressable

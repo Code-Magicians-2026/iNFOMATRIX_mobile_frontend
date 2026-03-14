@@ -1,5 +1,7 @@
 import useAuthStore from '@/context/Auth-store';
 import type { UserProfile } from '@/shared/models/mvp-contracts.model';
+import { getMeMock } from '@/src/features/mvp/services';
+import { isOfflineTestingModeEnabled, syncMockLayerContextFromAuth } from '@/src/integration/services/offline-mode';
 
 const buildFallbackUser = (): UserProfile => {
   const authState = useAuthStore.getState();
@@ -22,6 +24,11 @@ const buildFallbackUser = (): UserProfile => {
 
 export const userService = {
   getMe: async (): Promise<UserProfile> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      return getMeMock();
+    }
+
     const authUser = useAuthStore.getState().currentUser;
     if (authUser) {
       return { ...authUser };

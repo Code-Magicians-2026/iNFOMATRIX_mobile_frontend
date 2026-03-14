@@ -1,5 +1,11 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
+import { completeQuestMock, getQuestsMock, toggleQuestStepMock } from '@/src/features/mvp/services';
+import {
+  isOfflineTestingModeEnabled,
+  persistOfflineStateIfEnabled,
+  syncMockLayerContextFromAuth,
+} from '@/src/integration/services/offline-mode';
 import type { Quest, QuestStep } from '@/shared/models/mvp-contracts.model';
 
 const hasAuthenticatedSession = () => Boolean(useAuthStore.getState().session?.accessToken);
@@ -36,14 +42,14 @@ const buildDefaultSteps = (quest: Quest): QuestStep[] => [
 ];
 
 const normalizeQuestForLocal = (quest: Quest): Quest => {
-  const steps = (quest.steps && quest.steps.length > 0 ? quest.steps : buildDefaultSteps(quest))
+  const steps: QuestStep[] = (quest.steps && quest.steps.length > 0 ? quest.steps : buildDefaultSteps(quest))
     .map((step, index) => ({
       ...step,
       id: step.id?.trim() || `${quest.id}-step-${index + 1}`,
       questId: quest.id,
       title: step.title?.trim() || `Step ${index + 1}`,
       order: Number.isFinite(step.order) ? step.order : index + 1,
-      status: step.status === 'completed' ? 'completed' : 'pending',
+      status: step.status === 'completed' ? ('completed' as const) : ('pending' as const),
     }))
     .sort((left, right) => left.order - right.order);
 
@@ -113,9 +119,23 @@ const getQuestsFromPlansCache = (userId: string): Quest[] => {
 };
 
 export const questsService = {
-  getQuests: async (userId: string): Promise<Quest[]> => getQuestsFromPlansCache(userId),
+  getQuests: async (userId: string): Promise<Quest[]> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      return getQuestsMock(userId);
+    }
+
+    return getQuestsFromPlansCache(userId);
+  },
 
   completeQuest: async (questId: string): Promise<Quest> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      const completed = await completeQuestMock(questId);
+      await persistOfflineStateIfEnabled();
+      return completed;
+    }
+
     const planQuest = usePlansStore
       .getState()
       .getPlans()
@@ -150,6 +170,13 @@ export const questsService = {
   },
 
   toggleQuestStep: async (questId: string, stepId: string): Promise<Quest> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      const updated = await toggleQuestStepMock(questId, stepId);
+      await persistOfflineStateIfEnabled();
+      return updated;
+    }
+
     const planQuest = usePlansStore
       .getState()
       .getPlans()

@@ -2,6 +2,7 @@ import type {
   CapturedPhoto,
   ChildProfile,
   GeneratedPlan,
+  LeaderboardItem,
   PlanRequest,
   ProgressSummary,
   Quest,
@@ -9,12 +10,17 @@ import type {
   QuestStep,
   UserProfile,
 } from '@/shared/models/mvp-contracts.model';
-import { mockChildren } from '@/src/features/mvp/mocks/mockChildren';
-import { mockPlanRequests } from '@/src/features/mvp/mocks/mockPlanRequests';
-import { mockPlans } from '@/src/features/mvp/mocks/mockPlans';
-import { mockProgress } from '@/src/features/mvp/mocks/mockProgress';
-import { mockQuests } from '@/src/features/mvp/mocks/mockQuests';
-import { mockUsers } from '@/src/features/mvp/mocks/mockUsers';
+import {
+  mockOfflineSeedAiResponses,
+  mockOfflineSeedChildren,
+  mockOfflineSeedLeaderboard,
+  mockOfflineSeedPlanRequests,
+  mockOfflineSeedPlans,
+  mockOfflineSeedProgress,
+  mockOfflineSeedQuests,
+  mockOfflineSeedUsers,
+  mockOfflineSeedVisionResponse,
+} from '@/src/features/mvp/mocks/mockOfflineSeed';
 
 const MOCK_DELAY_MS = 0;
 const XP_PER_LEVEL = 300;
@@ -26,7 +32,20 @@ type MockState = {
   plans: GeneratedPlan[];
   quests: Quest[];
   progress: ProgressSummary[];
+  leaderboard: LeaderboardItem[];
+  aiResponses: string[];
+  visionResponse: string;
 };
+
+export interface MockLayerSnapshot {
+  version: 1;
+  state: MockState;
+  meIdState: string;
+  childCounter: number;
+  planRequestCounter: number;
+  planCounter: number;
+  aiResponseCursor: number;
+}
 
 export interface CreateChildMockInput {
   fullName: string;
@@ -171,21 +190,40 @@ const cloneChild = (child: ChildProfile): ChildProfile => ({
 });
 
 const cloneUser = (user: UserProfile): UserProfile => ({ ...user });
+const cloneLeaderboardItem = (item: LeaderboardItem): LeaderboardItem => ({ ...item });
 
 const getDefaultMeId = (users: UserProfile[]) =>
   users.find((user) => user.role === 'adult')?.id ?? users[0]?.id ?? 'adult-1';
 
+const normalizeLeaderboard = (leaderboard: LeaderboardItem[]): LeaderboardItem[] =>
+  [...leaderboard]
+    .sort((left, right) => {
+      if (right.xp === left.xp) {
+        return right.fairScore - left.fairScore;
+      }
+
+      return right.xp - left.xp;
+    })
+    .map((item, index) => ({
+      ...item,
+      rank: index + 1,
+    }));
+
 const createInitialState = (): MockState => ({
-  users: mockUsers.map(cloneUser),
-  children: mockChildren.map(cloneChild),
-  planRequests: mockPlanRequests.map(clonePlanRequest),
-  plans: mockPlans.map(normalizePlan),
-  quests: mockQuests.map(normalizeQuest),
-  progress: mockProgress.map(cloneProgress),
+  users: mockOfflineSeedUsers.map(cloneUser),
+  children: mockOfflineSeedChildren.map(cloneChild),
+  planRequests: mockOfflineSeedPlanRequests.map(clonePlanRequest),
+  plans: mockOfflineSeedPlans.map(normalizePlan),
+  quests: mockOfflineSeedQuests.map(normalizeQuest),
+  progress: mockOfflineSeedProgress.map(cloneProgress),
+  leaderboard: normalizeLeaderboard(mockOfflineSeedLeaderboard.map(cloneLeaderboardItem)),
+  aiResponses: [...mockOfflineSeedAiResponses],
+  visionResponse: mockOfflineSeedVisionResponse,
 });
 
 let state: MockState = createInitialState();
 let meIdState = getDefaultMeId(state.users);
+let aiResponseCursor = 0;
 
 let childCounter = state.children.length;
 let planRequestCounter = state.planRequests.length;
@@ -366,12 +404,21 @@ const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] 
   ];
 };
 
+const getNextAiResponse = () => {
+  const fallback = 'AI demo: Plan generated from local offline seed.';
+  const responses = state.aiResponses.length > 0 ? state.aiResponses : [fallback];
+  const response = responses[aiResponseCursor % responses.length] ?? fallback;
+  aiResponseCursor += 1;
+  return response;
+};
+
 export const resetMockLayerState = () => {
   state = createInitialState();
   meIdState = getDefaultMeId(state.users);
   childCounter = state.children.length;
   planRequestCounter = state.planRequests.length;
   planCounter = state.plans.length;
+  aiResponseCursor = 0;
 };
 
 export const setMockMeId = (userId: string) => {
@@ -381,6 +428,99 @@ export const setMockMeId = (userId: string) => {
   }
 
   meIdState = userId;
+};
+
+export const exportMockLayerSnapshot = (): MockLayerSnapshot => ({
+  version: 1,
+  state: {
+    users: state.users.map(cloneUser),
+    children: state.children.map(cloneChild),
+    planRequests: state.planRequests.map(clonePlanRequest),
+    plans: state.plans.map(normalizePlan),
+    quests: state.quests.map(normalizeQuest),
+    progress: state.progress.map(cloneProgress),
+    leaderboard: state.leaderboard.map(cloneLeaderboardItem),
+    aiResponses: [...state.aiResponses],
+    visionResponse: state.visionResponse,
+  },
+  meIdState,
+  childCounter,
+  planRequestCounter,
+  planCounter,
+  aiResponseCursor,
+});
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+export const importMockLayerSnapshot = (snapshot: unknown): boolean => {
+  if (!isObject(snapshot)) {
+    return false;
+  }
+
+  const stateCandidate = snapshot.state;
+  if (!isObject(stateCandidate)) {
+    return false;
+  }
+
+  const users = Array.isArray(stateCandidate.users) ? stateCandidate.users : null;
+  const children = Array.isArray(stateCandidate.children) ? stateCandidate.children : null;
+  const planRequests = Array.isArray(stateCandidate.planRequests) ? stateCandidate.planRequests : null;
+  const plans = Array.isArray(stateCandidate.plans) ? stateCandidate.plans : null;
+  const quests = Array.isArray(stateCandidate.quests) ? stateCandidate.quests : null;
+  const progress = Array.isArray(stateCandidate.progress) ? stateCandidate.progress : null;
+  const leaderboard = Array.isArray(stateCandidate.leaderboard)
+    ? stateCandidate.leaderboard
+    : mockOfflineSeedLeaderboard;
+  const aiResponses = Array.isArray(stateCandidate.aiResponses)
+    ? stateCandidate.aiResponses
+    : mockOfflineSeedAiResponses;
+  const visionResponse =
+    typeof stateCandidate.visionResponse === 'string' && stateCandidate.visionResponse.trim().length > 0
+      ? stateCandidate.visionResponse
+      : mockOfflineSeedVisionResponse;
+
+  if (!users || !children || !planRequests || !plans || !quests || !progress) {
+    return false;
+  }
+
+  state = {
+    users: users.map((user) => cloneUser(user as UserProfile)),
+    children: children.map((child) => cloneChild(child as ChildProfile)),
+    planRequests: planRequests.map((request) => clonePlanRequest(request as PlanRequest)),
+    plans: plans.map((plan) => normalizePlan(plan as GeneratedPlan)),
+    quests: quests.map((quest) => normalizeQuest(quest as Quest)),
+    progress: progress.map((summary) => cloneProgress(summary as ProgressSummary)),
+    leaderboard: normalizeLeaderboard(leaderboard.map((item) => cloneLeaderboardItem(item as LeaderboardItem))),
+    aiResponses: aiResponses
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim()),
+    visionResponse,
+  };
+
+  const meIdCandidate = typeof snapshot.meIdState === 'string' ? snapshot.meIdState.trim() : '';
+  meIdState = meIdCandidate && state.users.some((user) => user.id === meIdCandidate)
+    ? meIdCandidate
+    : getDefaultMeId(state.users);
+
+  childCounter =
+    typeof snapshot.childCounter === 'number' && Number.isFinite(snapshot.childCounter)
+      ? Math.max(0, Math.floor(snapshot.childCounter))
+      : state.children.length;
+  planRequestCounter =
+    typeof snapshot.planRequestCounter === 'number' && Number.isFinite(snapshot.planRequestCounter)
+      ? Math.max(0, Math.floor(snapshot.planRequestCounter))
+      : state.planRequests.length;
+  planCounter =
+    typeof snapshot.planCounter === 'number' && Number.isFinite(snapshot.planCounter)
+      ? Math.max(0, Math.floor(snapshot.planCounter))
+      : state.plans.length;
+  aiResponseCursor =
+    typeof snapshot.aiResponseCursor === 'number' && Number.isFinite(snapshot.aiResponseCursor)
+      ? Math.max(0, Math.floor(snapshot.aiResponseCursor))
+      : 0;
+
+  return true;
 };
 
 export const getMeMock = async (): Promise<UserProfile> => {
@@ -563,8 +703,15 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
   const generatedPlan: GeneratedPlan = {
     id: planId,
     title: `${targetUser.fullName}: AI Plan`,
-    summary: `Generated ${quests.length} quest${quests.length > 1 ? 's' : ''}${normalizedPhoto ? ' using camera context.' : '.'}`,
-    childMessage: `You can do this, ${targetUser.fullName}. Start with one quest and keep going.`,
+    summary: (() => {
+      const aiSummary = getNextAiResponse();
+      if (normalizedPhoto) {
+        return `${aiSummary} ${state.visionResponse}`;
+      }
+
+      return aiSummary;
+    })(),
+    childMessage: `Offline AI demo ready, ${targetUser.fullName}. Start with one quest and keep going.`,
     quests,
     totalEstimatedMinutes: quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0),
     status: 'draft',
@@ -737,6 +884,31 @@ const applyQuestCompletionReward = (quest: Quest) => {
 
   refreshProgressCounters(quest.assignedToUserId);
   syncUserFromProgress(progress);
+
+  const user = state.users.find((item) => item.id === quest.assignedToUserId);
+  if (user) {
+    const existingEntry = state.leaderboard.find((item) => item.userId === user.id);
+    const fairScore = Math.min(100, 70 + progress.level * 2 + Math.min(progress.streak, 10));
+
+    if (existingEntry) {
+      existingEntry.name = user.fullName;
+      existingEntry.xp = progress.xp;
+      existingEntry.fairScore = fairScore;
+    } else {
+      state.leaderboard = [
+        ...state.leaderboard,
+        {
+          userId: user.id,
+          name: user.fullName,
+          rank: state.leaderboard.length + 1,
+          xp: progress.xp,
+          fairScore,
+        },
+      ];
+    }
+
+    state.leaderboard = normalizeLeaderboard(state.leaderboard);
+  }
 };
 
 const archiveQuestWithCompletion = (quest: Quest): Quest => {
@@ -845,6 +1017,30 @@ export const getProgressMock = async (userId: string): Promise<ProgressSummary> 
   return cloneProgress(progress);
 };
 
+export const getLeaderboardMock = async (): Promise<LeaderboardItem[]> => {
+  await wait(MOCK_DELAY_MS);
+
+  return normalizeLeaderboard(state.leaderboard).map(cloneLeaderboardItem);
+};
+
+export const getAgentResponseMock = async (prompt: string): Promise<string> => {
+  await wait(MOCK_DELAY_MS);
+
+  const normalizedPrompt = prompt.trim();
+  const response = getNextAiResponse();
+
+  if (!normalizedPrompt) {
+    return response;
+  }
+
+  return `${response} Prompt: "${normalizedPrompt.slice(0, 96)}"`;
+};
+
+export const getVisionVerificationMock = async (): Promise<string> => {
+  await wait(MOCK_DELAY_MS);
+  return state.visionResponse;
+};
+
 export type DemoScenarioKey =
   | 'adult_no_children'
   | 'adult_one_child'
@@ -869,11 +1065,15 @@ const setScenarioState = (nextState: MockState, meId: string) => {
     plans: nextState.plans.map(normalizePlan),
     quests: nextState.quests.map(normalizeQuest),
     progress: nextState.progress.map(cloneProgress),
+    leaderboard: normalizeLeaderboard(nextState.leaderboard.map(cloneLeaderboardItem)),
+    aiResponses: [...nextState.aiResponses],
+    visionResponse: nextState.visionResponse,
   };
   meIdState = meId;
   childCounter = state.children.length;
   planRequestCounter = state.planRequests.length;
   planCounter = state.plans.length;
+  aiResponseCursor = 0;
 };
 
 const buildAdultProgress = (xp = 2450, level = 8, streak = 15): ProgressSummary => ({
@@ -925,6 +1125,12 @@ const buildChildUser = (xp: number, level: number, streak: number): UserProfile 
   avatarType: 'adventurer',
 });
 
+const buildScenarioExtras = () => ({
+  leaderboard: normalizeLeaderboard(mockOfflineSeedLeaderboard.map(cloneLeaderboardItem)),
+  aiResponses: [...mockOfflineSeedAiResponses],
+  visionResponse: mockOfflineSeedVisionResponse,
+});
+
 export const applyDemoScenarioMock = async (
   scenario: DemoScenarioKey,
 ): Promise<DemoScenarioApplyResult> => {
@@ -932,6 +1138,7 @@ export const applyDemoScenarioMock = async (
 
   if (scenario === 'adult_no_children') {
     const nextState: MockState = {
+      ...buildScenarioExtras(),
       users: [buildAdultUser()],
       children: [],
       planRequests: [],
@@ -990,6 +1197,7 @@ export const applyDemoScenarioMock = async (
     };
 
     const nextState: MockState = {
+      ...buildScenarioExtras(),
       users: [buildAdultUser('child-1'), buildChildUser(420, 3, 5)],
       children: [buildChildOneProfile(420, 3, 5)],
       planRequests: [
@@ -1082,6 +1290,7 @@ export const applyDemoScenarioMock = async (
     };
 
     const nextState: MockState = {
+      ...buildScenarioExtras(),
       users: [buildAdultUser('child-1'), buildChildUser(330, 2, 3)],
       children: [buildChildOneProfile(330, 2, 3)],
       planRequests: [
@@ -1187,6 +1396,7 @@ export const applyDemoScenarioMock = async (
     };
 
     const nextState: MockState = {
+      ...buildScenarioExtras(),
       users: [buildAdultUser('child-1'), buildChildUser(780, 3, 9)],
       children: [buildChildOneProfile(780, 3, 9)],
       planRequests: [
@@ -1292,6 +1502,7 @@ export const applyDemoScenarioMock = async (
   };
 
   const nextState: MockState = {
+    ...buildScenarioExtras(),
     users: [buildAdultUser('child-1'), buildChildUser(360, 3, 4)],
     children: [buildChildOneProfile(360, 3, 4)],
     planRequests: [
