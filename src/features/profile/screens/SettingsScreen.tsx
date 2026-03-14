@@ -3,6 +3,7 @@ import { SafeAreaView, Switch, Text, View } from 'react-native';
 
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import LanguageSwitcherStub from '@/src/features/profile/components/LanguageSwitcherStub';
 import { getStyles } from '@/src/features/profile/styles/settings.styles';
 
 const SettingsScreen = () => {
@@ -54,19 +55,12 @@ const SettingsScreen = () => {
       </View>
 
       <View
-        style={styles.settingRow}
+        style={styles.settingBlock}
         accessible
         importantForAccessibility="yes"
-        accessibilityLabel="Налаштування змінити мову інтерфейсу"
+        accessibilityLabel="Налаштування мови інтерфейсу"
       >
-        <Text style={styles.label} allowFontScaling>
-          Змінити мову інтерфейсу
-        </Text>
-        <Switch
-          trackColor={{ false: "#767577", true: "#ff2d55" }}
-          accessibilityLabel="Перемикач зміни мови інтерфейсу"
-          accessibilityHint="Вмикає або вимикає зміну мови інтерфейсу"
-        />
+        <LanguageSwitcherStub colors={colors} isTablet={isTablet} />
       </View>
     </SafeAreaView>
   );
