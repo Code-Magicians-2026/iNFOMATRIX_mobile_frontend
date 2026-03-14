@@ -212,6 +212,7 @@ const ProfileScreen = () => {
   );
 
   const strongestMetric = categoryStats[0];
+  const canOpenEarnedBadges = Boolean(me?.id);
 
   const childBadges = React.useMemo(() => {
     const badges: string[] = [];
@@ -326,8 +327,31 @@ const ProfileScreen = () => {
                 </Text>
               )}
             </View>
+
           </StatCard>
         )}
+
+        <StatCard title="Earned Badges" subtitle="Saved badge collection" style={styles.card}>
+          <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
+            Open your saved badges collected from completed quests.
+          </Text>
+          <PrimaryButton
+            label="Переглянути отримані бейджі"
+            variant="secondary"
+            disabled={!canOpenEarnedBadges}
+            onPress={() => {
+              if (!me?.id) {
+                return;
+              }
+
+              navigation.navigate('EarnedBadges', {
+                userId: me.id,
+                displayName: me.fullName,
+              });
+            }}
+            style={styles.earnedBadgesButton}
+          />
+        </StatCard>
 
         <StatCard title="Demo Mode" subtitle="Prepared scenarios for full walkthrough" style={styles.card}>
           <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
@@ -514,6 +538,9 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     badgeText: {
       fontSize: isTablet ? 14 : 13,
       fontWeight: '700',
+    },
+    earnedBadgesButton: {
+      marginTop: 6,
     },
     modalBackdrop: {
       flex: 1,

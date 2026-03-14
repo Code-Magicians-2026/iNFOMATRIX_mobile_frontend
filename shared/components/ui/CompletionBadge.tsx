@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Image,
-  type ImageSourcePropType,
   StyleSheet,
   Text,
   View,
@@ -9,6 +8,12 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import {
+  getBadgeImageSource,
+  pickRandomBadgeImageKey,
+  resolveBadgeTypeFromDifficulty,
+  type BadgeImageKey,
+} from './badge-catalog';
 
 type CompletionBadgeProps = {
   difficulty: string;
@@ -16,59 +21,7 @@ type CompletionBadgeProps = {
   imageSize?: number;
   showLabel?: boolean;
   labelStyle?: StyleProp<TextStyle>;
-};
-
-type BadgeType = 'basic' | 'fire';
-
-const BADGE_IMAGES: Record<BadgeType, ImageSourcePropType[]> = {
-  basic: [
-    require('../../../assets/images/budges/basic/ref1.png'),
-    require('../../../assets/images/budges/basic/ref2.png'),
-    require('../../../assets/images/budges/basic/ref3.png'),
-    require('../../../assets/images/budges/basic/ref4.png'),
-    require('../../../assets/images/budges/basic/ref5.png'),
-    require('../../../assets/images/budges/basic/ref6.png'),
-    require('../../../assets/images/budges/basic/ref7.png'),
-    require('../../../assets/images/budges/basic/ref8.png'),
-    require('../../../assets/images/budges/basic/ref9.png'),
-    require('../../../assets/images/budges/basic/ref10.png'),
-    require('../../../assets/images/budges/basic/ref11.png'),
-    require('../../../assets/images/budges/basic/ref12.png'),
-    require('../../../assets/images/budges/basic/ref13.png'),
-    require('../../../assets/images/budges/basic/ref14.png'),
-    require('../../../assets/images/budges/basic/ref15.png'),
-  ],
-  fire: [
-    require('../../../assets/images/budges/fire/ref1.png'),
-    require('../../../assets/images/budges/fire/ref2.png'),
-    require('../../../assets/images/budges/fire/ref3.png'),
-    require('../../../assets/images/budges/fire/ref4.png'),
-    require('../../../assets/images/budges/fire/ref5.png'),
-    require('../../../assets/images/budges/fire/ref6.png'),
-    require('../../../assets/images/budges/fire/ref7.png'),
-    require('../../../assets/images/budges/fire/ref8.png'),
-    require('../../../assets/images/budges/fire/ref9.png'),
-    require('../../../assets/images/budges/fire/ref10.png'),
-    require('../../../assets/images/budges/fire/ref11.png'),
-    require('../../../assets/images/budges/fire/ref12.png'),
-    require('../../../assets/images/budges/fire/ref13.png'),
-    require('../../../assets/images/budges/fire/ref14.png'),
-    require('../../../assets/images/budges/fire/ref15.png'),
-  ],
-};
-
-const resolveBadgeType = (difficulty: string): BadgeType => {
-  const normalizedDifficulty = difficulty.trim().toLowerCase();
-
-  if (
-    normalizedDifficulty === 'medium' ||
-    normalizedDifficulty === 'hard' ||
-    normalizedDifficulty === 'high'
-  ) {
-    return 'fire';
-  }
-
-  return 'basic';
+  imageKey?: BadgeImageKey;
 };
 
 const CompletionBadge = ({
@@ -77,14 +30,18 @@ const CompletionBadge = ({
   imageSize = 44,
   showLabel = true,
   labelStyle,
+  imageKey,
 }: CompletionBadgeProps) => {
-  const badgeType = resolveBadgeType(difficulty);
+  const badgeType = resolveBadgeTypeFromDifficulty(difficulty);
   const badgeLabel = badgeType === 'basic' ? 'Basic badge unlocked' : 'Fire badge unlocked';
-  const badgeImage = React.useMemo(() => {
-    const options = BADGE_IMAGES[badgeType];
-    const randomIndex = Math.floor(Math.random() * options.length);
-    return options[randomIndex] ?? options[0];
-  }, [badgeType]);
+  const resolvedImageKey = React.useMemo(
+    () => imageKey ?? pickRandomBadgeImageKey(),
+    [imageKey],
+  );
+  const badgeImage = React.useMemo(
+    () => getBadgeImageSource(badgeType, resolvedImageKey),
+    [badgeType, resolvedImageKey],
+  );
 
   return (
     <View style={[styles.container, style]}>

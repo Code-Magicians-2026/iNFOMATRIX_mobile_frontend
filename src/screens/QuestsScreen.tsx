@@ -38,6 +38,11 @@ import {
   questsService,
   userService,
 } from '@/src/integration/services';
+import earnedBadgesStorage from '@/src/features/profile/services/earnedBadgesStorage';
+import {
+  pickRandomBadgeImageKey,
+  type BadgeImageKey,
+} from '@/shared/components/ui/badge-catalog';
 
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
@@ -76,6 +81,7 @@ const isQuestDone = (quest: Quest) => {
 type CompletionFeedback = {
   questTitle: string;
   difficulty: string;
+  badgeImageKey: BadgeImageKey;
   rewardXp: number;
   totalXp: number;
   streak: number;
@@ -282,10 +288,21 @@ const QuestsScreen = () => {
 
       const movedToArchive = !isQuestArchived(questToUpdate) && isQuestArchived(updatedQuest);
       if (movedToArchive && refreshedProgress) {
+        let earnedBadgeImageKey = pickRandomBadgeImageKey();
+        try {
+          const earnedBadge = await earnedBadgesStorage.registerEarnedBadge({
+            userId: updatedQuest.assignedToUserId,
+            questId: updatedQuest.id,
+            difficulty: updatedQuest.difficulty,
+          });
+          earnedBadgeImageKey = earnedBadge.imageKey;
+        } catch {}
+
         Vibration.vibrate(QUEST_VICTORY_VIBRATION_PATTERN);
         setCompletionFeedback({
           questTitle: updatedQuest.title,
           difficulty: updatedQuest.difficulty,
+          badgeImageKey: earnedBadgeImageKey,
           rewardXp: updatedQuest.rewardXp,
           totalXp: refreshedProgress.xp,
           streak: refreshedProgress.streak,
@@ -654,6 +671,7 @@ const QuestsScreen = () => {
             >
               <CompletionBadge
                 difficulty={completionFeedback.difficulty}
+                imageKey={completionFeedback.badgeImageKey}
                 imageSize={isTablet ? 150 : 136}
                 showLabel={false}
                 style={styles.completionSpotlightBadge}
