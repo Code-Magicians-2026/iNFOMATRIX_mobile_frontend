@@ -17,6 +17,8 @@ export {
   setMockMeId,
   syncApprovedPlanQuestsMock,
   toggleQuestStepMock,
+  updateQuestAfterPhotoMock,
+  updateQuestBeforePhotoMock,
   updateQuestRewardMock,
 } from './mock-layer-services';
 

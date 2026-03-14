@@ -21,8 +21,9 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
   const stepsCount = quest.stepsCount ?? quest.steps?.length ?? 0;
   const completedStepsCount =
     quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
-  const isDone = isArchived || (stepsCount > 0 && completedStepsCount === stepsCount);
+  const isDone = isArchived;
   const rewardLabel = getQuestRewardLabel(quest);
+  const reportPhotoRequired = Boolean(quest.beforePhoto?.uri);
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -60,6 +61,14 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
         <Text style={[styles.rewardHighlight, { color: colors.text }]} allowFontScaling>
           🎁 {rewardLabel}
         </Text>
+        <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
+          Report photo: {reportPhotoRequired ? 'required' : 'optional'}
+        </Text>
+        {reportPhotoRequired ? (
+          <Text style={styles.photoRequiredBadge} allowFontScaling>
+            📷 Report required
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.footer}>
@@ -139,6 +148,17 @@ const getStyles = (isTablet: boolean) =>
     rewardHighlight: {
       fontSize: isTablet ? 14 : 13,
       fontWeight: '700',
+    },
+    photoRequiredBadge: {
+      alignSelf: 'flex-start',
+      fontSize: isTablet ? 12 : 11,
+      fontWeight: '700',
+      color: '#8b1a2b',
+      backgroundColor: '#ffe5eb',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 999,
+      overflow: 'hidden',
     },
     footer: {
       flexDirection: 'row',

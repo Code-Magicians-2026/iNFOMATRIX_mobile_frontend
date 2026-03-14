@@ -6,6 +6,7 @@ import type {
   PlanRequest,
   ProgressSummary,
   Quest,
+  QuestPhoto,
   QuestRewardType,
   QuestStatus,
   QuestStep,
@@ -86,6 +87,27 @@ const isArchivedQuestStatus = (status: QuestStatus) => status === 'archived' || 
 const isApprovedPlanStatus = (status: string) => status.trim().toLowerCase() === 'approved';
 
 const cloneQuestStep = (step: QuestStep): QuestStep => ({ ...step });
+const cloneQuestPhoto = (photo: QuestPhoto): QuestPhoto => ({ ...photo });
+
+const hasQuestPhoto = (photo?: QuestPhoto | null) => Boolean(photo?.uri?.trim());
+
+const normalizeQuestPhoto = (photo?: QuestPhoto | CapturedPhoto | null): QuestPhoto | null => {
+  if (!photo?.uri?.trim()) {
+    return null;
+  }
+
+  return {
+    uri: photo.uri.trim(),
+    fileName: photo.fileName?.trim() || null,
+    mimeType: photo.mimeType?.trim() || null,
+    createdAt: 'createdAt' in photo && typeof photo.createdAt === 'string' ? photo.createdAt : nowIso(),
+    syncStatus:
+      'syncStatus' in photo &&
+      (photo.syncStatus === 'not_sent' || photo.syncStatus === 'pending' || photo.syncStatus === 'sent')
+        ? photo.syncStatus
+        : 'not_sent',
+  };
+};
 
 const buildDefaultStepsForQuest = (quest: Pick<Quest, 'id' | 'title' | 'description'>): QuestStep[] => [
   {
@@ -144,10 +166,8 @@ const normalizeQuest = (quest: Quest): Quest => {
   let normalizedStatus: QuestStatus = statusFromLegacy;
   let completedAt = quest.completedAt;
   let archivedAt = quest.archivedAt;
-
-  if (normalizedStatus === 'active' && stepsCount > 0 && completedStepsCount === stepsCount) {
-    normalizedStatus = 'archived';
-  }
+  const beforePhoto = normalizeQuestPhoto(quest.beforePhoto);
+  const afterPhoto = normalizeQuestPhoto(quest.afterPhoto);
 
   if (normalizedStatus === 'archived') {
     const resolvedDoneAt = completedAt ?? archivedAt ?? createdAt;
@@ -159,6 +179,20 @@ const normalizeQuest = (quest: Quest): Quest => {
     ...quest,
     createdAt,
     status: normalizedStatus,
+    beforePhoto,
+    afterPhoto,
+    reportPhotoRequired: Boolean(beforePhoto?.uri),
+    photosSyncStatus:
+      quest.photosSyncStatus === 'pending_sync' || quest.photosSyncStatus === 'synced'
+        ? quest.photosSyncStatus
+        : 'local_only',
+    visionSummary: typeof quest.visionSummary === 'string' && quest.visionSummary.trim().length > 0
+      ? quest.visionSummary.trim()
+      : null,
+    visionSummaryCheckedAt:
+      typeof quest.visionSummaryCheckedAt === 'string' && quest.visionSummaryCheckedAt.trim().length > 0
+        ? quest.visionSummaryCheckedAt
+        : null,
     steps: normalizedSteps,
     stepsCount,
     completedStepsCount,
@@ -169,6 +203,8 @@ const normalizeQuest = (quest: Quest): Quest => {
 
 const cloneQuest = (quest: Quest): Quest => ({
   ...quest,
+  beforePhoto: quest.beforePhoto ? cloneQuestPhoto(quest.beforePhoto) : quest.beforePhoto ?? null,
+  afterPhoto: quest.afterPhoto ? cloneQuestPhoto(quest.afterPhoto) : quest.afterPhoto ?? null,
   steps: quest.steps?.map(cloneQuestStep),
 });
 
@@ -369,9 +405,25 @@ const normalizeCapturedPhoto = (photo?: CapturedPhoto): CapturedPhoto | undefine
   };
 };
 
+const toQuestPhotoFromCaptured = (photo?: CapturedPhoto): QuestPhoto | null => {
+  const normalized = normalizeCapturedPhoto(photo);
+  if (!normalized) {
+    return null;
+  }
+
+  return {
+    uri: normalized.uri,
+    fileName: normalized.fileName ?? null,
+    mimeType: normalized.mimeType ?? null,
+    createdAt: nowIso(),
+    syncStatus: 'not_sent',
+  };
+};
+
 const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] => {
   const questId = `${planId}-quest-1`;
   const normalizedPrompt = input.prompt.trim();
+  const beforePhoto = toQuestPhotoFromCaptured(input.photo);
 
   return [
     normalizeQuest({
@@ -383,6 +435,9 @@ const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] 
       rewardXp: 120,
       estimatedMinutes: 40,
       status: 'draft',
+      beforePhoto,
+      reportPhotoRequired: Boolean(beforePhoto?.uri),
+      photosSyncStatus: 'local_only',
       createdAt: new Date().toISOString(),
       steps: [
         {
@@ -882,6 +937,93 @@ const syncQuestToPlans = (updatedQuest: Quest) => {
   }));
 };
 
+const persistQuestToPlansOnly = (updatedQuest: Quest): boolean => {
+  let hasPlanChanges = false;
+
+  state.plans = state.plans.map((plan) => {
+    const questIndex = plan.quests.findIndex((quest) => quest.id === updatedQuest.id);
+    if (questIndex < 0) {
+      return plan;
+    }
+
+    hasPlanChanges = true;
+    return {
+      ...plan,
+      quests: [
+        ...plan.quests.slice(0, questIndex),
+        normalizeQuest({ ...plan.quests[questIndex], ...updatedQuest }),
+        ...plan.quests.slice(questIndex + 1),
+      ],
+    };
+  });
+
+  return hasPlanChanges;
+};
+
+const getQuestProgress = (quest: Quest) => {
+  const stepsCount = quest.stepsCount ?? quest.steps?.length ?? 0;
+  const completedStepsCount =
+    quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
+
+  return { stepsCount, completedStepsCount };
+};
+
+const assertQuestCompletionRequirements = (quest: Quest) => {
+  const { stepsCount, completedStepsCount } = getQuestProgress(quest);
+  if (stepsCount > 0 && completedStepsCount !== stepsCount) {
+    throw new Error('Complete all steps before finishing this quest.');
+  }
+
+  if (quest.reportPhotoRequired && !hasQuestPhoto(quest.afterPhoto)) {
+    throw new Error('Quest report photo is required before completion.');
+  }
+};
+
+const assertBeforePhotoEditable = (quest: Quest) => {
+  if (isArchivedQuestStatus(quest.status)) {
+    throw new Error('Before photo is locked for completed quests.');
+  }
+
+  if ((quest.completedStepsCount ?? 0) > 0 || hasQuestPhoto(quest.afterPhoto)) {
+    throw new Error('Before photo cannot be changed after quest progress starts.');
+  }
+};
+
+const getQuestFromStateOrPlans = (questId: string): Quest => {
+  const stateQuest = state.quests.find((quest) => quest.id === questId);
+  if (stateQuest) {
+    return normalizeQuest(stateQuest);
+  }
+
+  for (const plan of state.plans) {
+    const planQuest = plan.quests.find((quest) => quest.id === questId);
+    if (planQuest) {
+      return normalizeQuest(planQuest);
+    }
+  }
+
+  throw new Error(`Quest '${questId}' was not found.`);
+};
+
+const persistQuestAcrossStateAndPlans = (updatedQuest: Quest): boolean => {
+  const questIndex = state.quests.findIndex((quest) => quest.id === updatedQuest.id);
+  let hasChanges = false;
+
+  if (questIndex >= 0) {
+    state.quests = [
+      ...state.quests.slice(0, questIndex),
+      normalizeQuest(updatedQuest),
+      ...state.quests.slice(questIndex + 1),
+    ];
+    syncQuestToPlans(updatedQuest);
+    hasChanges = true;
+  } else {
+    hasChanges = persistQuestToPlansOnly(updatedQuest);
+  }
+
+  return hasChanges;
+};
+
 const normalizeQuestRewardUpdateInput = (
   input: UpdateQuestRewardMockInput,
 ): UpdateQuestRewardMockInput => {
@@ -975,18 +1117,63 @@ const persistQuest = (questIndex: number, updatedQuest: Quest) => {
   syncQuestToPlans(updatedQuest);
 };
 
+export const updateQuestBeforePhotoMock = async (
+  questId: string,
+  photo: CapturedPhoto | QuestPhoto | null,
+): Promise<Quest> => {
+  await wait(MOCK_DELAY_MS);
+
+  const currentQuest = getQuestFromStateOrPlans(questId);
+  assertBeforePhotoEditable(currentQuest);
+
+  const beforePhoto = normalizeQuestPhoto(photo);
+  const updatedQuest = normalizeQuest({
+    ...currentQuest,
+    beforePhoto,
+    reportPhotoRequired: Boolean(beforePhoto?.uri),
+    photosSyncStatus: 'local_only',
+  });
+
+  const persisted = persistQuestAcrossStateAndPlans(updatedQuest);
+  if (!persisted) {
+    throw new Error(`Quest '${questId}' was not found.`);
+  }
+
+  return cloneQuest(updatedQuest);
+};
+
+export const updateQuestAfterPhotoMock = async (
+  questId: string,
+  photo: CapturedPhoto | QuestPhoto | null,
+): Promise<Quest> => {
+  await wait(MOCK_DELAY_MS);
+
+  const currentQuest = getQuestFromStateOrPlans(questId);
+  if (isArchivedQuestStatus(currentQuest.status)) {
+    throw new Error('Quest report photo is locked for completed quests.');
+  }
+
+  const updatedQuest = normalizeQuest({
+    ...currentQuest,
+    afterPhoto: normalizeQuestPhoto(photo),
+    photosSyncStatus: 'local_only',
+  });
+
+  const persisted = persistQuestAcrossStateAndPlans(updatedQuest);
+  if (!persisted) {
+    throw new Error(`Quest '${questId}' was not found.`);
+  }
+
+  return cloneQuest(updatedQuest);
+};
+
 export const updateQuestRewardMock = async (
   questId: string,
   input: UpdateQuestRewardMockInput,
 ): Promise<Quest> => {
   await wait(MOCK_DELAY_MS);
 
-  const questIndex = state.quests.findIndex((quest) => quest.id === questId);
-  if (questIndex < 0) {
-    throw new Error(`Quest '${questId}' was not found.`);
-  }
-
-  const currentQuest = normalizeQuest(state.quests[questIndex]);
+  const currentQuest = getQuestFromStateOrPlans(questId);
   if (isArchivedQuestStatus(currentQuest.status)) {
     throw new Error('Reward is locked for completed quests.');
   }
@@ -998,7 +1185,11 @@ export const updateQuestRewardMock = async (
     rewardUpdatedAt: nowIso(),
   });
 
-  persistQuest(questIndex, updatedQuest);
+  const persisted = persistQuestAcrossStateAndPlans(updatedQuest);
+  if (!persisted) {
+    throw new Error(`Quest '${questId}' was not found.`);
+  }
+
   return cloneQuest(updatedQuest);
 };
 
@@ -1035,16 +1226,11 @@ export const toggleQuestStepMock = async (questId: string, stepId: string): Prom
     ...steps.slice(stepIndex + 1),
   ];
 
-  let updatedQuest = normalizeQuest({
+  const updatedQuest = normalizeQuest({
     ...currentQuest,
     status: 'active',
     steps: updatedSteps,
   });
-
-  if (updatedQuest.stepsCount && updatedQuest.completedStepsCount === updatedQuest.stepsCount) {
-    updatedQuest = archiveQuestWithCompletion(updatedQuest);
-    applyQuestCompletionReward(updatedQuest);
-  }
 
   persistQuest(questIndex, updatedQuest);
   refreshProgressCounters(updatedQuest.assignedToUserId);
@@ -1064,6 +1250,8 @@ export const completeQuestMock = async (id: string): Promise<Quest> => {
   if (isArchivedQuestStatus(currentQuest.status)) {
     return cloneQuest(currentQuest);
   }
+
+  assertQuestCompletionRequirements(currentQuest);
 
   const completedQuest = archiveQuestWithCompletion(currentQuest);
   persistQuest(questIndex, completedQuest);

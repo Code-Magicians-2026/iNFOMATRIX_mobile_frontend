@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Animated,
   Easing,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -17,9 +18,11 @@ import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import type {
+  CapturedPhoto,
   ChildProfile,
   ProgressSummary,
   Quest,
+  QuestPhoto,
   QuestStep,
   UserRole,
 } from '@/shared/models/mvp-contracts.model';
@@ -35,6 +38,7 @@ import {
   StatCard,
 } from '@/shared/components/ui';
 import {
+  cameraService,
   childrenService,
   progressService,
   questsService,
@@ -61,6 +65,8 @@ const QUEST_VICTORY_VIBRATION_PATTERN = [0, 80, 60, 120, 80, 220];
 const QUESTS_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
 const isQuestArchived = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
+const hasQuestPhoto = (photo?: QuestPhoto | null) => Boolean(photo?.uri?.trim());
+const isReportPhotoRequired = (quest: Quest) => hasQuestPhoto(quest.beforePhoto);
 
 const getQuestCompletionDate = (quest: Quest) => quest.archivedAt ?? quest.completedAt ?? quest.createdAt;
 
@@ -73,9 +79,7 @@ const getQuestProgress = (quest: Quest) => {
 };
 
 const isQuestDone = (quest: Quest) => {
-  const { stepsCount, completedStepsCount } = getQuestProgress(quest);
-
-  return isQuestArchived(quest) || (stepsCount > 0 && completedStepsCount === stepsCount);
+  return isQuestArchived(quest);
 };
 
 type CompletionFeedback = {
@@ -113,7 +117,12 @@ const QuestsScreen = () => {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [screenError, setScreenError] = React.useState<string | null>(null);
+  const [validationMessage, setValidationMessage] = React.useState<string | null>(null);
   const [togglingStepId, setTogglingStepId] = React.useState<string | null>(null);
+  const [isCompletingQuest, setIsCompletingQuest] = React.useState(false);
+  const [photoUpdateAction, setPhotoUpdateAction] = React.useState<
+    'before_camera' | 'before_gallery' | 'before_remove' | 'after_camera' | 'after_gallery' | 'after_remove' | null
+  >(null);
   const [detailsQuestId, setDetailsQuestId] = React.useState<string | null>(null);
   const [completionFeedback, setCompletionFeedback] = React.useState<CompletionFeedback | null>(null);
   const [rewardDraft, setRewardDraft] = React.useState<QuestRewardDraft | null>(null);
@@ -288,6 +297,44 @@ const QuestsScreen = () => {
     () => quests.find((quest) => quest.id === detailsQuestId) ?? null,
     [detailsQuestId, quests],
   );
+  const detailsQuestProgress = React.useMemo(
+    () => (detailsQuest ? getQuestProgress(detailsQuest) : { stepsCount: 0, completedStepsCount: 0 }),
+    [detailsQuest],
+  );
+  const isDetailsQuestReadyToComplete = React.useMemo(
+    () =>
+      detailsQuestProgress.stepsCount > 0 &&
+      detailsQuestProgress.completedStepsCount === detailsQuestProgress.stepsCount,
+    [detailsQuestProgress],
+  );
+  const isDetailsQuestReportRequired = React.useMemo(
+    () => (detailsQuest ? isReportPhotoRequired(detailsQuest) : false),
+    [detailsQuest],
+  );
+  const hasDetailsQuestAfterPhoto = React.useMemo(
+    () => (detailsQuest ? hasQuestPhoto(detailsQuest.afterPhoto) : false),
+    [detailsQuest],
+  );
+  const canCompleteDetailsQuest = React.useMemo(
+    () =>
+      detailsQuest
+        ? isDetailsQuestReadyToComplete && (!isDetailsQuestReportRequired || hasDetailsQuestAfterPhoto)
+        : false,
+    [detailsQuest, hasDetailsQuestAfterPhoto, isDetailsQuestReadyToComplete, isDetailsQuestReportRequired],
+  );
+  const canEditBeforePhoto = React.useMemo(
+    () =>
+      detailsQuest
+        ? !isQuestArchived(detailsQuest) &&
+          detailsQuestProgress.completedStepsCount === 0 &&
+          !hasDetailsQuestAfterPhoto
+        : false,
+    [detailsQuest, detailsQuestProgress.completedStepsCount, hasDetailsQuestAfterPhoto],
+  );
+  const canEditAfterPhoto = React.useMemo(
+    () => (detailsQuest ? !isQuestArchived(detailsQuest) : false),
+    [detailsQuest],
+  );
 
   React.useEffect(() => {
     if (detailsQuestId && !detailsQuest) {
@@ -299,6 +346,7 @@ const QuestsScreen = () => {
     if (!detailsQuest) {
       setRewardDraft(null);
       setRewardSystemNote(null);
+      setValidationMessage(null);
       initializedRewardDraftQuestIdRef.current = null;
       return;
     }
@@ -326,34 +374,13 @@ const QuestsScreen = () => {
     Vibration.vibrate(STEP_TOGGLE_VIBRATION_PATTERN);
     setTogglingStepId(step.id);
     setScreenError(null);
+    setValidationMessage(null);
 
     try {
       const updatedQuest = await questsService.toggleQuestStep(questId, step.id);
       setQuests((current) => current.map((quest) => (quest.id === questId ? updatedQuest : quest)));
-      const refreshedProgress = await refreshData(false);
-
-      const movedToArchive = !isQuestArchived(questToUpdate) && isQuestArchived(updatedQuest);
-      if (movedToArchive && refreshedProgress) {
-        let earnedBadgeImageKey = pickRandomBadgeImageKey();
-        try {
-          const earnedBadge = await earnedBadgesStorage.registerEarnedBadge({
-            userId: updatedQuest.assignedToUserId,
-            questId: updatedQuest.id,
-            difficulty: updatedQuest.difficulty,
-          });
-          earnedBadgeImageKey = earnedBadge.imageKey;
-        } catch {}
-
-        Vibration.vibrate(QUEST_VICTORY_VIBRATION_PATTERN);
-        setCompletionFeedback({
-          questTitle: updatedQuest.title,
-          difficulty: updatedQuest.difficulty,
-          badgeImageKey: earnedBadgeImageKey,
-          rewardXp: updatedQuest.rewardXp,
-          rewardLabel: getQuestRewardLabel(updatedQuest),
-          totalXp: refreshedProgress.xp,
-          streak: refreshedProgress.streak,
-        });
+      if (updatedQuest.status === 'active') {
+        setRewardSystemNote(null);
       }
     } catch {
       setScreenError('Could not update quest step. Please try again.');
@@ -518,13 +545,162 @@ const QuestsScreen = () => {
       const progress = getQuestProgress(updatedQuest);
       setRewardSystemNote(
         progress.completedStepsCount > 0
-          ? 'Батьки оновили нагороду цього квесту.'
-          : 'Нагороду оновлено.',
+          ? 'Parents updated this quest reward.'
+          : 'Reward updated.',
       );
     } catch {
       setScreenError('Could not update quest reward. Please try again.');
     } finally {
       setIsSavingReward(false);
+    }
+  };
+
+  const resolveActionErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message;
+    }
+
+    return fallback;
+  };
+
+  const pickQuestPhoto = async (source: 'camera' | 'gallery'): Promise<CapturedPhoto | null> => {
+    if (source === 'camera') {
+      const permission = await cameraService.requestCameraPermission();
+      if (permission !== 'granted') {
+        throw new Error('Camera permission is required to add a quest photo.');
+      }
+
+      const photo = await cameraService.openCamera();
+      if (!photo) {
+        return null;
+      }
+
+      return cameraService.preparePhoto(photo);
+    }
+
+    const permission = await cameraService.requestGalleryPermission();
+    if (permission !== 'granted') {
+      throw new Error('Gallery permission is required to add a quest photo.');
+    }
+
+    const photo = await cameraService.openGallery();
+    if (!photo) {
+      return null;
+    }
+
+    return cameraService.preparePhoto(photo);
+  };
+
+  const handleUpdateBeforePhoto = async (action: 'camera' | 'gallery' | 'remove') => {
+    if (!detailsQuest) {
+      return;
+    }
+
+    setScreenError(null);
+    setValidationMessage(null);
+    setPhotoUpdateAction(action === 'camera' ? 'before_camera' : action === 'gallery' ? 'before_gallery' : 'before_remove');
+    try {
+      const photo = action === 'remove' ? null : await pickQuestPhoto(action);
+      if (action !== 'remove' && !photo) {
+        return;
+      }
+
+      const updatedQuest = await questsService.updateQuestBeforePhoto(detailsQuest.id, photo);
+      setQuests((current) => current.map((quest) => (quest.id === updatedQuest.id ? updatedQuest : quest)));
+      setRewardSystemNote(
+        updatedQuest.beforePhoto
+          ? 'Before photo added. Report photo after completion is required.'
+          : 'Before photo removed. Report photo is now optional.',
+      );
+    } catch (error) {
+      setScreenError(resolveActionErrorMessage(error, 'Could not update before photo.'));
+    } finally {
+      setPhotoUpdateAction(null);
+    }
+  };
+
+  const handleUpdateAfterPhoto = async (action: 'camera' | 'gallery' | 'remove') => {
+    if (!detailsQuest) {
+      return;
+    }
+
+    setScreenError(null);
+    setValidationMessage(null);
+    setPhotoUpdateAction(action === 'camera' ? 'after_camera' : action === 'gallery' ? 'after_gallery' : 'after_remove');
+    try {
+      const photo = action === 'remove' ? null : await pickQuestPhoto(action);
+      if (action !== 'remove' && !photo) {
+        return;
+      }
+
+      const updatedQuest = await questsService.updateQuestAfterPhoto(detailsQuest.id, photo);
+      setQuests((current) => current.map((quest) => (quest.id === updatedQuest.id ? updatedQuest : quest)));
+      setRewardSystemNote(
+        updatedQuest.afterPhoto ? 'Report photo added.' : 'Report photo removed.',
+      );
+    } catch (error) {
+      setScreenError(resolveActionErrorMessage(error, 'Could not update report photo.'));
+    } finally {
+      setPhotoUpdateAction(null);
+    }
+  };
+
+  const handleCompleteQuest = async () => {
+    if (!detailsQuest || isQuestArchived(detailsQuest)) {
+      return;
+    }
+
+    setScreenError(null);
+    setValidationMessage(null);
+
+    if (!isDetailsQuestReadyToComplete) {
+      setValidationMessage('Complete all steps before finishing this quest.');
+      return;
+    }
+
+    if (isDetailsQuestReportRequired && !hasDetailsQuestAfterPhoto) {
+      setValidationMessage('To complete this quest, add a report photo.');
+      return;
+    }
+
+    setIsCompletingQuest(true);
+    try {
+      const updatedQuest = await questsService.completeQuest(detailsQuest.id);
+      setQuests((current) => current.map((quest) => (quest.id === detailsQuest.id ? updatedQuest : quest)));
+      const refreshedProgress = await refreshData(false);
+
+      let earnedBadgeImageKey = pickRandomBadgeImageKey();
+      try {
+        const earnedBadge = await earnedBadgesStorage.registerEarnedBadge({
+          userId: updatedQuest.assignedToUserId,
+          questId: updatedQuest.id,
+          difficulty: updatedQuest.difficulty,
+        });
+        earnedBadgeImageKey = earnedBadge.imageKey;
+      } catch {}
+
+      if (refreshedProgress) {
+        Vibration.vibrate(QUEST_VICTORY_VIBRATION_PATTERN);
+        setCompletionFeedback({
+          questTitle: updatedQuest.title,
+          difficulty: updatedQuest.difficulty,
+          badgeImageKey: earnedBadgeImageKey,
+          rewardXp: updatedQuest.rewardXp,
+          rewardLabel: getQuestRewardLabel(updatedQuest),
+          totalXp: refreshedProgress.xp,
+          streak: refreshedProgress.streak,
+        });
+      }
+    } catch (error) {
+      const errorMessage = resolveActionErrorMessage(error, 'Could not complete this quest.');
+      if (errorMessage.toLowerCase().includes('report photo')) {
+        setValidationMessage('To complete this quest, add a report photo.');
+        return;
+      }
+
+      setScreenError(errorMessage);
+    } finally {
+      setIsCompletingQuest(false);
     }
   };
 
@@ -556,12 +732,6 @@ const QuestsScreen = () => {
                 ? 'Execution mode: complete assigned quests and earn XP'
                 : 'Parent mode: review and update selected child quests'
             }
-          />
-
-          <PrimaryButton
-            label="AI"
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Chat' })}
-            style={styles.aiTopButton}
           />
 
           {effectiveRole === 'adult' ? (
@@ -663,11 +833,11 @@ const QuestsScreen = () => {
                 </Text>
                 <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
                   {isChildExecutionMode
-                    ? `Нагорода очікує підтвердження від батьків: ${completionFeedback.rewardLabel}`
-                    : `Нагорода розблокована: ${completionFeedback.rewardLabel}`}
+                    ? `Reward pending parent confirmation: ${completionFeedback.rewardLabel}`
+                    : `Reward unlocked: ${completionFeedback.rewardLabel}`}
                 </Text>
                 <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-                  All steps completed
+                  Quest finalized
                 </Text>
                 <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
                   Quest moved to Archive
@@ -724,7 +894,7 @@ const QuestsScreen = () => {
               ) : (
                 <EmptyState
                   title="Archive is empty"
-                  description="Complete all quest steps to move quests here."
+                  description="Complete steps and finish the quest in Details to move it here."
                 />
               )
             ) : (
@@ -794,7 +964,12 @@ const QuestsScreen = () => {
             ]}
           >
             {detailsQuest ? (
-              <>
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
                 <SectionHeader title="Quest Details" subtitle={detailsQuest.title} />
                 <View style={styles.detailsTitleRow}>
                   <Text style={[styles.detailsTitleText, { color: colors.text }]} allowFontScaling>
@@ -815,28 +990,31 @@ const QuestsScreen = () => {
                   {detailsQuest.description}
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                  Progress: {getQuestProgress(detailsQuest).completedStepsCount} / {getQuestProgress(detailsQuest).stepsCount} steps
+                  Progress: {detailsQuestProgress.completedStepsCount} / {detailsQuestProgress.stepsCount} steps
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Difficulty: {detailsQuest.difficulty}
+                </Text>
+                <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                  Rewards
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Reward XP: +{detailsQuest.rewardXp} XP
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.text }]} allowFontScaling>
-                  🎁 Нагорода: {getQuestRewardLabel(detailsQuest)}
+                  🎁 Reward: {getQuestRewardLabel(detailsQuest)}
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                  Тип нагороди: {getQuestRewardTypeLabel(detailsQuest.rewardType)}
+                  Reward type: {getQuestRewardTypeLabel(detailsQuest.rewardType)}
                 </Text>
                 {detailsQuest.rewardDescription ? (
                   <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                    Коментар: {detailsQuest.rewardDescription}
+                    Comment: {detailsQuest.rewardDescription}
                   </Text>
                 ) : null}
-                {detailsQuest.rewardUpdatedAt && getQuestProgress(detailsQuest).completedStepsCount > 0 ? (
+                {detailsQuest.rewardUpdatedAt && detailsQuestProgress.completedStepsCount > 0 ? (
                   <Text style={[styles.systemNoteText, { color: colors.text }]} allowFontScaling>
-                    Батьки оновили нагороду цього квесту.
+                    Parents updated this quest reward.
                   </Text>
                 ) : null}
                 {rewardSystemNote ? (
@@ -866,7 +1044,7 @@ const QuestsScreen = () => {
                     />
                     {isQuestArchived(detailsQuest) ? (
                       <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                        Нагорода зафіксована після завершення квесту.
+                        Reward is locked after quest completion.
                       </Text>
                     ) : (
                       <PrimaryButton
@@ -885,6 +1063,188 @@ const QuestsScreen = () => {
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Estimated minutes: {detailsQuest.estimatedMinutes}
                 </Text>
+
+                <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                  Before completion
+                </Text>
+                {hasQuestPhoto(detailsQuest.beforePhoto) ? (
+                  <Image
+                    source={{ uri: detailsQuest.beforePhoto!.uri }}
+                    style={styles.photoPreview}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                    Before photo not added.
+                  </Text>
+                )}
+                <Text style={[styles.previewLabel, { color: colors.text }]} allowFontScaling>
+                  Report photo: {isDetailsQuestReportRequired ? 'required' : 'optional'}
+                </Text>
+                {isDetailsQuestReportRequired ? (
+                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                    After completion, child must submit a result photo.
+                  </Text>
+                ) : null}
+                {effectiveRole === 'adult' ? (
+                  <View style={styles.inlineActionRow}>
+                    <Pressable
+                      onPress={() => {
+                        void handleUpdateBeforePhoto('gallery');
+                      }}
+                      style={[
+                        styles.inlineActionButton,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        },
+                        (!canEditBeforePhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                      ]}
+                      android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                      disabled={!canEditBeforePhoto || photoUpdateAction !== null}
+                    >
+                      <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                        {photoUpdateAction === 'before_gallery' ? 'Loading...' : 'Gallery'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        void handleUpdateBeforePhoto('camera');
+                      }}
+                      style={[
+                        styles.inlineActionButton,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        },
+                        (!canEditBeforePhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                      ]}
+                      android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                      disabled={!canEditBeforePhoto || photoUpdateAction !== null}
+                    >
+                      <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                        {photoUpdateAction === 'before_camera' ? 'Loading...' : 'Camera'}
+                      </Text>
+                    </Pressable>
+                    {hasQuestPhoto(detailsQuest.beforePhoto) ? (
+                      <Pressable
+                        onPress={() => {
+                          void handleUpdateBeforePhoto('remove');
+                        }}
+                        style={[
+                          styles.inlineActionButton,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: colors.background,
+                          },
+                          (!canEditBeforePhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                        ]}
+                        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                        disabled={!canEditBeforePhoto || photoUpdateAction !== null}
+                      >
+                        <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                          {photoUpdateAction === 'before_remove' ? 'Removing...' : 'Remove'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+                {effectiveRole === 'adult' && !canEditBeforePhoto && !isQuestArchived(detailsQuest) ? (
+                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                    Before photo can be edited only before quest start.
+                  </Text>
+                ) : null}
+
+                <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                  Report photo
+                </Text>
+                {hasQuestPhoto(detailsQuest.afterPhoto) ? (
+                  <Image
+                    source={{ uri: detailsQuest.afterPhoto!.uri }}
+                    style={styles.photoPreview}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                    Result photo not added yet.
+                  </Text>
+                )}
+                {!isQuestArchived(detailsQuest) && isDetailsQuestReadyToComplete && isDetailsQuestReportRequired && !hasDetailsQuestAfterPhoto ? (
+                  <Text style={[styles.systemNoteText, { color: colors.text }]} allowFontScaling>
+                    Add a result photo to complete this quest.
+                  </Text>
+                ) : null}
+                <View style={styles.inlineActionRow}>
+                  <Pressable
+                    onPress={() => {
+                      void handleUpdateAfterPhoto('gallery');
+                    }}
+                    style={[
+                      styles.inlineActionButton,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                      (!canEditAfterPhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                    ]}
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                    disabled={!canEditAfterPhoto || photoUpdateAction !== null}
+                  >
+                    <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                      {photoUpdateAction === 'after_gallery' ? 'Loading...' : 'Gallery'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      void handleUpdateAfterPhoto('camera');
+                    }}
+                    style={[
+                      styles.inlineActionButton,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                      (!canEditAfterPhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                    ]}
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                    disabled={!canEditAfterPhoto || photoUpdateAction !== null}
+                  >
+                    <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                      {photoUpdateAction === 'after_camera' ? 'Loading...' : 'Camera'}
+                    </Text>
+                  </Pressable>
+                  {hasQuestPhoto(detailsQuest.afterPhoto) ? (
+                    <Pressable
+                      onPress={() => {
+                        void handleUpdateAfterPhoto('remove');
+                      }}
+                      style={[
+                        styles.inlineActionButton,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        },
+                        (!canEditAfterPhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                      ]}
+                      android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                      disabled={!canEditAfterPhoto || photoUpdateAction !== null}
+                    >
+                      <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                        {photoUpdateAction === 'after_remove' ? 'Removing...' : 'Remove'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {detailsQuest.visionSummary ? (
+                  <View style={styles.visionSummaryWrap}>
+                    <Text style={[styles.previewLabel, { color: colors.text }]} allowFontScaling>
+                      AI Summary:
+                    </Text>
+                    <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                      {detailsQuest.visionSummary}
+                    </Text>
+                  </View>
+                ) : null}
 
                 <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
                   Steps
@@ -956,14 +1316,34 @@ const QuestsScreen = () => {
                   <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                     Archived quests are read-only.
                   </Text>
-                ) : null}
+                ) : (
+                  <>
+                    {validationMessage ? (
+                      <Text style={styles.validationText} allowFontScaling>
+                        {validationMessage}
+                      </Text>
+                    ) : null}
+                    {!canCompleteDetailsQuest && isDetailsQuestReadyToComplete && isDetailsQuestReportRequired && !hasDetailsQuestAfterPhoto ? (
+                      <Text style={styles.validationText} allowFontScaling>
+                        To complete this quest, add a report photo.
+                      </Text>
+                    ) : null}
+                    <PrimaryButton
+                      label={isCompletingQuest ? 'Completing quest...' : 'Complete quest'}
+                      onPress={() => {
+                        void handleCompleteQuest();
+                      }}
+                      disabled={isCompletingQuest || !canCompleteDetailsQuest}
+                    />
+                  </>
+                )}
 
                 <PrimaryButton
                   label="Close"
                   variant="secondary"
                   onPress={() => setDetailsQuestId(null)}
                 />
-              </>
+              </ScrollView>
             ) : null}
           </Animated.View>
         </View>
@@ -1103,20 +1483,64 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     modalCard: {
       width: '100%',
       maxWidth: cardMaxWidth + 70,
+      maxHeight: '92%',
       borderRadius: 14,
       borderWidth: 1,
       padding: isTablet ? 22 : 16,
       gap: 10,
       elevation: 3,
     },
+    modalScroll: {
+      width: '100%',
+    },
+    modalScrollContent: {
+      gap: 10,
+      paddingBottom: 4,
+    },
     previewLabel: {
       fontSize: isTablet ? 15 : 13,
       fontWeight: '500',
+    },
+    validationText: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
+      color: '#c62828',
     },
     systemNoteText: {
       fontSize: isTablet ? 14 : 12,
       fontWeight: '700',
       color: '#1f9b54',
+    },
+    photoPreview: {
+      width: '100%',
+      height: isTablet ? 220 : 180,
+      borderRadius: 12,
+      backgroundColor: '#dfe7f1',
+    },
+    inlineActionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    inlineActionButton: {
+      minHeight: 38,
+      borderRadius: 10,
+      borderWidth: 1,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      elevation: 1,
+    },
+    inlineActionButtonDisabled: {
+      opacity: 0.6,
+    },
+    inlineActionLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '700',
+    },
+    visionSummaryWrap: {
+      gap: 4,
     },
     detailsTitleRow: {
       flexDirection: 'row',

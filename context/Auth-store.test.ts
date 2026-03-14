@@ -152,7 +152,29 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().session).toBeNull();
     expect(useAuthStore.getState().family).toBeNull();
     expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
-    expect(setItemMock).not.toHaveBeenCalled();
+    expect(setItemMock).toHaveBeenCalledTimes(1);
+    const [, persistedJson] = setItemMock.mock.calls[0] as [string, string];
+    const persisted = JSON.parse(persistedJson) as { pendingFamilyName: string | null };
+    expect(persisted.pendingFamilyName).toBe("Name's");
+  });
+
+  it('hydrate restores pendingFamilyName even without active session', async () => {
+    getItemMock.mockResolvedValue(
+      JSON.stringify({
+        session: null,
+        currentUser: null,
+        role: null,
+        selectedChildId: null,
+        family: null,
+        pendingFamilyName: "Name's",
+      }),
+    );
+
+    await useAuthStore.getState().hydrate();
+
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
+    expect(useAuthStore.getState().isHydrated).toBe(true);
   });
 
   it('register forwards API error', async () => {
@@ -196,6 +218,78 @@ describe('Auth store', () => {
 
     await useAuthStore.getState().setRole('child');
     expect(useAuthStore.getState().selectedChildId).toBeNull();
+  });
+
+  it('createSessionFromToken clears stale family when account changes', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'old@example.com',
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+      family: {
+        id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+        name: 'Old Family',
+      },
+      selectedChildId: 'child-1',
+    });
+
+    await useAuthStore.getState().createSessionFromToken(
+      {
+        accessToken: 'new-access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      'new@example.com',
+    );
+
+    expect(useAuthStore.getState().session?.email).toBe('new@example.com');
+    expect(useAuthStore.getState().family).toBeNull();
+    expect(useAuthStore.getState().selectedChildId).toBeNull();
+  });
+
+  it('registerChild refreshes family id before post to avoid stale cached family', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+      family: {
+        id: '1f3c6100-3c87-4ff7-a0ef-91a3d6f6744b',
+        name: 'Stale Family',
+      },
+    });
+
+    getFamilyRequestMock.mockResolvedValue({
+      family: {
+        id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+        name: 'Current Family',
+      },
+    });
+
+    await useAuthStore.getState().registerChild({
+      firstName: 'Nika',
+      lastName: 'Horizon',
+      password: 'secret1',
+    });
+
+    expect(registerChildRequestMock).toHaveBeenCalledWith(
+      {
+        firstName: 'Nika',
+        lastName: 'Horizon',
+        password: 'secret1',
+        familyId: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+      },
+      'access',
+    );
   });
 
   it('refreshFamily prefers nested family object over unrelated root id', async () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,8 +23,8 @@ import {
   getQuestRewardLabel,
   type QuestRewardDraft,
 } from '@/shared/models/quest-reward.model';
-import type { GeneratedPlan, Quest } from '@/shared/models/mvp-contracts.model';
-import { plansService, questsService } from '@/src/integration/services';
+import type { CapturedPhoto, GeneratedPlan, Quest } from '@/shared/models/mvp-contracts.model';
+import { cameraService, plansService, questsService } from '@/src/integration/services';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 type PlanPreviewRoute = RouteProp<AppStackParamList, 'PlanPreview'>;
@@ -53,6 +53,8 @@ const PlanPreviewScreen = () => {
   const [isRegenerating, setIsRegenerating] = React.useState(false);
   const [feedback, setFeedback] = React.useState<string | null>(null);
   const [screenError, setScreenError] = React.useState<string | null>(null);
+  const [photoActionQuestId, setPhotoActionQuestId] = React.useState<string | null>(null);
+  const [photoActionType, setPhotoActionType] = React.useState<'camera' | 'gallery' | 'remove' | null>(null);
   const [rewardDraftsByQuestId, setRewardDraftsByQuestId] = React.useState<Record<string, QuestRewardDraft>>(
     () => createRewardDraftMap(route.params.plan.quests),
   );
@@ -62,7 +64,7 @@ const PlanPreviewScreen = () => {
   React.useEffect(() => {
     setRewardDraftsByQuestId(createRewardDraftMap(plan.quests));
     setDirtyRewardQuestIds({});
-  }, [plan]);
+  }, [plan.id]);
 
   const updateRewardDraft = React.useCallback(
     (quest: Quest, nextDraft: QuestRewardDraft) => {
@@ -96,6 +98,75 @@ const PlanPreviewScreen = () => {
       }),
     );
   }, [dirtyRewardQuestIds, rewardDraftsByQuestId]);
+
+  const resolveActionErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message;
+    }
+
+    return fallback;
+  };
+
+  const pickQuestPhoto = async (source: 'camera' | 'gallery'): Promise<CapturedPhoto | null> => {
+    if (source === 'camera') {
+      const permission = await cameraService.requestCameraPermission();
+      if (permission !== 'granted') {
+        throw new Error('Camera permission is required to add a quest photo.');
+      }
+
+      const photo = await cameraService.openCamera();
+      if (!photo) {
+        return null;
+      }
+
+      return cameraService.preparePhoto(photo);
+    }
+
+    const permission = await cameraService.requestGalleryPermission();
+    if (permission !== 'granted') {
+      throw new Error('Gallery permission is required to add a quest photo.');
+    }
+
+    const photo = await cameraService.openGallery();
+    if (!photo) {
+      return null;
+    }
+
+    return cameraService.preparePhoto(photo);
+  };
+
+  const handleQuestBeforePhoto = async (quest: Quest, action: 'camera' | 'gallery' | 'remove') => {
+    if (!canApprove) {
+      return;
+    }
+
+    setScreenError(null);
+    setPhotoActionQuestId(quest.id);
+    setPhotoActionType(action);
+
+    try {
+      const photo = action === 'remove' ? null : await pickQuestPhoto(action);
+      if (action !== 'remove' && !photo) {
+        return;
+      }
+
+      const updatedQuest = await questsService.updateQuestBeforePhoto(quest.id, photo);
+      setPlan((currentPlan) => ({
+        ...currentPlan,
+        quests: currentPlan.quests.map((item) => (item.id === updatedQuest.id ? updatedQuest : item)),
+      }));
+      setFeedback(
+        updatedQuest.beforePhoto
+          ? 'Before photo added. Report photo will be required on completion.'
+          : 'Before photo removed. Report photo is now optional.',
+      );
+    } catch (error) {
+      setScreenError(resolveActionErrorMessage(error, 'Failed to update quest before photo.'));
+    } finally {
+      setPhotoActionQuestId(null);
+      setPhotoActionType(null);
+    }
+  };
 
   const handleApprove = async () => {
     if (!canApprove) {
@@ -194,6 +265,81 @@ const PlanPreviewScreen = () => {
                   <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
                     Estimated minutes: {quest.estimatedMinutes}
                   </Text>
+                  <Text style={[styles.questMeta, { color: colors.text }]} allowFontScaling>
+                    Report photo: {quest.beforePhoto?.uri ? 'required' : 'optional'}
+                  </Text>
+
+                  <View style={styles.beforePhotoWrap}>
+                    <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                      Before photo
+                    </Text>
+                    {quest.beforePhoto?.uri ? (
+                      <Image source={{ uri: quest.beforePhoto.uri }} style={styles.beforePhotoPreview} resizeMode="cover" />
+                    ) : (
+                      <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                        Before photo not added.
+                      </Text>
+                    )}
+                    {quest.beforePhoto?.uri ? (
+                      <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                        After completion, child must submit a result photo.
+                      </Text>
+                    ) : null}
+                    {canApprove ? (
+                      <View style={styles.photoActionsRow}>
+                        <Pressable
+                          onPress={() => {
+                            void handleQuestBeforePhoto(quest, 'gallery');
+                          }}
+                          style={[
+                            styles.photoActionButton,
+                            { borderColor: colors.border, backgroundColor: colors.background },
+                            photoActionQuestId === quest.id ? styles.photoActionDisabled : null,
+                          ]}
+                          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                          disabled={photoActionQuestId === quest.id}
+                        >
+                          <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
+                            {photoActionQuestId === quest.id && photoActionType === 'gallery' ? 'Loading...' : 'Gallery'}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => {
+                            void handleQuestBeforePhoto(quest, 'camera');
+                          }}
+                          style={[
+                            styles.photoActionButton,
+                            { borderColor: colors.border, backgroundColor: colors.background },
+                            photoActionQuestId === quest.id ? styles.photoActionDisabled : null,
+                          ]}
+                          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                          disabled={photoActionQuestId === quest.id}
+                        >
+                          <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
+                            {photoActionQuestId === quest.id && photoActionType === 'camera' ? 'Loading...' : 'Camera'}
+                          </Text>
+                        </Pressable>
+                        {quest.beforePhoto?.uri ? (
+                          <Pressable
+                            onPress={() => {
+                              void handleQuestBeforePhoto(quest, 'remove');
+                            }}
+                            style={[
+                              styles.photoActionButton,
+                              { borderColor: colors.border, backgroundColor: colors.background },
+                              photoActionQuestId === quest.id ? styles.photoActionDisabled : null,
+                            ]}
+                            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                            disabled={photoActionQuestId === quest.id}
+                          >
+                            <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
+                              {photoActionQuestId === quest.id && photoActionType === 'remove' ? 'Removing...' : 'Remove'}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
 
                   {canApprove ? (
                     <QuestRewardEditor
@@ -330,6 +476,38 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     questMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
+    },
+    beforePhotoWrap: {
+      marginTop: 8,
+      gap: 6,
+    },
+    beforePhotoPreview: {
+      width: '100%',
+      height: isTablet ? 200 : 165,
+      borderRadius: 10,
+      backgroundColor: '#dfe7f1',
+    },
+    photoActionsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    photoActionButton: {
+      minHeight: 38,
+      borderWidth: 1,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      overflow: 'hidden',
+      elevation: 1,
+    },
+    photoActionDisabled: {
+      opacity: 0.6,
+    },
+    photoActionLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '700',
     },
     stepsWrap: {
       marginTop: 8,

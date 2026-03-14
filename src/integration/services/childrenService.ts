@@ -105,7 +105,7 @@ const toChildProfile = (payload: unknown, index: number): ChildProfile | null =>
     pickString(payload, ['id', 'childId', 'userId', 'Id', 'ChildId', 'UserId']) ??
     `api-child-${index + 1}`;
   const fullName = buildFullName(payload) ?? `Child ${index + 1}`;
-  const age = toNumber(payload.age) ?? toNumber(payload.Age) ?? 10;
+  const age = toNumber(payload.age) ?? toNumber(payload.Age) ?? 0;
   const createdByAdultId =
     pickString(payload, ['createdByAdultId', 'adultId', 'parentId', 'CreatedByAdultId']) ??
     'adult-1';

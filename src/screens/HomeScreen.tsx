@@ -126,6 +126,20 @@ const isRecoverableCreateChildError = (error: unknown): boolean => {
   return false;
 };
 
+const isFamilyNotFoundError = (error: unknown): boolean => {
+  if (error instanceof ApiError) {
+    const normalized = error.message.trim().toLowerCase();
+    return normalized.includes('family') && normalized.includes('not found');
+  }
+
+  if (error instanceof Error) {
+    const normalized = error.message.trim().toLowerCase();
+    return normalized.includes('family') && normalized.includes('not found');
+  }
+
+  return false;
+};
+
 const toTrimmedOrNull = (value: string | null | undefined): string | null => {
   if (!value) {
     return null;
@@ -163,6 +177,8 @@ type FamilyResolutionDebug = {
   refreshFamilyError: string | null;
   getFamilyError: string | null;
 };
+
+const formatChildAge = (age: number): string => (age > 0 ? String(age) : 'x');
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
@@ -362,7 +378,7 @@ const HomeScreen = () => {
     }
 
     return {
-      familyId: refreshedFamilyId ?? storeFamilyId,
+      familyId: refreshedFamilyId,
       storeFamilyId,
       refreshedFamilyId,
       rawFamilyPayload,
@@ -430,12 +446,25 @@ const HomeScreen = () => {
       usedFamilyId = familyId;
       if (familyId) {
         createChildStrategy = 'explicit-family-id';
-        await childrenService.createChild({
-          firstName,
-          lastName,
-          password: childPassword,
-          familyId,
-        });
+        try {
+          await childrenService.createChild({
+            firstName,
+            lastName,
+            password: childPassword,
+            familyId,
+          });
+        } catch (error) {
+          if (!isFamilyNotFoundError(error)) {
+            throw error;
+          }
+
+          createChildStrategy = 'store-register-child';
+          await registerChild({
+            firstName,
+            lastName,
+            password: childPassword,
+          });
+        }
       } else {
         await registerChild({
           firstName,
@@ -679,7 +708,7 @@ const HomeScreen = () => {
                     {selectedChild.fullName}
                   </Text>
                   <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-                    Age: {selectedChild.age} | Level: {progress?.level ?? selectedChild.level}
+                    Age: {formatChildAge(selectedChild.age)} | Level: {progress?.level ?? selectedChild.level}
                   </Text>
                   <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
                     XP: {progress?.xp ?? selectedChild.xp} | Streak: {progress?.streak ?? selectedChild.streak}
@@ -730,7 +759,7 @@ const HomeScreen = () => {
                           style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
                           allowFontScaling
                         >
-                          Age {child.age} | Lvl {child.level}
+                          Age {formatChildAge(child.age)} | Lvl {child.level}
                         </Text>
                       </Pressable>
                     );

@@ -46,6 +46,7 @@ type PersistedAuthEnvelope = {
   role: UserRole | null;
   selectedChildId: string | null;
   family: FamilySummary | null;
+  pendingFamilyName: string | null;
 };
 
 const STORAGE_KEY = 'AUTH_SESSION';
@@ -230,6 +231,20 @@ const resolveFamilyName = (lastName: string) => {
 const isUnauthorizedError = (error: unknown) =>
   error instanceof ApiError && (error.status === 401 || error.status === 403);
 
+const isFamilyNotFoundError = (error: unknown): boolean => {
+  if (error instanceof ApiError) {
+    const normalizedMessage = error.message.trim().toLowerCase();
+    return normalizedMessage.includes('family') && normalizedMessage.includes('not found');
+  }
+
+  if (error instanceof Error) {
+    const normalizedMessage = error.message.trim().toLowerCase();
+    return normalizedMessage.includes('family') && normalizedMessage.includes('not found');
+  }
+
+  return false;
+};
+
 const buildLocalUser = (role: UserRole): UserProfile => ({
   id: `local-${role}`,
   fullName: role === 'adult' ? 'Parent Profile' : 'Child Profile',
@@ -273,6 +288,9 @@ const readSelectedChildId = (rawValue: unknown, role: UserRole | null) => {
   return rawValue;
 };
 
+const readPendingFamilyName = (rawValue: unknown): string | null =>
+  isNonEmptyString(rawValue) ? rawValue.trim() : null;
+
 const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   currentUser: null,
@@ -310,9 +328,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: legacyRole,
           selectedChildId: null,
           family: null,
+          pendingFamilyName: null,
         };
 
-        set({ ...migratedState, pendingFamilyName: null, isHydrated: true });
+        set({ ...migratedState, isHydrated: true });
         await persistState(migratedState);
         return;
       }
@@ -334,6 +353,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
       const persistedRole = isRole(parsed.role) ? parsed.role : null;
       const persistedUser = isValidUserProfile(parsed.currentUser) ? parsed.currentUser : null;
       const persistedFamily = isValidFamilySummary(parsed.family) ? parsed.family : null;
+      const persistedPendingFamilyName = readPendingFamilyName(parsed.pendingFamilyName);
 
       if (!session) {
         set({
@@ -342,7 +362,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: null,
           selectedChildId: null,
           family: null,
-          pendingFamilyName: null,
+          pendingFamilyName: persistedPendingFamilyName,
           isHydrated: true,
         });
         return;
@@ -360,7 +380,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
         role: resolvedRole,
         selectedChildId,
         family: persistedFamily,
-        pendingFamilyName: null,
+        pendingFamilyName: persistedPendingFamilyName,
         isHydrated: true,
       });
     } catch {
@@ -389,10 +409,20 @@ const useAuthStore = create<AuthState>((set, get) => ({
     });
 
     // Family creation should not block account registration.
+    const pendingPayload: PersistedAuthEnvelope = {
+      session: null,
+      currentUser: null,
+      role: null,
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: resolvedFamilyName,
+    };
+
     set({
       pendingFamilyName: resolvedFamilyName,
       family: null,
     });
+    await persistState(pendingPayload);
   },
 
   login: async (email: string, password: string) => {
@@ -429,6 +459,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: snapshot.role,
           selectedChildId: snapshot.selectedChildId,
           family: snapshot.family,
+          pendingFamilyName: snapshot.pendingFamilyName,
         };
 
         if (payload.session) {
@@ -473,6 +504,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: snapshot.role,
           selectedChildId: snapshot.selectedChildId,
           family: snapshot.family,
+          pendingFamilyName: snapshot.pendingFamilyName,
         };
 
         if (payload.session) {
@@ -492,18 +524,27 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
   createSessionFromToken: async (token: TokenDto, fallbackEmail?: string) => {
     const session = buildSessionFromToken(token, fallbackEmail);
+    const previousSession = get().session;
+    const isSameSessionIdentity =
+      previousSession?.email.trim().toLowerCase() === session.email.trim().toLowerCase();
+    const shouldCarryPendingFamilyName = !previousSession || isSameSessionIdentity;
     const previousUser = get().currentUser;
     const nextRole: UserRole = get().role ?? previousUser?.role ?? 'adult';
     const nextUser = buildUserFromSession(session, nextRole, token.userId, previousUser);
     const nextSelectedChildId =
-      nextRole === 'adult' ? get().selectedChildId ?? nextUser.activeChildId ?? null : null;
+      nextRole === 'adult'
+        ? isSameSessionIdentity
+          ? get().selectedChildId ?? nextUser.activeChildId ?? null
+          : nextUser.activeChildId ?? null
+        : null;
 
     const payload: PersistedAuthEnvelope = {
       session,
       currentUser: nextUser,
       role: nextRole,
       selectedChildId: nextSelectedChildId,
-      family: get().family,
+      family: isSameSessionIdentity ? get().family : null,
+      pendingFamilyName: shouldCarryPendingFamilyName ? get().pendingFamilyName : null,
     };
 
     set(payload);
@@ -535,6 +576,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
       role: snapshot.role,
       selectedChildId: snapshot.selectedChildId,
       family,
+      pendingFamilyName: snapshot.pendingFamilyName,
     };
 
     set({ family });
@@ -550,6 +592,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     let family = get().family;
+    try {
+      family = await get().refreshFamily();
+    } catch {}
+
     const pendingFamilyName = get().pendingFamilyName;
     if (!family?.id && pendingFamilyName) {
       await authService.createFamily({ name: pendingFamilyName }, session.accessToken);
@@ -561,6 +607,16 @@ const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (!family?.id) {
+      const fallbackFamilyName =
+        pendingFamilyName ??
+        family?.name?.trim() ??
+        resolveFamilyName(payload.lastName);
+      await authService.createFamily({ name: fallbackFamilyName }, session.accessToken);
+      family = await get().refreshFamily();
+      set({ pendingFamilyName: null });
+    }
+
+    if (!family?.id) {
       throw new Error('Не вдалося визначити ID сімʼї. Оновіть профіль сімʼї та спробуйте ще раз.');
     }
 
@@ -568,15 +624,36 @@ const useAuthStore = create<AuthState>((set, get) => ({
       throw new Error('ID сімʼї має бути UUID. Оновіть дані сімʼї та спробуйте знову.');
     }
 
-    await authService.registerChild(
-      {
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        password: payload.password,
-        familyId: family.id,
-      },
-      session.accessToken,
-    );
+    const registerWithFamilyId = async (familyId: string) => {
+      await authService.registerChild(
+        {
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          password: payload.password,
+          familyId,
+        },
+        session.accessToken,
+      );
+    };
+
+    try {
+      await registerWithFamilyId(family.id);
+    } catch (error) {
+      if (!isFamilyNotFoundError(error)) {
+        throw error;
+      }
+
+      try {
+        const refreshedFamily = await get().refreshFamily();
+        const refreshedFamilyId = refreshedFamily?.id?.trim() ?? null;
+        if (refreshedFamilyId && refreshedFamilyId !== family.id) {
+          await registerWithFamilyId(refreshedFamilyId);
+          return;
+        }
+      } catch {}
+
+      throw error;
+    }
   },
 
   setRole: async (role: UserRole) => {
@@ -599,6 +676,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
       role,
       selectedChildId: nextSelectedChildId,
       family: get().family,
+      pendingFamilyName: get().pendingFamilyName,
     };
 
     set(payload);
@@ -626,6 +704,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
       role: 'adult',
       selectedChildId: normalizedChildId,
       family: get().family,
+      pendingFamilyName: get().pendingFamilyName,
     };
 
     set(payload);

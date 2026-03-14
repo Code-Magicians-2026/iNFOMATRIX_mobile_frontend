@@ -238,7 +238,16 @@ describe("plansService.uploadPhotoAndGenerate", () => {
     expect(plan.status).toBe("draft");
     expect(plan.quests).toHaveLength(1);
     expect(plan.quests[0]?.stepsCount).toBe(2);
+    expect(plan.quests[0]?.beforePhoto?.uri).toBe("file:///camera/room.jpg");
+    expect(plan.quests[0]?.reportPhotoRequired).toBe(true);
     expect(plan.totalEstimatedMinutes).toBe(27);
+
+    const cachedPlans = await plansService.getPlans({ targetUserId: "child-api-1", limit: 10 });
+    const cachedQuest = cachedPlans
+      .flatMap((item) => item.quests)
+      .find((quest) => quest.id === plan.quests[0]?.id);
+    expect(cachedQuest?.beforePhoto?.uri).toBe("file:///camera/room.jpg");
+    expect(cachedQuest?.reportPhotoRequired).toBe(true);
 
     const [calledUrl, options] = fetchMock.mock.calls[0] ?? [];
     expect(calledUrl).toBe(
