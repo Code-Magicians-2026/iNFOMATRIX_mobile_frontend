@@ -104,6 +104,9 @@ const PlanPreviewScreen = () => {
                 <Text style={[styles.questTitle, { color: colors.text }]} allowFontScaling>
                   {quest.title}
                 </Text>
+                <Text style={[styles.questDescription, { color: colors.textSecondary }]} allowFontScaling>
+                  {quest.description}
+                </Text>
                 <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
                   Difficulty: {quest.difficulty}
                 </Text>
@@ -195,6 +198,11 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     questTitle: {
       fontSize: isTablet ? 15 : 14,
       fontWeight: '700',
+      marginBottom: 2,
+    },
+    questDescription: {
+      fontSize: isTablet ? 13 : 12,
+      lineHeight: isTablet ? 19 : 17,
       marginBottom: 2,
     },
     questMeta: {

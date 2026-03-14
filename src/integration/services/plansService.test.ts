@@ -172,4 +172,76 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     const cachedPlans = await plansService.getPlans({ limit: 10 });
     expect(cachedPlans.some((cachedPlan) => cachedPlan.id === plan.id)).toBe(true);
   });
+
+  it('uses swagger contract /api/ai/quest-vision with Prompt + file multipart and auth token', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'token-quest',
+        refreshToken: 'refresh-quest',
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'adult-api-1',
+        fullName: 'Adult API',
+        email: 'adult@example.com',
+        role: 'adult',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'mentor',
+      },
+      role: 'adult',
+    });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createResponse(200, {
+        title: 'Quest: The Grand Cleanup After the Gathering',
+        summary: 'Visual assessment pending user image.',
+        childMessage: 'Hero, your mission is to restore the realm.',
+        quests: [
+          {
+            title: 'Artifact Collection',
+            description: 'Gather all cups, plates, and snack remnants.',
+            difficulty: 'medium',
+            rewardXp: 150,
+            estimatedMinutes: 12,
+          },
+          {
+            title: 'Floor Patrol',
+            description: 'Sweep or vacuum the floor.',
+            difficulty: 'medium',
+            rewardXp: 130,
+            estimatedMinutes: 15,
+          },
+        ],
+        totalEstimatedMinutes: 27,
+      }),
+    );
+
+    const plan = await plansService.uploadPhotoAndGenerate({
+      targetUserId: 'child-api-1',
+      prompt: 'Room cleanup after guests',
+      photo: {
+        uri: 'file:///camera/room.jpg',
+        fileName: 'room.jpg',
+        mimeType: 'image/jpeg',
+      },
+    });
+
+    expect(plan.status).toBe('draft');
+    expect(plan.quests).toHaveLength(2);
+    expect(plan.totalEstimatedMinutes).toBe(27);
+
+    const [calledUrl, options] = fetchMock.mock.calls[0] ?? [];
+    expect(calledUrl).toBe('https://infomatrix-api.azurewebsites.net/api/ai/quest-vision');
+
+    const headers = options?.headers as Headers;
+    expect(headers.get('Authorization')).toBe('Bearer token-quest');
+
+    const body = options?.body as FormData;
+    expect(body.get('Prompt')).toBe('Room cleanup after guests');
+    expect(body.get('file')).not.toBeNull();
+  });
 });

@@ -1,6 +1,6 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
-import { generateQuestByPrompt } from '@/src/features/chat/api/quest';
+import { generateQuestByPrompt, generateQuestByPromptWithPhoto } from '@/src/features/chat/api/quest';
 import {
   approvePlanMock,
   generatePlanMock,
@@ -395,7 +395,10 @@ const generatePlanViaApiContract = async (input: GeneratePlanInput): Promise<Gen
     throw new Error('Prompt is required.');
   }
 
-  const response = await generateQuestByPrompt(normalizedPrompt, accessToken);
+  const normalizedPhoto = input.photo?.uri?.trim() ? input.photo : undefined;
+  const response = normalizedPhoto
+    ? await generateQuestByPromptWithPhoto(normalizedPrompt, normalizedPhoto, accessToken)
+    : await generateQuestByPrompt(normalizedPrompt, accessToken);
   const plan = buildPlanFromApiResponse(response, {
     ...input,
     prompt: normalizedPrompt,
@@ -419,7 +422,6 @@ export const plansService = {
     generatePlanViaApiContract(input),
 
   uploadPhotoAndGenerate: async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
-    // The current API contract accepts only Prompt + auth.
     return generatePlanViaApiContract(input);
   },
 
