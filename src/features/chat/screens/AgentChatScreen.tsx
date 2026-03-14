@@ -106,6 +106,7 @@ const AgentChatScreen = () => {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [contextError, setContextError] = React.useState<string | null>(null);
   const [generationError, setGenerationError] = React.useState<string | null>(null);
+  const hasLoadedContextRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!role) {
@@ -123,8 +124,10 @@ const AgentChatScreen = () => {
     void refreshPermissionsState();
   }, [refreshPermissionsState]);
 
-  const loadBuilderContext = React.useCallback(async () => {
-    setIsLoading(true);
+  const loadBuilderContext = React.useCallback(async (showLoader: boolean) => {
+    if (showLoader) {
+      setIsLoading(true);
+    }
 
     try {
       setContextError(null);
@@ -167,17 +170,18 @@ const AgentChatScreen = () => {
     } catch {
       setContextError('Failed to load AI Plan Builder context.');
     } finally {
-      setIsLoading(false);
+      if (showLoader) {
+        setIsLoading(false);
+      }
     }
   }, [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId]);
 
-  React.useEffect(() => {
-    void loadBuilderContext();
-  }, [loadBuilderContext]);
-
   useFocusEffect(
     React.useCallback(() => {
-      void loadBuilderContext();
+      const shouldShowLoader = !hasLoadedContextRef.current;
+      hasLoadedContextRef.current = true;
+
+      void loadBuilderContext(shouldShowLoader);
       void refreshPermissionsState();
 
       return undefined;

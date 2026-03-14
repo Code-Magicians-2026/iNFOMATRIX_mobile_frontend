@@ -8,7 +8,7 @@ import { mockLeaderboard } from '@/src/features/mvp/mocks/mockLeaderboard';
 import { mockAvatarStats, mockUserProfile } from '@/src/features/mvp/mocks/mockUser';
 import { mockQuests } from '@/src/features/mvp/mocks/mockQuests';
 
-const MOCK_DELAY_MS = 220;
+const MOCK_DELAY_MS = 0;
 const XP_PER_LEVEL = 300;
 
 export interface HomeSummaryMock {
