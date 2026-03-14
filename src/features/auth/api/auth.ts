@@ -4,6 +4,7 @@ import type {
   CreateFamilyRequestDto,
   EmailDto,
   LoginRequestDto,
+  RefreshTokenRequestDto,
   RegisterChildRequestDto,
   RegisterRequestDto,
   RequestResetPasswordRequestDto,
@@ -11,11 +12,6 @@ import type {
   TokenDto,
   VerifyOtpRequestDto,
 } from '../dto/auth.dto';
-
-interface RefreshTokenRequestDto {
-  accessToken: string;
-  refreshToken: string;
-}
 
 interface AuthorizedRequestOptions {
   accessToken: string;
@@ -25,7 +21,7 @@ interface UnknownApiObject {
   [key: string]: unknown;
 }
 
-const RETRIABLE_STATUSES = new Set([408, 502, 503, 504]);
+const RETRIABLE_STATUSES = new Set([408, 502, 503]);
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -114,7 +110,7 @@ export const getFamily = async (options: AuthorizedRequestOptions): Promise<unkn
     request<unknown>('/api/families', {
       method: 'GET',
       ...withAuthorization(options),
-      timeoutMs: 45000,
+      timeoutMs: 9000,
     }),
   );
 
@@ -123,7 +119,7 @@ export const getFamilyChildren = async (options: AuthorizedRequestOptions): Prom
     request<unknown>('/api/children', {
       method: 'GET',
       ...withAuthorization(options),
-      timeoutMs: 45000,
+      timeoutMs: 9000,
     }),
   );
 

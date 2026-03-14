@@ -10,6 +10,11 @@ export interface LoginRequestDto {
   password: string;
 }
 
+export interface RefreshTokenRequestDto {
+  accessToken: string;
+  refreshToken: string;
+}
+
 export interface EmailDto {
   email: string | null;
 }

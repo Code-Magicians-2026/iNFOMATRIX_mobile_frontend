@@ -10,7 +10,8 @@ import {
   Vibration,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -43,6 +44,7 @@ import {
   pickRandomBadgeImageKey,
   type BadgeImageKey,
 } from '@/shared/components/ui/badge-catalog';
+import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 const STEP_TOGGLE_VIBRATION_PATTERN = [0, 45, 25, 65];
@@ -76,7 +78,10 @@ type CompletionFeedback = {
   streak: number;
 };
 
+type QuestsNavigation = NativeStackNavigationProp<AppStackParamList>;
+
 const QuestsScreen = () => {
+  const navigation = useNavigation<QuestsNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
   const styles = React.useMemo(() => getStyles(cardMaxWidth, isTablet, spacing), [cardMaxWidth, isTablet, spacing]);
@@ -145,7 +150,7 @@ const QuestsScreen = () => {
             : null;
 
         if (selectedChildId && !isSelectedChildValid && !isSelfTarget) {
-          await setSelectedChildId(null);
+          void setSelectedChildId(null).catch(() => {});
         }
 
         if (!resolvedSelectedChildId) {
@@ -450,8 +455,10 @@ const QuestsScreen = () => {
   const handleSelectChild = async (childId: string) => {
     setScreenError(null);
     try {
-      await setSelectedChildId(childId);
-      await refreshData(false, childId);
+      await Promise.allSettled([
+        setSelectedChildId(childId),
+        refreshData(false, childId),
+      ]);
     } catch {
       setScreenError('Could not switch child profile.');
     }
@@ -485,6 +492,12 @@ const QuestsScreen = () => {
                 ? 'Execution mode: complete assigned quests and earn XP'
                 : 'Parent mode: review and update selected child quests'
             }
+          />
+
+          <PrimaryButton
+            label="AI"
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Chat' })}
+            style={styles.aiTopButton}
           />
 
           {effectiveRole === 'adult' ? (
@@ -923,6 +936,11 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     scrollContent: {
       gap: 18,
       paddingBottom: Math.max(120, spacing + 88),
+    },
+    aiTopButton: {
+      width: '100%',
+      maxWidth: cardMaxWidth,
+      alignSelf: 'center',
     },
     scrollTopButton: {
       position: 'absolute',

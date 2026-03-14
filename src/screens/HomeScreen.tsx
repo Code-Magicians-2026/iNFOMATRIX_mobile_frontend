@@ -34,8 +34,6 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const XP_PER_LEVEL = 300;
 const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
-const CREATE_CHILD_SYNC_ATTEMPTS = 12;
-const CREATE_CHILD_SYNC_DELAY_MS = 1200;
 
 const PLAN_PROMPTS = [
   'Build a balanced plan for school progress and healthy routine.',
@@ -44,11 +42,6 @@ const PLAN_PROMPTS = [
 ] as const;
 
 type HomeNavigation = NativeStackNavigationProp<AppStackParamList>;
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
 
 const INVALID_LAST_NAME_TOKENS = new Set([
   'profile',
@@ -220,7 +213,7 @@ const HomeScreen = () => {
           const hasSelectedChild = selectedChildId ? childIds.has(selectedChildId) : false;
           const resolvedSelectedChildId = hasSelectedChild ? selectedChildId : null;
           if (selectedChildId && !hasSelectedChild) {
-            await setSelectedChildId(null);
+            void setSelectedChildId(null).catch(() => {});
           }
 
           const selectedProgress = resolvedSelectedChildId
@@ -333,60 +326,6 @@ const HomeScreen = () => {
     setIsCreateChildModalVisible(false);
   };
 
-  const resolveCreatedChild = React.useCallback(
-    async (
-      existingChildIds: Set<string>,
-      firstName: string,
-      lastName: string,
-      attempts = CREATE_CHILD_SYNC_ATTEMPTS,
-    ): Promise<ChildProfile | null> => {
-      const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
-
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        try {
-          const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
-          const createdChild: ChildProfile | null =
-            refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
-            refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
-            null;
-
-          if (createdChild) {
-            setChildren(refreshedChildren);
-            return createdChild;
-          }
-        } catch {}
-
-        if (attempt < attempts - 1) {
-          await sleep(CREATE_CHILD_SYNC_DELAY_MS);
-        }
-      }
-
-      return null;
-    },
-    [],
-  );
-
-  const syncCreatedChildInBackground = React.useCallback(
-    (existingChildIds: Set<string>, firstName: string, lastName: string) => {
-      void (async () => {
-        const createdChild = await resolveCreatedChild(existingChildIds, firstName, lastName);
-
-        if (createdChild) {
-          await setSelectedChildId(createdChild.id);
-          setScreenError(null);
-          await loadDashboard(false);
-          return;
-        }
-
-        await loadDashboard(false);
-        setScreenError(
-          'Child request sent, but list refresh is delayed. Pull to refresh in a few seconds.',
-        );
-      })();
-    },
-    [loadDashboard, resolveCreatedChild, setSelectedChildId],
-  );
-
   const handleCreateChild = async () => {
     const firstName = childFirstName.trim();
     const lastName = childLastName.trim();
@@ -408,6 +347,7 @@ const HomeScreen = () => {
     setIsCreatingChild(true);
     setCreateChildError(null);
     const existingChildIds = new Set(children.map((child) => child.id));
+    const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
 
     try {
       await registerChild({
@@ -416,16 +356,47 @@ const HomeScreen = () => {
         password: childPassword,
       });
 
+      const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
+      const createdChild =
+        refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+        refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
+        null;
+
+      setChildren(refreshedChildren);
       setIsCreateChildModalVisible(false);
       resetCreateChildForm();
-      syncCreatedChildInBackground(existingChildIds, firstName, lastName);
+
+      if (createdChild) {
+        await Promise.allSettled([
+          setSelectedChildId(createdChild.id),
+          loadDashboard(false),
+        ]);
+      } else {
+        await loadDashboard(false);
+      }
+
+      setScreenError(null);
     } catch (error) {
       if (isRecoverableCreateChildError(error)) {
-        setIsCreateChildModalVisible(false);
-        resetCreateChildForm();
-        setScreenError('Request is processing. Syncing child list...');
-        syncCreatedChildInBackground(existingChildIds, firstName, lastName);
-        return;
+        try {
+          const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
+          const createdChild =
+            refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+            refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
+            null;
+
+          if (createdChild) {
+            setChildren(refreshedChildren);
+            setIsCreateChildModalVisible(false);
+            resetCreateChildForm();
+            await Promise.allSettled([
+              setSelectedChildId(createdChild.id),
+              loadDashboard(false),
+            ]);
+            setScreenError(null);
+            return;
+          }
+        } catch {}
       }
 
       setCreateChildError(
@@ -499,12 +470,13 @@ const HomeScreen = () => {
         approvedPlan.quests.find((quest) => quest.assignedToUserId.trim().length > 0)?.assignedToUserId.trim() ?? null;
 
       if (effectiveRole === 'adult' && targetChildId) {
-        await setSelectedChildId(targetChildId);
-      }
-
-      if (effectiveRole === 'adult' && targetChildId) {
-        const selectedProgress = await progressService.getProgress(targetChildId);
-        setProgress(selectedProgress);
+        const [selectedProgressResult] = await Promise.allSettled([
+          progressService.getProgress(targetChildId),
+          setSelectedChildId(targetChildId),
+        ]);
+        if (selectedProgressResult.status === 'fulfilled') {
+          setProgress(selectedProgressResult.value);
+        }
       }
 
       navigation.navigate('MainTabs', { screen: 'Quests' });

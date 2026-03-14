@@ -69,20 +69,35 @@ const Header = ({
         {title}
       </Text>
 
-      <Pressable
-        onPress={onProfilePress}
-        disabled={!onProfilePress}
-        style={styles.profileButton}
-        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-        accessibilityRole="button"
-        accessibilityLabel="Профіль"
-        accessibilityHint="Відкриває екран профілю"
-        accessibilityState={{ disabled: !onProfilePress }}
-      >
-        <Text style={styles.profileButtonText} allowFontScaling>
-          {profileInitial}
-        </Text>
-      </Pressable>
+      {onProfilePress ? (
+        <Pressable
+          onPress={onProfilePress}
+          style={styles.profileButton}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="Профіль"
+          accessibilityHint="Відкриває екран профілю"
+        >
+          <Text style={styles.profileButtonText} allowFontScaling>
+            {profileInitial}
+          </Text>
+        </Pressable>
+      ) : showBackButton && onAiPress ? (
+        <Pressable
+          onPress={onAiPress}
+          style={styles.aiButton}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          accessibilityRole="button"
+          accessibilityLabel="AI чат"
+          accessibilityHint="Відкриває екран чату з агентом"
+        >
+          <Text style={styles.aiButtonText} allowFontScaling>
+            AI
+          </Text>
+        </Pressable>
+      ) : (
+        <View style={styles.sideButtonPlaceholder} />
+      )}
     </View>
   );
 };

@@ -83,9 +83,7 @@ const ProfileScreen = () => {
       const progressData = await progressService.getProgress(meData.id);
 
       if (session) {
-        try {
-          await refreshFamily();
-        } catch {}
+        void refreshFamily().catch(() => {});
       }
 
       setMe(meData);

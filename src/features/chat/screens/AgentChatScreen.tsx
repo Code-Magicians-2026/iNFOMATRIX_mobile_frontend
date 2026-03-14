@@ -164,7 +164,7 @@ const AgentChatScreen = () => {
 
       if (childrenData.length === 0) {
         setTargetMode('myself');
-        await setSelectedChildId(null);
+        void setSelectedChildId(null).catch(() => {});
         return;
       }
 
@@ -174,7 +174,7 @@ const AgentChatScreen = () => {
       const fallbackChildId = childrenData[0]?.id ?? null;
       const resolvedChildId = isSelectedChildValid ? selectedChildId : fallbackChildId;
       if (resolvedChildId !== selectedChildId) {
-        await setSelectedChildId(resolvedChildId);
+        void setSelectedChildId(resolvedChildId).catch(() => {});
       }
       setTargetMode((currentMode) => {
         if (hasManualTargetModeRef.current) {
