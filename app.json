@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "infomatrix_mobile_frontend",
+    "name": "Quest4kid",
     "slug": "infomatrix_mobile_frontend",
     "version": "0.7.9",
     "orientation": "portrait",
@@ -31,8 +31,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow iNFOMATRIX to use your camera for AI plan generation.",
-          "photosPermission": "Allow iNFOMATRIX to access your photos for AI plan generation."
+          "cameraPermission": "Allow Quest4kid to use your camera for AI plan generation.",
+          "photosPermission": "Allow Quest4kid to access your photos for AI plan generation."
         }
       ],
       [

@@ -126,8 +126,8 @@ export const getFamilyChildren = async (options: AuthorizedRequestOptions): Prom
 export const registerChild = async (
   payload: RegisterChildRequestDto,
   options: AuthorizedRequestOptions,
-): Promise<void> =>
-  request<void>('/api/children', {
+): Promise<unknown> =>
+  request<unknown>('/api/children', {
     method: 'POST',
     body: JSON.stringify(payload),
     ...withAuthorization(options),

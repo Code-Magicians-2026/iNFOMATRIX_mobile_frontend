@@ -188,6 +188,48 @@ type FamilyResolutionDebug = {
 
 const formatChildAge = (age: number): string => (age > 0 ? String(age) : 'x');
 
+const normalizeEmailAliasChunk = (value: string): string => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return normalized || 'child';
+};
+
+const buildChildLoginEmailFallback = (
+  parentEmail: string | null | undefined,
+  firstName: string,
+): string | null => {
+  if (!parentEmail) {
+    return null;
+  }
+
+  const normalizedEmail = parentEmail.trim().toLowerCase();
+  const atIndex = normalizedEmail.indexOf('@');
+  if (atIndex <= 0 || atIndex === normalizedEmail.length - 1) {
+    return null;
+  }
+
+  const local = normalizedEmail.slice(0, atIndex);
+  const domain = normalizedEmail.slice(atIndex + 1);
+  const localWithoutAlias = local.split('+')[0] ?? local;
+  const alias = normalizeEmailAliasChunk(firstName);
+
+  if (!localWithoutAlias || !domain) {
+    return null;
+  }
+
+  return `${localWithoutAlias}+${alias}@${domain}`;
+};
+
+type ChildLoginSummary = {
+  fullName: string;
+  email: string;
+};
+
 const AdultHomeScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const colors = useThemeStore((s) => s.colors);
@@ -219,9 +261,11 @@ const AdultHomeScreen = () => {
   const [approvingPlanId, setApprovingPlanId] = React.useState<string | null>(null);
 
   const [isCreateChildModalVisible, setIsCreateChildModalVisible] = React.useState(false);
+  const [isChildLoginModalVisible, setIsChildLoginModalVisible] = React.useState(false);
   const [childFirstName, setChildFirstName] = React.useState('');
   const [childLastName, setChildLastName] = React.useState('');
   const [childPassword, setChildPassword] = React.useState('');
+  const [childLoginSummary, setChildLoginSummary] = React.useState<ChildLoginSummary | null>(null);
   const [createChildError, setCreateChildError] = React.useState<string | null>(null);
   const lastDashboardRefreshAtRef = React.useRef(0);
 
@@ -393,6 +437,8 @@ const AdultHomeScreen = () => {
       return;
     }
 
+    setChildLoginSummary(null);
+    setIsChildLoginModalVisible(false);
     resetCreateChildForm();
     const userLastName =
       extractLastNameFromFamilyName(family?.name) ||
@@ -411,6 +457,44 @@ const AdultHomeScreen = () => {
     }
 
     setIsCreateChildModalVisible(false);
+  };
+
+  const closeChildLoginModal = () => {
+    setIsChildLoginModalVisible(false);
+  };
+
+  const presentChildLoginSummary = (input: {
+    firstName: string;
+    lastName: string;
+    fallbackFullName: string;
+    registrationPreview:
+      | {
+          firstName: string;
+          lastName: string;
+          email: string;
+        }
+      | null
+      | undefined;
+  }) => {
+    const preview = input.registrationPreview;
+    const resolvedFirstName = preview?.firstName?.trim() || input.firstName;
+    const resolvedLastName = preview?.lastName?.trim() || input.lastName;
+    const resolvedFullName =
+      `${resolvedFirstName} ${resolvedLastName}`.trim() || input.fallbackFullName;
+    const resolvedEmail =
+      preview?.email?.trim() ||
+      buildChildLoginEmailFallback(session?.email, resolvedFirstName) ||
+      null;
+
+    if (!resolvedEmail) {
+      return;
+    }
+
+    setChildLoginSummary({
+      fullName: resolvedFullName,
+      email: resolvedEmail,
+    });
+    setIsChildLoginModalVisible(true);
   };
 
   const handleCreateChild = async () => {
@@ -439,6 +523,13 @@ const AdultHomeScreen = () => {
     let usedFamilyId: string | null = null;
     let createChildStrategy: 'explicit-family-id' | 'store-register-child' = 'store-register-child';
     let familyResolutionDebug: FamilyResolutionDebug | null = null;
+    let registrationPreview:
+      | {
+          firstName: string;
+          lastName: string;
+          email: string;
+        }
+      | null = null;
 
     try {
       familyResolutionDebug = await resolveFamilyId();
@@ -447,12 +538,13 @@ const AdultHomeScreen = () => {
       if (familyId) {
         createChildStrategy = 'explicit-family-id';
         try {
-          await childrenService.createChild({
+          const createdResult = await childrenService.createChild({
             firstName,
             lastName,
             password: childPassword,
             familyId,
           });
+          registrationPreview = createdResult.registrationPreview;
         } catch (error) {
           if (!isFamilyNotFoundError(error)) {
             throw error;
@@ -488,8 +580,20 @@ const AdultHomeScreen = () => {
           setSelectedChildId(createdChild.id),
           loadDashboard(false),
         ]);
+        presentChildLoginSummary({
+          firstName,
+          lastName,
+          fallbackFullName: createdChild.fullName,
+          registrationPreview,
+        });
       } else {
         await loadDashboard(false);
+        presentChildLoginSummary({
+          firstName,
+          lastName,
+          fallbackFullName: `${firstName} ${lastName}`.trim(),
+          registrationPreview,
+        });
       }
 
       setScreenError(null);
@@ -510,6 +614,12 @@ const AdultHomeScreen = () => {
               setSelectedChildId(createdChild.id),
               loadDashboard(false),
             ]);
+            presentChildLoginSummary({
+              firstName,
+              lastName,
+              fallbackFullName: createdChild.fullName,
+              registrationPreview,
+            });
             setScreenError(null);
             return;
           }
@@ -971,6 +1081,54 @@ const AdultHomeScreen = () => {
       </Modal>
 
       <Modal
+        visible={isChildLoginModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeChildLoginModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]} allowFontScaling>
+              Child Login
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]} allowFontScaling>
+              Child profile created. Use these credentials to sign in:
+            </Text>
+
+            <View style={[styles.loginSummaryBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <Text style={[styles.loginSummaryLabel, { color: colors.textSecondary }]} allowFontScaling>
+                Name
+              </Text>
+              <Text style={[styles.loginSummaryValue, { color: colors.text }]} allowFontScaling>
+                {childLoginSummary?.fullName ?? '—'}
+              </Text>
+
+              <Text style={[styles.loginSummaryLabel, { color: colors.textSecondary }]} allowFontScaling>
+                Email
+              </Text>
+              <Text style={[styles.loginSummaryValue, { color: colors.text }]} allowFontScaling>
+                {childLoginSummary?.email ?? '—'}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={closeChildLoginModal}
+              style={({ pressed }) => [
+                styles.modalSingleButton,
+                styles.modalButtonPrimary,
+                { opacity: pressed ? 0.9 : 1 },
+              ]}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+            >
+              <Text style={[styles.modalButtonLabel, styles.modalButtonLabelPrimary]} allowFontScaling>
+                Done
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={isAiBuilderModalVisible}
         transparent
         animationType="fade"
@@ -1286,6 +1444,16 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderWidth: 1,
       elevation: 2,
     },
+    modalSingleButton: {
+      minHeight: 42,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      borderWidth: 1,
+      elevation: 2,
+      width: '100%',
+    },
     modalButtonPrimary: {
       backgroundColor: '#ff2d55',
       borderColor: '#ff2d55',
@@ -1302,6 +1470,25 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     modalButtonLabelPrimary: {
       color: '#ffffff',
+    },
+    loginSummaryBox: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 4,
+      marginTop: 4,
+      marginBottom: 8,
+      elevation: 1,
+    },
+    loginSummaryLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '600',
+    },
+    loginSummaryValue: {
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+      marginBottom: 2,
     },
   });
 
