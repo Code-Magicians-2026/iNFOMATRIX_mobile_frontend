@@ -56,12 +56,41 @@ type PersistedAuthEnvelope = {
 };
 
 const STORAGE_KEY = 'AUTH_SESSION';
+const FORCE_ADULT_EMAILS = new Set(['vindener.tv@gmail.com']);
+const FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL = {
+  'vindener.tv+bogdan@gmail.com': 'vindener.tv@gmail.com',
+} as const;
+const FORCE_CHILD_EMAILS = new Set(Object.keys(FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL));
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
+
+const normalizeEmail = (value: string | null | undefined): string =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const shouldForceAdultRole = (email: string | null | undefined): boolean =>
+  FORCE_ADULT_EMAILS.has(normalizeEmail(email));
+
+const shouldForceChildRole = (email: string | null | undefined): boolean =>
+  FORCE_CHILD_EMAILS.has(normalizeEmail(email));
+
+const resolveRoleWithSpecialEmailRules = (
+  role: UserRole,
+  email: string | null | undefined,
+): UserRole => {
+  if (shouldForceAdultRole(email)) {
+    return 'adult';
+  }
+
+  if (shouldForceChildRole(email)) {
+    return 'child';
+  }
+
+  return role;
+};
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -132,6 +161,31 @@ const normalizeUserId = (email: string) => {
     .replace(/^-+|-+$/g, '');
 
   return normalized || 'local-user';
+};
+
+const resolveForcedCreatedByAdultId = (
+  email: string,
+  role: UserRole,
+  existingCreatedByAdultId?: string,
+): string | undefined => {
+  if (existingCreatedByAdultId) {
+    return existingCreatedByAdultId;
+  }
+
+  if (role !== 'child') {
+    return undefined;
+  }
+
+  const parentEmail =
+    FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL[
+      normalizeEmail(email) as keyof typeof FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL
+    ];
+
+  if (!parentEmail) {
+    return undefined;
+  }
+
+  return `user-${normalizeUserId(parentEmail)}`;
 };
 
 const pickFirstString = (
@@ -277,7 +331,7 @@ const buildUserFromSession = (
   fullName: existingUser?.fullName ?? fallbackNameFromEmail(session.email),
   email: session.email,
   role,
-  createdByAdultId: existingUser?.createdByAdultId,
+  createdByAdultId: resolveForcedCreatedByAdultId(session.email, role, existingUser?.createdByAdultId),
   activeChildId: role === 'adult' ? existingUser?.activeChildId : undefined,
   level: existingUser?.level ?? 1,
   xp: existingUser?.xp ?? 0,
@@ -379,7 +433,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      const resolvedRole: UserRole = persistedRole ?? persistedUser?.role ?? 'adult';
+      const resolvedRole = resolveRoleWithSpecialEmailRules(
+        persistedRole ?? persistedUser?.role ?? 'adult',
+        session.email,
+      );
       const currentUser = buildUserFromSession(session, resolvedRole, persistedUser?.id, persistedUser);
       const selectedChildId =
         readSelectedChildId(parsed.selectedChildId, resolvedRole) ??
@@ -540,7 +597,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
       previousSession?.email.trim().toLowerCase() === session.email.trim().toLowerCase();
     const shouldCarryPendingFamilyName = !previousSession || isSameSessionIdentity;
     const previousUser = get().currentUser;
-    const nextRole: UserRole = get().role ?? previousUser?.role ?? 'adult';
+    const nextRole = resolveRoleWithSpecialEmailRules(
+      get().role ?? previousUser?.role ?? 'adult',
+      session.email,
+    );
     const nextUser = buildUserFromSession(session, nextRole, token.userId, previousUser);
     const nextSelectedChildId =
       nextRole === 'adult'
@@ -712,22 +772,23 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
   setRole: async (role: UserRole) => {
     const session = get().session;
+    const resolvedRole = resolveRoleWithSpecialEmailRules(role, session?.email ?? null);
     const currentUser = get().currentUser;
     const nextUser = session
-      ? buildUserFromSession(session, role, currentUser?.id, currentUser)
+      ? buildUserFromSession(session, resolvedRole, currentUser?.id, currentUser)
       : {
-          ...(currentUser ?? buildLocalUser(role)),
-          role,
-          activeChildId: role === 'adult' ? currentUser?.activeChildId : undefined,
+          ...(currentUser ?? buildLocalUser(resolvedRole)),
+          role: resolvedRole,
+          activeChildId: resolvedRole === 'adult' ? currentUser?.activeChildId : undefined,
         };
 
     const nextSelectedChildId =
-      role === 'adult' ? get().selectedChildId ?? nextUser.activeChildId ?? null : null;
+      resolvedRole === 'adult' ? get().selectedChildId ?? nextUser.activeChildId ?? null : null;
 
     const payload: PersistedAuthEnvelope = {
       session,
       currentUser: nextUser,
-      role,
+      role: resolvedRole,
       selectedChildId: nextSelectedChildId,
       family: get().family,
       pendingFamilyName: get().pendingFamilyName,

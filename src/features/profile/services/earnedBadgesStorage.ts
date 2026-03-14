@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   isBadgeImageKey,
+  normalizeBadgeImageKey,
   pickRandomBadgeImageKey,
   resolveBadgeTypeFromDifficulty,
   type BadgeImageKey,
@@ -31,22 +32,38 @@ const isNonEmptyString = (value: unknown): value is string =>
 
 const isBadgeType = (value: unknown): value is BadgeType => value === 'basic' || value === 'fire';
 
-const isEarnedBadgeRecord = (value: unknown): value is EarnedBadgeRecord => {
+const toEarnedBadgeRecord = (value: unknown): EarnedBadgeRecord | null => {
   if (typeof value !== 'object' || value === null) {
-    return false;
+    return null;
   }
 
   const record = value as Partial<EarnedBadgeRecord>;
-  return (
-    isNonEmptyString(record.id) &&
-    isNonEmptyString(record.userId) &&
-    isNonEmptyString(record.questId) &&
-    isNonEmptyString(record.difficulty) &&
-    isBadgeType(record.badgeType) &&
-    isNonEmptyString(record.imageKey) &&
-    isBadgeImageKey(record.imageKey) &&
-    isNonEmptyString(record.earnedAt)
-  );
+  if (
+    !isNonEmptyString(record.id) ||
+    !isNonEmptyString(record.userId) ||
+    !isNonEmptyString(record.questId) ||
+    !isNonEmptyString(record.difficulty) ||
+    !isBadgeType(record.badgeType) ||
+    !isNonEmptyString(record.imageKey) ||
+    !isNonEmptyString(record.earnedAt)
+  ) {
+    return null;
+  }
+
+  const normalizedImageKey =
+    isBadgeImageKey(record.imageKey)
+      ? record.imageKey
+      : normalizeBadgeImageKey(record.imageKey) ?? 'ref1';
+
+  return {
+    id: record.id,
+    userId: record.userId,
+    questId: record.questId,
+    difficulty: record.difficulty,
+    badgeType: record.badgeType,
+    imageKey: normalizedImageKey,
+    earnedAt: record.earnedAt,
+  };
 };
 
 const readAll = async (): Promise<EarnedBadgeRecord[]> => {
@@ -61,7 +78,9 @@ const readAll = async (): Promise<EarnedBadgeRecord[]> => {
       return [];
     }
 
-    return parsed.filter((item): item is EarnedBadgeRecord => isEarnedBadgeRecord(item));
+    return parsed
+      .map((item) => toEarnedBadgeRecord(item))
+      .filter((item): item is EarnedBadgeRecord => item !== null);
   } catch {
     return [];
   }

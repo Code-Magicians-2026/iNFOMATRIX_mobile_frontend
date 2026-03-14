@@ -111,7 +111,7 @@ const EarnedBadgesScreen = () => {
                   <CompletionBadge
                     difficulty={badge.difficulty}
                     imageKey={badge.imageKey}
-                    imageSize={isTablet ? 72 : 64}
+                    imageSize={isTablet ? 76 : 68}
                     showLabel={false}
                     style={styles.badgeVisual}
                   />
@@ -181,12 +181,15 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     badgeVisual: {
       marginTop: 0,
-      minWidth: isTablet ? 78 : 70,
+      minWidth: isTablet ? 88 : 80,
+      minHeight: isTablet ? 88 : 80,
       justifyContent: 'center',
-      backgroundColor: 'transparent',
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-      elevation: 0,
+      alignItems: 'center',
+      backgroundColor: '#ffffff',
+      borderRadius: 14,
+      paddingHorizontal: 6,
+      paddingVertical: 6,
+      elevation: 1,
     },
     badgeMeta: {
       flex: 1,

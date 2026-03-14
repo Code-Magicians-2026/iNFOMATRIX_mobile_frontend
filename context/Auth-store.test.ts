@@ -291,6 +291,140 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().selectedChildId).toBeNull();
   });
 
+  it('forces adult role for vindener.tv@gmail.com during createSessionFromToken', async () => {
+    useAuthStore.setState({
+      role: 'child',
+      currentUser: {
+        id: 'vindener-user',
+        fullName: 'Vindener User',
+        email: 'vindener.tv@gmail.com',
+        role: 'child',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'adventurer',
+      },
+      session: null,
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().createSessionFromToken(
+      {
+        accessToken: 'forced-adult-access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      'vindener.tv@gmail.com',
+    );
+
+    expect(useAuthStore.getState().role).toBe('adult');
+    expect(useAuthStore.getState().currentUser?.role).toBe('adult');
+  });
+
+  it('keeps forced-adult email as adult even when setRole child is requested', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'vindener.tv@gmail.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'vindener-user',
+        fullName: 'Vindener User',
+        email: 'vindener.tv@gmail.com',
+        role: 'adult',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'mentor',
+      },
+      role: 'adult',
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().setRole('child');
+
+    expect(useAuthStore.getState().role).toBe('adult');
+    expect(useAuthStore.getState().currentUser?.role).toBe('adult');
+  });
+
+  it('forces child role for vindener.tv+bogdan@gmail.com and links createdByAdultId', async () => {
+    useAuthStore.setState({
+      role: 'adult',
+      currentUser: {
+        id: 'bogdan-user',
+        fullName: 'Bogdan User',
+        email: 'vindener.tv+bogdan@gmail.com',
+        role: 'adult',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'mentor',
+      },
+      session: null,
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().createSessionFromToken(
+      {
+        accessToken: 'forced-child-access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      'vindener.tv+bogdan@gmail.com',
+    );
+
+    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.createdByAdultId).toBe('user-vindener-tv-gmail-com');
+  });
+
+  it('keeps forced-child email as child even when setRole adult is requested', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'vindener.tv+bogdan@gmail.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'bogdan-user',
+        fullName: 'Bogdan User',
+        email: 'vindener.tv+bogdan@gmail.com',
+        role: 'child',
+        createdByAdultId: 'user-vindener-tv-gmail-com',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'adventurer',
+      },
+      role: 'child',
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().setRole('adult');
+
+    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.role).toBe('child');
+  });
+
   it('registerChild refreshes family id before post to avoid stale cached family', async () => {
     useAuthStore.setState({
       session: {

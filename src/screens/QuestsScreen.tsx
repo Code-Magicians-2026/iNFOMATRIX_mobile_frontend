@@ -99,6 +99,20 @@ type CompletionFeedback = {
 
 type QuestsNavigation = NativeStackNavigationProp<AppStackParamList>;
 
+const mergeUniqueAchievements = (
+  current: UnlockedAchievement[],
+  incoming: UnlockedAchievement[],
+): UnlockedAchievement[] => {
+  if (incoming.length === 0) {
+    return current;
+  }
+
+  const existingIds = new Set(current.map((achievement) => achievement.id));
+  const uniqueIncoming = incoming.filter((achievement) => !existingIds.has(achievement.id));
+
+  return uniqueIncoming.length > 0 ? [...current, ...uniqueIncoming] : current;
+};
+
 const QuestsScreen = () => {
   const navigation = useNavigation<QuestsNavigation>();
   const colors = useThemeStore((s) => s.colors);
@@ -521,14 +535,26 @@ const QuestsScreen = () => {
   ]);
 
   React.useEffect(() => {
-    if (activeAchievementUnlock || achievementUnlockQueue.length === 0) {
+    const isCompletionBadgeFlowActive =
+      Boolean(completionFeedback) || isCompletionBadgeSpotlightVisible;
+
+    if (
+      activeAchievementUnlock ||
+      achievementUnlockQueue.length === 0 ||
+      isCompletionBadgeFlowActive
+    ) {
       return;
     }
 
     const [nextAchievement, ...restQueue] = achievementUnlockQueue;
     setAchievementUnlockQueue(restQueue);
     setActiveAchievementUnlock(nextAchievement);
-  }, [achievementUnlockQueue, activeAchievementUnlock]);
+  }, [
+    achievementUnlockQueue,
+    activeAchievementUnlock,
+    completionFeedback,
+    isCompletionBadgeSpotlightVisible,
+  ]);
 
   React.useEffect(() => {
     if (!activeAchievementUnlock) {
@@ -755,7 +781,9 @@ const QuestsScreen = () => {
             progress: progressForAchievements,
           });
           if (unlockedAchievements.length > 0) {
-            setAchievementUnlockQueue((current) => [...current, ...unlockedAchievements]);
+            setAchievementUnlockQueue((current) =>
+              mergeUniqueAchievements(current, unlockedAchievements),
+            );
           }
         } catch {}
       }
@@ -1512,7 +1540,9 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       width: isTablet ? 250 : 220,
       height: isTablet ? 250 : 220,
       borderRadius: 999,
-      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      backgroundColor: 'rgba(18, 22, 29, 0.94)',
+      borderWidth: 2,
+      borderColor: 'rgba(255, 255, 255, 0.28)',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
@@ -1527,7 +1557,7 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       elevation: 0,
     },
     completionSpotlightLabel: {
-      color: '#ff2d55',
+      color: '#ffffff',
       fontSize: isTablet ? 18 : 16,
       fontWeight: '800',
     },

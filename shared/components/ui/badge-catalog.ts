@@ -22,6 +22,19 @@ export const BADGE_IMAGE_KEYS = [
 
 export type BadgeImageKey = (typeof BADGE_IMAGE_KEYS)[number];
 
+const LEGACY_BADGE_IMAGE_KEY_MAP: Record<string, BadgeImageKey> = {
+  basic_star: 'ref1',
+  basic_medal: 'ref2',
+  basic_target: 'ref3',
+  basic_shield: 'ref4',
+  basic_lightning: 'ref5',
+  fire_flame: 'ref1',
+  fire_rocket: 'ref2',
+  fire_crown: 'ref3',
+  fire_trophy: 'ref4',
+  fire_streak: 'ref5',
+};
+
 const BADGE_IMAGE_SOURCES: Record<BadgeType, Record<BadgeImageKey, ImageSourcePropType>> = {
   basic: {
     ref1: require('../../../assets/images/budges/basic/ref1.png'),
@@ -61,6 +74,19 @@ const BADGE_IMAGE_SOURCES: Record<BadgeType, Record<BadgeImageKey, ImageSourcePr
 
 export const isBadgeImageKey = (value: string): value is BadgeImageKey =>
   (BADGE_IMAGE_KEYS as readonly string[]).includes(value);
+
+export const normalizeBadgeImageKey = (value: string): BadgeImageKey | null => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (isBadgeImageKey(normalized)) {
+    return normalized;
+  }
+
+  return LEGACY_BADGE_IMAGE_KEY_MAP[normalized] ?? null;
+};
 
 export const resolveBadgeTypeFromDifficulty = (difficulty: string): BadgeType => {
   const normalizedDifficulty = difficulty.trim().toLowerCase();
