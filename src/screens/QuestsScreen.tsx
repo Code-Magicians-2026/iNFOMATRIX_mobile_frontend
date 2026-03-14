@@ -151,30 +151,53 @@ const QuestsScreen = () => {
         ]);
         setChildren(childrenData);
 
-        if (childrenData.length === 0) {
-          setTargetUserId(null);
-          setTargetLabel(meData.fullName);
-          setQuests([]);
-          setProgress(null);
-          return null;
-        }
-
         const selectedChildCandidate = preferredChildId ?? selectedChildId;
+        const isSelfTarget = selectedChildCandidate === meData.id;
         const isSelectedChildValid = selectedChildCandidate
           ? childrenData.some((child) => child.id === selectedChildCandidate)
           : false;
-        const resolvedSelectedChildId = isSelectedChildValid ? selectedChildCandidate : null;
+        const resolvedSelectedChildId = isSelectedChildValid
+          ? selectedChildCandidate
+          : isSelfTarget
+            ? meData.id
+            : null;
 
-        if (selectedChildId && !isSelectedChildValid) {
+        if (selectedChildId && !isSelectedChildValid && !isSelfTarget) {
           await setSelectedChildId(null);
         }
 
         if (!resolvedSelectedChildId) {
+          const [selfQuests, selfProgress] = await Promise.all([
+            questsService.getQuests(meData.id),
+            progressService.getProgress(meData.id),
+          ]);
+
+          if (selfQuests.length > 0) {
+            setTargetUserId(meData.id);
+            setTargetLabel(meData.fullName);
+            setQuests(selfQuests);
+            setProgress(selfProgress);
+            return selfProgress;
+          }
+
           setTargetUserId(null);
-          setTargetLabel('No active child');
+          setTargetLabel(childrenData.length === 0 ? meData.fullName : 'No active child');
           setQuests([]);
-          setProgress(null);
+          setProgress(childrenData.length === 0 ? selfProgress : null);
           return null;
+        }
+
+        if (resolvedSelectedChildId === meData.id) {
+          const [selfQuests, selfProgress] = await Promise.all([
+            questsService.getQuests(meData.id),
+            progressService.getProgress(meData.id),
+          ]);
+
+          setTargetUserId(meData.id);
+          setTargetLabel(meData.fullName);
+          setQuests(selfQuests);
+          setProgress(selfProgress);
+          return selfProgress;
         }
 
         const activeChild = childrenData.find((child) => child.id === resolvedSelectedChildId);

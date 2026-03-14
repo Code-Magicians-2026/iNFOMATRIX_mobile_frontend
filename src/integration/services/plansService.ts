@@ -5,7 +5,6 @@ import {
   approvePlanMock,
   generatePlanMock,
   getPlansMock,
-  syncApprovedPlanQuestsMock,
   type GeneratePlanMockInput,
   type GetPlansMockInput,
 } from '@/src/features/mvp/services';
@@ -431,7 +430,6 @@ export const plansService = {
     if (accessToken) {
       const approvedPlan = await usePlansStore.getState().approvePlan(planId);
       if (approvedPlan) {
-        syncApprovedPlanQuestsMock([approvedPlan]);
         return approvedPlan;
       }
     }

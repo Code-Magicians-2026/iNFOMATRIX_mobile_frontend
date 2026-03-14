@@ -103,6 +103,7 @@ const AgentChatScreen = () => {
   const [me, setMe] = React.useState<UserProfile | null>(null);
   const [children, setChildren] = React.useState<ChildProfile[]>([]);
   const [targetMode, setTargetMode] = React.useState<TargetMode>('myself');
+  const hasManualTargetModeRef = React.useRef(false);
 
   const [prompt, setPrompt] = React.useState('');
   const [selectedQuickPromptIndex, setSelectedQuickPromptIndex] = React.useState<number | null>(null);
@@ -193,8 +194,12 @@ const AgentChatScreen = () => {
         await setSelectedChildId(resolvedChildId);
       }
       setTargetMode((currentMode) => {
-        if (currentMode === 'myself') {
-          return 'myself';
+        if (hasManualTargetModeRef.current) {
+          if (currentMode === 'child' && !resolvedChildId) {
+            return 'myself';
+          }
+
+          return currentMode;
         }
 
         return resolvedChildId ? 'child' : 'myself';
@@ -460,6 +465,7 @@ const AgentChatScreen = () => {
             <View key={`target-mode-${targetMode}-${selectedChildId ?? 'none'}`} style={styles.optionRow}>
               <Pressable
                 onPress={() => {
+                  hasManualTargetModeRef.current = true;
                   setTargetMode('myself');
                   setGenerationError(null);
                 }}
@@ -485,6 +491,7 @@ const AgentChatScreen = () => {
                   if (!canUseChildTarget) {
                     return;
                   }
+                  hasManualTargetModeRef.current = true;
 
                   if (!selectedChild && children[0]) {
                     void setSelectedChildId(children[0].id);
@@ -526,6 +533,7 @@ const AgentChatScreen = () => {
                       onPress={() => {
                         const firstChild = children[0];
                         if (firstChild) {
+                          hasManualTargetModeRef.current = true;
                           void setSelectedChildId(firstChild.id);
                           setTargetMode('child');
                           setGenerationError(null);
@@ -542,6 +550,7 @@ const AgentChatScreen = () => {
                         <Pressable
                           key={child.id}
                           onPress={() => {
+                            hasManualTargetModeRef.current = true;
                             void setSelectedChildId(child.id);
                             setTargetMode('child');
                             setGenerationError(null);
