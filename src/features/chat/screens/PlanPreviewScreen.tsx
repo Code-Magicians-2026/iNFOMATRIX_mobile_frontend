@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,15 +11,31 @@ import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import {
   EmptyState,
   LoadingState,
+  QuestRewardEditor,
   ScreenContainer,
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
-import { plansService } from '@/src/integration/services';
+import {
+  buildQuestRewardFieldsFromDraft,
+  buildQuestRewardPreviewFromDraft,
+  createQuestRewardDraftFromQuest,
+  getQuestRewardLabel,
+  type QuestRewardDraft,
+} from '@/shared/models/quest-reward.model';
+import type { CapturedPhoto, GeneratedPlan, Quest } from '@/shared/models/mvp-contracts.model';
+import { cameraService, plansService, questsService } from '@/src/integration/services';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 type PlanPreviewRoute = RouteProp<AppStackParamList, 'PlanPreview'>;
 type PlanPreviewNavigation = NativeStackNavigationProp<AppStackParamList>;
+const PLAN_PREVIEW_SELECTED_REWARD_TYPE_COLOR = '#ff0000';
+
+const createRewardDraftMap = (quests: Quest[]): Record<string, QuestRewardDraft> =>
+  quests.reduce<Record<string, QuestRewardDraft>>((result, quest) => {
+    result[quest.id] = createQuestRewardDraftFromQuest(quest);
+    return result;
+  }, {});
 
 const PlanPreviewScreen = () => {
   const route = useRoute<PlanPreviewRoute>();
@@ -38,7 +54,124 @@ const PlanPreviewScreen = () => {
   const [isRegenerating, setIsRegenerating] = React.useState(false);
   const [feedback, setFeedback] = React.useState<string | null>(null);
   const [screenError, setScreenError] = React.useState<string | null>(null);
+  const [photoActionQuestId, setPhotoActionQuestId] = React.useState<string | null>(null);
+  const [photoActionType, setPhotoActionType] = React.useState<'camera' | 'gallery' | 'remove' | null>(null);
+  const [rewardDraftsByQuestId, setRewardDraftsByQuestId] = React.useState<Record<string, QuestRewardDraft>>(
+    () => createRewardDraftMap(route.params.plan.quests),
+  );
+  const [dirtyRewardQuestIds, setDirtyRewardQuestIds] = React.useState<Record<string, true>>({});
   const canApprove = plan.status === 'draft';
+
+  React.useEffect(() => {
+    setRewardDraftsByQuestId(createRewardDraftMap(plan.quests));
+    setDirtyRewardQuestIds({});
+  }, [plan.id]);
+
+  const updateRewardDraft = React.useCallback(
+    (quest: Quest, updater: (currentDraft: QuestRewardDraft) => QuestRewardDraft) => {
+      setRewardDraftsByQuestId((current) => {
+        const currentDraft = current[quest.id] ?? createQuestRewardDraftFromQuest(quest);
+        const nextDraft = updater(currentDraft);
+        return {
+          ...current,
+          [quest.id]: nextDraft,
+        };
+      });
+      setDirtyRewardQuestIds((current) => ({
+        ...current,
+        [quest.id]: true,
+      }));
+    },
+    [],
+  );
+
+  const applyEditedRewardsAfterApprove = React.useCallback(async (approvedPlan: GeneratedPlan) => {
+    const editedQuestIds = Object.keys(dirtyRewardQuestIds);
+    if (editedQuestIds.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      editedQuestIds.map(async (questId) => {
+        const approvedQuest = approvedPlan.quests.find((quest) => quest.id === questId);
+        const draft = rewardDraftsByQuestId[questId];
+        if (!approvedQuest || !draft) {
+          return;
+        }
+
+        await questsService.updateQuestReward(approvedQuest.id, buildQuestRewardFieldsFromDraft(draft));
+      }),
+    );
+  }, [dirtyRewardQuestIds, rewardDraftsByQuestId]);
+
+  const resolveActionErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message;
+    }
+
+    return fallback;
+  };
+
+  const pickQuestPhoto = async (source: 'camera' | 'gallery'): Promise<CapturedPhoto | null> => {
+    if (source === 'camera') {
+      const permission = await cameraService.requestCameraPermission();
+      if (permission !== 'granted') {
+        throw new Error('Camera permission is required to add a quest photo.');
+      }
+
+      const photo = await cameraService.openCamera();
+      if (!photo) {
+        return null;
+      }
+
+      return cameraService.preparePhoto(photo);
+    }
+
+    const permission = await cameraService.requestGalleryPermission();
+    if (permission !== 'granted') {
+      throw new Error('Gallery permission is required to add a quest photo.');
+    }
+
+    const photo = await cameraService.openGallery();
+    if (!photo) {
+      return null;
+    }
+
+    return cameraService.preparePhoto(photo);
+  };
+
+  const handleQuestBeforePhoto = async (quest: Quest, action: 'camera' | 'gallery' | 'remove') => {
+    if (!canApprove) {
+      return;
+    }
+
+    setScreenError(null);
+    setPhotoActionQuestId(quest.id);
+    setPhotoActionType(action);
+
+    try {
+      const photo = action === 'remove' ? null : await pickQuestPhoto(action);
+      if (action !== 'remove' && !photo) {
+        return;
+      }
+
+      const updatedQuest = await questsService.updateQuestBeforePhoto(quest.id, photo);
+      setPlan((currentPlan) => ({
+        ...currentPlan,
+        quests: currentPlan.quests.map((item) => (item.id === updatedQuest.id ? updatedQuest : item)),
+      }));
+      setFeedback(
+        updatedQuest.beforePhoto
+          ? 'Before photo added. Report photo will be required on completion.'
+          : 'Before photo removed. Report photo is now optional.',
+      );
+    } catch (error) {
+      setScreenError(resolveActionErrorMessage(error, 'Failed to update quest before photo.'));
+    } finally {
+      setPhotoActionQuestId(null);
+      setPhotoActionType(null);
+    }
+  };
 
   const handleApprove = async () => {
     if (!canApprove) {
@@ -49,6 +182,7 @@ const PlanPreviewScreen = () => {
     try {
       setScreenError(null);
       const approved = await plansService.approvePlan(plan.id);
+      await applyEditedRewardsAfterApprove(approved);
       setPlan(approved);
       const targetChildId =
         approved.quests.find((quest) => quest.assignedToUserId.trim().length > 0)?.assignedToUserId.trim() ?? null;
@@ -108,47 +242,155 @@ const PlanPreviewScreen = () => {
 
         <StatCard title="Quests" subtitle={`${plan.quests.length} generated quests`} style={styles.card}>
           {plan.quests.length > 0 ? (
-            plan.quests.map((quest) => (
-              <View key={quest.id} style={[styles.questItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                <Text style={[styles.questTitle, { color: colors.text }]} allowFontScaling>
-                  {quest.title}
-                </Text>
-                <Text style={[styles.questDescription, { color: colors.textSecondary }]} allowFontScaling>
-                  {quest.description}
-                </Text>
-                <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  Difficulty: {quest.difficulty}
-                </Text>
-                <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  Reward XP: {quest.rewardXp}
-                </Text>
-                <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  Estimated minutes: {quest.estimatedMinutes}
-                </Text>
+            plan.quests.map((quest) => {
+              const rewardDraft =
+                rewardDraftsByQuestId[quest.id] ?? createQuestRewardDraftFromQuest(quest);
+              const rewardPreview = buildQuestRewardPreviewFromDraft(rewardDraft);
 
-                {(quest.steps?.length ?? 0) > 0 ? (
-                  <View style={styles.stepsWrap}>
+              return (
+                <View key={quest.id} style={[styles.questItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                  <Text style={[styles.questTitle, { color: colors.text }]} allowFontScaling>
+                    {quest.title}
+                  </Text>
+                  <Text style={[styles.questDescription, { color: colors.textSecondary }]} allowFontScaling>
+                    {quest.description}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Difficulty: {quest.difficulty}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Reward XP: {quest.rewardXp}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.text }]} allowFontScaling>
+                    🎁 {canApprove ? rewardPreview : getQuestRewardLabel(quest)}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Active reward: {canApprove ? rewardPreview : getQuestRewardLabel(quest)}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                    Estimated minutes: {quest.estimatedMinutes}
+                  </Text>
+                  <Text style={[styles.questMeta, { color: colors.text }]} allowFontScaling>
+                    Report photo: {quest.beforePhoto?.uri ? 'required' : 'optional'}
+                  </Text>
+
+                  <View style={styles.beforePhotoWrap}>
                     <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
-                      Steps
+                      Before photo
                     </Text>
-                    {[...(quest.steps ?? [])]
-                      .sort((left, right) => left.order - right.order)
-                      .map((step, index) => (
-                        <View key={step.id} style={[styles.stepItem, { borderColor: colors.border }]}>
-                          <Text style={[styles.stepTitle, { color: colors.text }]} allowFontScaling>
-                            {index + 1}. {step.title}
+                    {quest.beforePhoto?.uri ? (
+                      <Image source={{ uri: quest.beforePhoto.uri }} style={styles.beforePhotoPreview} resizeMode="cover" />
+                    ) : (
+                      <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                        Before photo not added.
+                      </Text>
+                    )}
+                    {quest.beforePhoto?.uri ? (
+                      <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
+                        After completion, child must submit a result photo.
+                      </Text>
+                    ) : null}
+                    {canApprove ? (
+                      <View style={styles.photoActionsRow}>
+                        <Pressable
+                          onPress={() => {
+                            void handleQuestBeforePhoto(quest, 'gallery');
+                          }}
+                          style={[
+                            styles.photoActionButton,
+                            { borderColor: colors.border, backgroundColor: colors.background },
+                            photoActionQuestId === quest.id ? styles.photoActionDisabled : null,
+                          ]}
+                          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                          disabled={photoActionQuestId === quest.id}
+                        >
+                          <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
+                            {photoActionQuestId === quest.id && photoActionType === 'gallery' ? 'Loading...' : 'Gallery'}
                           </Text>
-                          {step.description ? (
-                            <Text style={[styles.stepDescription, { color: colors.textSecondary }]} allowFontScaling>
-                              {step.description}
+                        </Pressable>
+                        <Pressable
+                          onPress={() => {
+                            void handleQuestBeforePhoto(quest, 'camera');
+                          }}
+                          style={[
+                            styles.photoActionButton,
+                            { borderColor: colors.border, backgroundColor: colors.background },
+                            photoActionQuestId === quest.id ? styles.photoActionDisabled : null,
+                          ]}
+                          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                          disabled={photoActionQuestId === quest.id}
+                        >
+                          <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
+                            {photoActionQuestId === quest.id && photoActionType === 'camera' ? 'Loading...' : 'Camera'}
+                          </Text>
+                        </Pressable>
+                        {quest.beforePhoto?.uri ? (
+                          <Pressable
+                            onPress={() => {
+                              void handleQuestBeforePhoto(quest, 'remove');
+                            }}
+                            style={[
+                              styles.photoActionButton,
+                              { borderColor: colors.border, backgroundColor: colors.background },
+                              photoActionQuestId === quest.id ? styles.photoActionDisabled : null,
+                            ]}
+                            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                            disabled={photoActionQuestId === quest.id}
+                          >
+                            <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
+                              {photoActionQuestId === quest.id && photoActionType === 'remove' ? 'Removing...' : 'Remove'}
                             </Text>
-                          ) : null}
-                        </View>
-                      ))}
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
-                ) : null}
-              </View>
-            ))
+
+                  {canApprove ? (
+                    <QuestRewardEditor
+                      draft={rewardDraft}
+                      previewText={rewardPreview}
+                      selectedTypeColor={PLAN_PREVIEW_SELECTED_REWARD_TYPE_COLOR}
+                      onChangeType={(type) => {
+                        updateRewardDraft(quest, (currentDraft) => ({
+                          type,
+                          valueInput: '',
+                          noteInput: currentDraft.noteInput,
+                        }));
+                      }}
+                      onChangeValue={(value) => {
+                        updateRewardDraft(quest, (currentDraft) => ({ ...currentDraft, valueInput: value }));
+                      }}
+                      onChangeNote={(value) => {
+                        updateRewardDraft(quest, (currentDraft) => ({ ...currentDraft, noteInput: value }));
+                      }}
+                    />
+                  ) : null}
+
+                  {(quest.steps?.length ?? 0) > 0 ? (
+                    <View style={styles.stepsWrap}>
+                      <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                        Steps
+                      </Text>
+                      {[...(quest.steps ?? [])]
+                        .sort((left, right) => left.order - right.order)
+                        .map((step, index) => (
+                          <View key={step.id} style={[styles.stepItem, { borderColor: colors.border }]}>
+                            <Text style={[styles.stepTitle, { color: colors.text }]} allowFontScaling>
+                              {index + 1}. {step.title}
+                            </Text>
+                            {step.description ? (
+                              <Text style={[styles.stepDescription, { color: colors.textSecondary }]} allowFontScaling>
+                                {step.description}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ))}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })
           ) : (
             <EmptyState title="No quests generated" description="Regenerate plan to create quests." />
           )}
@@ -239,6 +481,38 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     questMeta: {
       fontSize: isTablet ? 13 : 12,
       fontWeight: '500',
+    },
+    beforePhotoWrap: {
+      marginTop: 8,
+      gap: 6,
+    },
+    beforePhotoPreview: {
+      width: '100%',
+      height: isTablet ? 200 : 165,
+      borderRadius: 10,
+      backgroundColor: '#dfe7f1',
+    },
+    photoActionsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    photoActionButton: {
+      minHeight: 38,
+      borderWidth: 1,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      overflow: 'hidden',
+      elevation: 1,
+    },
+    photoActionDisabled: {
+      opacity: 0.6,
+    },
+    photoActionLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '700',
     },
     stepsWrap: {
       marginTop: 8,

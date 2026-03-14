@@ -152,7 +152,29 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().session).toBeNull();
     expect(useAuthStore.getState().family).toBeNull();
     expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
-    expect(setItemMock).not.toHaveBeenCalled();
+    expect(setItemMock).toHaveBeenCalledTimes(1);
+    const [, persistedJson] = setItemMock.mock.calls[0] as [string, string];
+    const persisted = JSON.parse(persistedJson) as { pendingFamilyName: string | null };
+    expect(persisted.pendingFamilyName).toBe("Name's");
+  });
+
+  it('hydrate restores pendingFamilyName even without active session', async () => {
+    getItemMock.mockResolvedValue(
+      JSON.stringify({
+        session: null,
+        currentUser: null,
+        role: null,
+        selectedChildId: null,
+        family: null,
+        pendingFamilyName: "Name's",
+      }),
+    );
+
+    await useAuthStore.getState().hydrate();
+
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().pendingFamilyName).toBe("Name's");
+    expect(useAuthStore.getState().isHydrated).toBe(true);
   });
 
   it('register forwards API error', async () => {
@@ -196,6 +218,308 @@ describe('Auth store', () => {
 
     await useAuthStore.getState().setRole('child');
     expect(useAuthStore.getState().selectedChildId).toBeNull();
+  });
+
+  it('persists current user progress updates (xp and level)', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'user@example.com',
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'user-1',
+        fullName: 'User One',
+        email: 'user@example.com',
+        role: 'child',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'adventurer',
+      },
+      role: 'child',
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().setCurrentUserProgress({
+      userId: 'user-1',
+      xp: 420,
+      level: 2,
+      streak: 3,
+    });
+
+    expect(useAuthStore.getState().currentUser?.xp).toBe(420);
+    expect(useAuthStore.getState().currentUser?.level).toBe(2);
+    expect(useAuthStore.getState().currentUser?.streak).toBe(3);
+    expect(setItemMock).toHaveBeenCalled();
+  });
+
+  it('createSessionFromToken clears stale family when account changes', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'old@example.com',
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+      family: {
+        id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+        name: 'Old Family',
+      },
+      selectedChildId: 'child-1',
+    });
+
+    await useAuthStore.getState().createSessionFromToken(
+      {
+        accessToken: 'new-access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      'new@example.com',
+    );
+
+    expect(useAuthStore.getState().session?.email).toBe('new@example.com');
+    expect(useAuthStore.getState().family).toBeNull();
+    expect(useAuthStore.getState().selectedChildId).toBeNull();
+  });
+
+  it('forces adult role for vindener.tv@gmail.com during createSessionFromToken', async () => {
+    useAuthStore.setState({
+      role: 'child',
+      currentUser: {
+        id: 'vindener-user',
+        fullName: 'Vindener User',
+        email: 'vindener.tv@gmail.com',
+        role: 'child',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'adventurer',
+      },
+      session: null,
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().createSessionFromToken(
+      {
+        accessToken: 'forced-adult-access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      'vindener.tv@gmail.com',
+    );
+
+    expect(useAuthStore.getState().role).toBe('adult');
+    expect(useAuthStore.getState().currentUser?.role).toBe('adult');
+  });
+
+  it('keeps forced-adult email as adult even when setRole child is requested', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'vindener.tv@gmail.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'vindener-user',
+        fullName: 'Vindener User',
+        email: 'vindener.tv@gmail.com',
+        role: 'adult',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'mentor',
+      },
+      role: 'adult',
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().setRole('child');
+
+    expect(useAuthStore.getState().role).toBe('adult');
+    expect(useAuthStore.getState().currentUser?.role).toBe('adult');
+  });
+
+  it('forces child role for vindener.tv+bogdan@gmail.com and links createdByAdultId', async () => {
+    useAuthStore.setState({
+      role: 'adult',
+      currentUser: {
+        id: 'bogdan-user',
+        fullName: 'Bogdan User',
+        email: 'vindener.tv+bogdan@gmail.com',
+        role: 'adult',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'mentor',
+      },
+      session: null,
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().createSessionFromToken(
+      {
+        accessToken: 'forced-child-access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      'vindener.tv+bogdan@gmail.com',
+    );
+
+    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.createdByAdultId).toBe('user-vindener-tv-gmail-com');
+  });
+
+  it('keeps forced-child email as child even when setRole adult is requested', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'vindener.tv+bogdan@gmail.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'bogdan-user',
+        fullName: 'Bogdan User',
+        email: 'vindener.tv+bogdan@gmail.com',
+        role: 'child',
+        createdByAdultId: 'user-vindener-tv-gmail-com',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'adventurer',
+      },
+      role: 'child',
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().setRole('adult');
+
+    expect(useAuthStore.getState().role).toBe('child');
+    expect(useAuthStore.getState().currentUser?.role).toBe('child');
+  });
+
+  it('registerChild refreshes family id before post to avoid stale cached family', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+      family: {
+        id: '1f3c6100-3c87-4ff7-a0ef-91a3d6f6744b',
+        name: 'Stale Family',
+      },
+    });
+
+    getFamilyRequestMock.mockResolvedValue({
+      family: {
+        id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+        name: 'Current Family',
+      },
+    });
+
+    await useAuthStore.getState().registerChild({
+      firstName: 'Nika',
+      lastName: 'Horizon',
+      password: 'secret1',
+    });
+
+    expect(registerChildRequestMock).toHaveBeenCalledWith(
+      {
+        firstName: 'Nika',
+        lastName: 'Horizon',
+        password: 'secret1',
+        familyId: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+      },
+      'access',
+    );
+  });
+
+  it('refreshFamily prefers nested family object over unrelated root id', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+    });
+
+    getFamilyRequestMock.mockResolvedValue({
+      id: '1f3c6100-3c87-4ff7-a0ef-91a3d6f6744b',
+      family: {
+        id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+        name: 'Horizon Family',
+      },
+    });
+
+    const family = await useAuthStore.getState().refreshFamily();
+
+    expect(family).toEqual({
+      id: '56f8e422-03e7-4d0d-a9aa-6a8d4d742cab',
+      name: 'Horizon Family',
+    });
+    expect(useAuthStore.getState().family).toEqual(family);
+  });
+
+  it('refreshFamily maps snake_case family payload', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'adult@example.com',
+        accessToken: 'access',
+        refreshToken: null,
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      role: 'adult',
+    });
+
+    getFamilyRequestMock.mockResolvedValue({
+      data: {
+        family_id: 'e8e2e60c-1af2-41af-9059-f9011d0de581',
+        family_name: 'Atlas Family',
+      },
+    });
+
+    const family = await useAuthStore.getState().refreshFamily();
+
+    expect(family).toEqual({
+      id: 'e8e2e60c-1af2-41af-9059-f9011d0de581',
+      name: 'Atlas Family',
+    });
+    expect(useAuthStore.getState().family).toEqual(family);
   });
 
   it('completePasswordReset stores session using API email', async () => {

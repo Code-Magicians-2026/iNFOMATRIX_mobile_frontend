@@ -33,6 +33,12 @@ interface AuthState {
   confirmEmail: (email: string, token: string) => Promise<void>;
   completePasswordReset: (email: string, newPassword: string) => Promise<void>;
   createSessionFromToken: (token: TokenDto, fallbackEmail?: string) => Promise<void>;
+  setCurrentUserProgress: (input: {
+    userId: string;
+    xp: number;
+    level: number;
+    streak?: number;
+  }) => Promise<void>;
   refreshFamily: () => Promise<FamilySummary | null>;
   registerChild: (payload: RegisterChildInput) => Promise<void>;
   setRole: (role: UserRole) => Promise<void>;
@@ -46,15 +52,45 @@ type PersistedAuthEnvelope = {
   role: UserRole | null;
   selectedChildId: string | null;
   family: FamilySummary | null;
+  pendingFamilyName: string | null;
 };
 
 const STORAGE_KEY = 'AUTH_SESSION';
+const FORCE_ADULT_EMAILS = new Set(['vindener.tv@gmail.com']);
+const FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL = {
+  'vindener.tv+bogdan@gmail.com': 'vindener.tv@gmail.com',
+} as const;
+const FORCE_CHILD_EMAILS = new Set(Object.keys(FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL));
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
+
+const normalizeEmail = (value: string | null | undefined): string =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const shouldForceAdultRole = (email: string | null | undefined): boolean =>
+  FORCE_ADULT_EMAILS.has(normalizeEmail(email));
+
+const shouldForceChildRole = (email: string | null | undefined): boolean =>
+  FORCE_CHILD_EMAILS.has(normalizeEmail(email));
+
+const resolveRoleWithSpecialEmailRules = (
+  role: UserRole,
+  email: string | null | undefined,
+): UserRole => {
+  if (shouldForceAdultRole(email)) {
+    return 'adult';
+  }
+
+  if (shouldForceChildRole(email)) {
+    return 'child';
+  }
+
+  return role;
+};
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -127,6 +163,31 @@ const normalizeUserId = (email: string) => {
   return normalized || 'local-user';
 };
 
+const resolveForcedCreatedByAdultId = (
+  email: string,
+  role: UserRole,
+  existingCreatedByAdultId?: string,
+): string | undefined => {
+  if (existingCreatedByAdultId) {
+    return existingCreatedByAdultId;
+  }
+
+  if (role !== 'child') {
+    return undefined;
+  }
+
+  const parentEmail =
+    FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL[
+      normalizeEmail(email) as keyof typeof FORCE_CHILD_PARENT_EMAIL_BY_CHILD_EMAIL
+    ];
+
+  if (!parentEmail) {
+    return undefined;
+  }
+
+  return `user-${normalizeUserId(parentEmail)}`;
+};
+
 const pickFirstString = (
   source: Record<string, unknown>,
   keys: string[],
@@ -140,14 +201,18 @@ const pickFirstString = (
   return null;
 };
 
-const extractFamilySummary = (payload: unknown, depth = 0): FamilySummary | null => {
-  if (depth > 3 || payload === null || payload === undefined) {
+const extractFamilySummary = (
+  payload: unknown,
+  depth = 0,
+  withinFamilyBranch = false,
+): FamilySummary | null => {
+  if (depth > 4 || payload === null || payload === undefined) {
     return null;
   }
 
   if (Array.isArray(payload)) {
     for (const item of payload) {
-      const parsed = extractFamilySummary(item, depth + 1);
+      const parsed = extractFamilySummary(item, depth + 1, withinFamilyBranch);
       if (parsed) {
         return parsed;
       }
@@ -160,36 +225,55 @@ const extractFamilySummary = (payload: unknown, depth = 0): FamilySummary | null
     return null;
   }
 
-  const id = pickFirstString(payload, [
-    'id',
+  const explicitFamilyId = pickFirstString(payload, [
     'familyId',
     'familyID',
-    'Id',
+    'family_id',
     'FamilyId',
     'FamilyID',
+    'Family_Id',
   ]);
-  const name = pickFirstString(payload, ['name', 'familyName', 'Name', 'FamilyName']);
-  if (id || name) {
+  const explicitFamilyName = pickFirstString(payload, [
+    'familyName',
+    'family_name',
+    'FamilyName',
+    'Family_Name',
+  ]);
+  if (explicitFamilyId || explicitFamilyName) {
     return {
-      id: id ?? null,
-      name: name ?? null,
+      id: explicitFamilyId ?? null,
+      name: explicitFamilyName ?? null,
     };
   }
 
-  const nestedCandidates = [
-    payload.family,
-    payload.data,
-    payload.result,
-    payload.item,
-    payload.items,
-    payload.value,
+  const nestedCandidates: Array<{ value: unknown; nextWithinFamilyBranch: boolean }> = [
+    { value: payload.family, nextWithinFamilyBranch: true },
+    { value: payload.families, nextWithinFamilyBranch: true },
+    { value: payload.data, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.result, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.item, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.items, nextWithinFamilyBranch: withinFamilyBranch },
+    { value: payload.value, nextWithinFamilyBranch: withinFamilyBranch },
   ];
 
   for (const candidate of nestedCandidates) {
-    const parsed = extractFamilySummary(candidate, depth + 1);
+    const parsed = extractFamilySummary(
+      candidate.value,
+      depth + 1,
+      candidate.nextWithinFamilyBranch,
+    );
     if (parsed) {
       return parsed;
     }
+  }
+
+  const genericName = pickFirstString(payload, ['name', 'Name']);
+  const genericId = pickFirstString(payload, ['id', 'Id']);
+  if (genericName || (withinFamilyBranch && genericId)) {
+    return {
+      id: genericId ?? null,
+      name: genericName ?? null,
+    };
   }
 
   return null;
@@ -206,6 +290,25 @@ const resolveFamilyName = (lastName: string) => {
 
 const isUnauthorizedError = (error: unknown) =>
   error instanceof ApiError && (error.status === 401 || error.status === 403);
+
+const isFamilyNotFoundError = (error: unknown): boolean => {
+  if (error instanceof ApiError) {
+    const normalizedMessage = error.message.trim().toLowerCase();
+    return normalizedMessage.includes('family') && normalizedMessage.includes('not found');
+  }
+
+  if (error instanceof Error) {
+    const normalizedMessage = error.message.trim().toLowerCase();
+    return normalizedMessage.includes('family') && normalizedMessage.includes('not found');
+  }
+
+  return false;
+};
+
+const normalizeProgressNumber = (value: number, fallback: number, min: number): number =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(min, Math.round(value))
+    : fallback;
 
 const buildLocalUser = (role: UserRole): UserProfile => ({
   id: `local-${role}`,
@@ -228,7 +331,7 @@ const buildUserFromSession = (
   fullName: existingUser?.fullName ?? fallbackNameFromEmail(session.email),
   email: session.email,
   role,
-  createdByAdultId: existingUser?.createdByAdultId,
+  createdByAdultId: resolveForcedCreatedByAdultId(session.email, role, existingUser?.createdByAdultId),
   activeChildId: role === 'adult' ? existingUser?.activeChildId : undefined,
   level: existingUser?.level ?? 1,
   xp: existingUser?.xp ?? 0,
@@ -249,6 +352,9 @@ const readSelectedChildId = (rawValue: unknown, role: UserRole | null) => {
 
   return rawValue;
 };
+
+const readPendingFamilyName = (rawValue: unknown): string | null =>
+  isNonEmptyString(rawValue) ? rawValue.trim() : null;
 
 const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
@@ -287,9 +393,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: legacyRole,
           selectedChildId: null,
           family: null,
+          pendingFamilyName: null,
         };
 
-        set({ ...migratedState, pendingFamilyName: null, isHydrated: true });
+        set({ ...migratedState, isHydrated: true });
         await persistState(migratedState);
         return;
       }
@@ -311,6 +418,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
       const persistedRole = isRole(parsed.role) ? parsed.role : null;
       const persistedUser = isValidUserProfile(parsed.currentUser) ? parsed.currentUser : null;
       const persistedFamily = isValidFamilySummary(parsed.family) ? parsed.family : null;
+      const persistedPendingFamilyName = readPendingFamilyName(parsed.pendingFamilyName);
 
       if (!session) {
         set({
@@ -319,13 +427,16 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: null,
           selectedChildId: null,
           family: null,
-          pendingFamilyName: null,
+          pendingFamilyName: persistedPendingFamilyName,
           isHydrated: true,
         });
         return;
       }
 
-      const resolvedRole: UserRole = persistedRole ?? persistedUser?.role ?? 'adult';
+      const resolvedRole = resolveRoleWithSpecialEmailRules(
+        persistedRole ?? persistedUser?.role ?? 'adult',
+        session.email,
+      );
       const currentUser = buildUserFromSession(session, resolvedRole, persistedUser?.id, persistedUser);
       const selectedChildId =
         readSelectedChildId(parsed.selectedChildId, resolvedRole) ??
@@ -337,7 +448,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
         role: resolvedRole,
         selectedChildId,
         family: persistedFamily,
-        pendingFamilyName: null,
+        pendingFamilyName: persistedPendingFamilyName,
         isHydrated: true,
       });
     } catch {
@@ -366,10 +477,20 @@ const useAuthStore = create<AuthState>((set, get) => ({
     });
 
     // Family creation should not block account registration.
+    const pendingPayload: PersistedAuthEnvelope = {
+      session: null,
+      currentUser: null,
+      role: null,
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: resolvedFamilyName,
+    };
+
     set({
       pendingFamilyName: resolvedFamilyName,
       family: null,
     });
+    await persistState(pendingPayload);
   },
 
   login: async (email: string, password: string) => {
@@ -406,6 +527,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: snapshot.role,
           selectedChildId: snapshot.selectedChildId,
           family: snapshot.family,
+          pendingFamilyName: snapshot.pendingFamilyName,
         };
 
         if (payload.session) {
@@ -450,6 +572,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
           role: snapshot.role,
           selectedChildId: snapshot.selectedChildId,
           family: snapshot.family,
+          pendingFamilyName: snapshot.pendingFamilyName,
         };
 
         if (payload.session) {
@@ -469,22 +592,77 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
   createSessionFromToken: async (token: TokenDto, fallbackEmail?: string) => {
     const session = buildSessionFromToken(token, fallbackEmail);
+    const previousSession = get().session;
+    const isSameSessionIdentity =
+      previousSession?.email.trim().toLowerCase() === session.email.trim().toLowerCase();
+    const shouldCarryPendingFamilyName = !previousSession || isSameSessionIdentity;
     const previousUser = get().currentUser;
-    const nextRole: UserRole = get().role ?? previousUser?.role ?? 'adult';
+    const nextRole = resolveRoleWithSpecialEmailRules(
+      get().role ?? previousUser?.role ?? 'adult',
+      session.email,
+    );
     const nextUser = buildUserFromSession(session, nextRole, token.userId, previousUser);
     const nextSelectedChildId =
-      nextRole === 'adult' ? get().selectedChildId ?? nextUser.activeChildId ?? null : null;
+      nextRole === 'adult'
+        ? isSameSessionIdentity
+          ? get().selectedChildId ?? nextUser.activeChildId ?? null
+          : nextUser.activeChildId ?? null
+        : null;
 
     const payload: PersistedAuthEnvelope = {
       session,
       currentUser: nextUser,
       role: nextRole,
       selectedChildId: nextSelectedChildId,
-      family: get().family,
+      family: isSameSessionIdentity ? get().family : null,
+      pendingFamilyName: shouldCarryPendingFamilyName ? get().pendingFamilyName : null,
     };
 
     set(payload);
     await persistState(payload);
+  },
+
+  setCurrentUserProgress: async (input) => {
+    const currentUser = get().currentUser;
+    if (!currentUser || currentUser.id !== input.userId) {
+      return;
+    }
+
+    const nextXp = normalizeProgressNumber(input.xp, currentUser.xp, 0);
+    const nextLevel = normalizeProgressNumber(input.level, currentUser.level, 1);
+    const nextStreak = normalizeProgressNumber(input.streak ?? currentUser.streak, currentUser.streak, 0);
+
+    if (
+      currentUser.xp === nextXp &&
+      currentUser.level === nextLevel &&
+      currentUser.streak === nextStreak
+    ) {
+      return;
+    }
+
+    const nextUser: UserProfile = {
+      ...currentUser,
+      xp: nextXp,
+      level: nextLevel,
+      streak: nextStreak,
+    };
+
+    const payload: PersistedAuthEnvelope = {
+      session: get().session,
+      currentUser: nextUser,
+      role: get().role,
+      selectedChildId: get().selectedChildId,
+      family: get().family,
+      pendingFamilyName: get().pendingFamilyName,
+    };
+
+    set({
+      currentUser: nextUser,
+    });
+
+    if (payload.session) {
+      await persistState(payload);
+    }
   },
 
   refreshFamily: async () => {
@@ -512,6 +690,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
       role: snapshot.role,
       selectedChildId: snapshot.selectedChildId,
       family,
+      pendingFamilyName: snapshot.pendingFamilyName,
     };
 
     set({ family });
@@ -527,6 +706,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     let family = get().family;
+    try {
+      family = await get().refreshFamily();
+    } catch {}
+
     const pendingFamilyName = get().pendingFamilyName;
     if (!family?.id && pendingFamilyName) {
       await authService.createFamily({ name: pendingFamilyName }, session.accessToken);
@@ -538,6 +721,16 @@ const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (!family?.id) {
+      const fallbackFamilyName =
+        pendingFamilyName ??
+        family?.name?.trim() ??
+        resolveFamilyName(payload.lastName);
+      await authService.createFamily({ name: fallbackFamilyName }, session.accessToken);
+      family = await get().refreshFamily();
+      set({ pendingFamilyName: null });
+    }
+
+    if (!family?.id) {
       throw new Error('Не вдалося визначити ID сімʼї. Оновіть профіль сімʼї та спробуйте ще раз.');
     }
 
@@ -545,37 +738,60 @@ const useAuthStore = create<AuthState>((set, get) => ({
       throw new Error('ID сімʼї має бути UUID. Оновіть дані сімʼї та спробуйте знову.');
     }
 
-    await authService.registerChild(
-      {
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        password: payload.password,
-        familyId: family.id,
-      },
-      session.accessToken,
-    );
+    const registerWithFamilyId = async (familyId: string) => {
+      await authService.registerChild(
+        {
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          password: payload.password,
+          familyId,
+        },
+        session.accessToken,
+      );
+    };
+
+    try {
+      await registerWithFamilyId(family.id);
+    } catch (error) {
+      if (!isFamilyNotFoundError(error)) {
+        throw error;
+      }
+
+      try {
+        const refreshedFamily = await get().refreshFamily();
+        const refreshedFamilyId = refreshedFamily?.id?.trim() ?? null;
+        if (refreshedFamilyId && refreshedFamilyId !== family.id) {
+          await registerWithFamilyId(refreshedFamilyId);
+          return;
+        }
+      } catch {}
+
+      throw error;
+    }
   },
 
   setRole: async (role: UserRole) => {
     const session = get().session;
+    const resolvedRole = resolveRoleWithSpecialEmailRules(role, session?.email ?? null);
     const currentUser = get().currentUser;
     const nextUser = session
-      ? buildUserFromSession(session, role, currentUser?.id, currentUser)
+      ? buildUserFromSession(session, resolvedRole, currentUser?.id, currentUser)
       : {
-          ...(currentUser ?? buildLocalUser(role)),
-          role,
-          activeChildId: role === 'adult' ? currentUser?.activeChildId : undefined,
+          ...(currentUser ?? buildLocalUser(resolvedRole)),
+          role: resolvedRole,
+          activeChildId: resolvedRole === 'adult' ? currentUser?.activeChildId : undefined,
         };
 
     const nextSelectedChildId =
-      role === 'adult' ? get().selectedChildId ?? nextUser.activeChildId ?? null : null;
+      resolvedRole === 'adult' ? get().selectedChildId ?? nextUser.activeChildId ?? null : null;
 
     const payload: PersistedAuthEnvelope = {
       session,
       currentUser: nextUser,
-      role,
+      role: resolvedRole,
       selectedChildId: nextSelectedChildId,
       family: get().family,
+      pendingFamilyName: get().pendingFamilyName,
     };
 
     set(payload);
@@ -603,6 +819,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
       role: 'adult',
       selectedChildId: normalizedChildId,
       family: get().family,
+      pendingFamilyName: get().pendingFamilyName,
     };
 
     set(payload);

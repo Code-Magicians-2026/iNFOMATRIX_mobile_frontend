@@ -2,28 +2,41 @@ import React from 'react';
 import { getFocusedRouteNameFromRoute, type NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import TabNavigator from '@/src/navigation/TabNavigator';
+import useAuthStore from '@/context/Auth-store';
 import Header from '@/modules/Header/Header';
 import ConfirmEmailScreen from '@/src/features/auth/screens/ConfirmEmailScreen';
 import LoginScreen from '@/src/features/auth/screens/LoginScreen';
 import ResetPasswordScreen from '@/src/features/auth/screens/ResetPasswordScreen';
 import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
+import AchievementsScreen from '@/src/features/profile/screens/AchievementsScreen';
 import EarnedBadgesScreen from '@/src/features/profile/screens/EarnedBadgesScreen';
 import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
 import PlanPreviewScreen from '@/src/features/chat/screens/PlanPreviewScreen';
+import RoleBasedNavigator from '@/src/navigation/RoleBasedNavigator';
+import { getMainHeaderTitle, resolveNavigationRole } from '@/src/navigation/navigation-config';
 import type { GeneratedPlan } from '@/shared/models/mvp-contracts.model';
 import type { GeneratePlanInput } from '@/src/integration/services';
 
-export type TabParamList = {
+export type AdultTabParamList = {
   Home: undefined;
   Quests: undefined;
   Chat: undefined;
   Profile: undefined;
 };
 
+export type ChildTabParamList = {
+  Home: undefined;
+  Quests: undefined;
+  Chat: undefined;
+  Profile: undefined;
+};
+
+export type MainTabParamList = AdultTabParamList & ChildTabParamList;
+
 export type AppStackParamList = {
-  MainTabs: NavigatorScreenParams<TabParamList> | undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Settings: undefined;
+  Achievements: { userId: string; displayName?: string };
   EarnedBadges: { userId: string; displayName?: string };
   PlanPreview: {
     plan: GeneratedPlan;
@@ -38,33 +51,28 @@ export type AppStackParamList = {
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
 
-const getMainHeaderTitle = (route: unknown) => {
-  const focusedRouteName = getFocusedRouteNameFromRoute(route as never) ?? 'Home';
-
-  switch (focusedRouteName) {
-    case 'Home':
-      return 'Home';
-    case 'Quests':
-      return 'Quests';
-    case 'Chat':
-      return 'AI Builder';
-    case 'Profile':
-      return 'Profile';
-    default:
-      return 'Home';
-  }
-};
-
 export default function AppNavigator() {
+  const role = useAuthStore((s) => s.role);
+  const isHydrated = useAuthStore((s) => s.isHydrated);
+  const resolvedRoleState = resolveNavigationRole({ isHydrated, role });
+  const resolvedRole = resolvedRoleState === 'loading' ? 'child' : resolvedRoleState;
+
   return (
     <Stack.Navigator>
       <Stack.Screen
         name="MainTabs"
-        component={TabNavigator}
+        component={RoleBasedNavigator}
         options={({ navigation, route }) => ({
+          headerTitle: getMainHeaderTitle(
+            (getFocusedRouteNameFromRoute(route as never) ?? 'Home') as keyof MainTabParamList,
+            resolvedRole,
+          ),
           header: () => (
             <Header
-              title={getMainHeaderTitle(route)}
+              title={getMainHeaderTitle(
+                (getFocusedRouteNameFromRoute(route as never) ?? 'Home') as keyof MainTabParamList,
+                resolvedRole,
+              )}
               onAiPress={() =>
                 navigation.navigate('MainTabs', {
                   screen: 'Chat',
@@ -104,6 +112,24 @@ export default function AppNavigator() {
           header: () => (
             <Header
               title="Settings"
+              showBackButton
+              onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="Achievements"
+        component={AchievementsScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <Header
+              title="Achievements"
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>

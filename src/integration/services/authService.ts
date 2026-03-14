@@ -88,11 +88,11 @@ export const authService = {
   registerChild: async (
     payload: RegisterChildRequestDto,
     accessToken: string,
-  ): Promise<void> => {
+  ): Promise<unknown> => {
     if (isOfflineTestingModeEnabled()) {
       throwOfflineAuthError();
     }
-    await registerChild(payload, { accessToken });
+    return registerChild(payload, { accessToken });
   },
 
   requestResetPassword: async (payload: RequestResetPasswordRequestDto): Promise<EmailDto> => {

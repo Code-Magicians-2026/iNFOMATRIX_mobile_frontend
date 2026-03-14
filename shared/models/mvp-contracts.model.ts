@@ -48,6 +48,17 @@ export interface PlanRequest {
 export type QuestStepStatus = 'pending' | 'completed';
 
 export type QuestStatus = 'draft' | 'active' | 'completed' | 'archived';
+export type QuestRewardType = 'money' | 'screen_time' | 'treat' | 'activity' | 'custom';
+export type QuestPhotoSyncStatus = 'not_sent' | 'pending' | 'sent';
+export type QuestPhotosSyncStatus = 'local_only' | 'pending_sync' | 'synced';
+
+export interface QuestPhoto {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  createdAt: string;
+  syncStatus?: QuestPhotoSyncStatus;
+}
 
 export interface QuestStep {
   id: string;
@@ -68,8 +79,20 @@ export interface Quest {
   category?: string;
   difficulty: string;
   rewardXp: number;
+  rewardType?: QuestRewardType;
+  rewardTitle?: string;
+  rewardDescription?: string;
+  rewardValue?: number | null;
+  rewardCurrencyOrUnit?: string | null;
+  rewardUpdatedAt?: string;
   estimatedMinutes: number;
   status: QuestStatus;
+  beforePhoto?: QuestPhoto | null;
+  afterPhoto?: QuestPhoto | null;
+  reportPhotoRequired?: boolean;
+  photosSyncStatus?: QuestPhotosSyncStatus;
+  visionSummary?: string | null;
+  visionSummaryCheckedAt?: string | null;
   stepsCount?: number;
   completedStepsCount?: number;
   steps?: QuestStep[];

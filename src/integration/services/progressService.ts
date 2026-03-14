@@ -40,6 +40,14 @@ export const progressService = {
       return getProgressMock(userId);
     }
 
-    return buildProgressFromLocalPlans(userId);
+    const progress = buildProgressFromLocalPlans(userId);
+    await useAuthStore.getState().setCurrentUserProgress({
+      userId: progress.userId,
+      xp: progress.xp,
+      level: progress.level,
+      streak: progress.streak,
+    });
+
+    return progress;
   },
 };

@@ -21,7 +21,6 @@ import type {
   ProgressSummary,
   Quest,
   UserProfile,
-  UserRole,
 } from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
@@ -189,7 +188,49 @@ type FamilyResolutionDebug = {
 
 const formatChildAge = (age: number): string => (age > 0 ? String(age) : 'x');
 
-const HomeScreen = () => {
+const normalizeEmailAliasChunk = (value: string): string => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return normalized || 'child';
+};
+
+const buildChildLoginEmailFallback = (
+  parentEmail: string | null | undefined,
+  firstName: string,
+): string | null => {
+  if (!parentEmail) {
+    return null;
+  }
+
+  const normalizedEmail = parentEmail.trim().toLowerCase();
+  const atIndex = normalizedEmail.indexOf('@');
+  if (atIndex <= 0 || atIndex === normalizedEmail.length - 1) {
+    return null;
+  }
+
+  const local = normalizedEmail.slice(0, atIndex);
+  const domain = normalizedEmail.slice(atIndex + 1);
+  const localWithoutAlias = local.split('+')[0] ?? local;
+  const alias = normalizeEmailAliasChunk(firstName);
+
+  if (!localWithoutAlias || !domain) {
+    return null;
+  }
+
+  return `${localWithoutAlias}+${alias}@${domain}`;
+};
+
+type ChildLoginSummary = {
+  fullName: string;
+  email: string;
+};
+
+const AdultHomeScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
@@ -198,12 +239,10 @@ const HomeScreen = () => {
     [cardMaxWidth, isTablet, spacing],
   );
 
-  const role = useAuthStore((s) => s.role);
   const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
   const family = useAuthStore((s) => s.family);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
-  const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const registerChild = useAuthStore((s) => s.registerChild);
   const refreshFamily = useAuthStore((s) => s.refreshFamily);
@@ -222,9 +261,11 @@ const HomeScreen = () => {
   const [approvingPlanId, setApprovingPlanId] = React.useState<string | null>(null);
 
   const [isCreateChildModalVisible, setIsCreateChildModalVisible] = React.useState(false);
+  const [isChildLoginModalVisible, setIsChildLoginModalVisible] = React.useState(false);
   const [childFirstName, setChildFirstName] = React.useState('');
   const [childLastName, setChildLastName] = React.useState('');
   const [childPassword, setChildPassword] = React.useState('');
+  const [childLoginSummary, setChildLoginSummary] = React.useState<ChildLoginSummary | null>(null);
   const [createChildError, setCreateChildError] = React.useState<string | null>(null);
   const lastDashboardRefreshAtRef = React.useRef(0);
 
@@ -232,13 +273,7 @@ const HomeScreen = () => {
   const [aiPrompt, setAiPrompt] = React.useState<string>(PLAN_PROMPTS[0]);
   const [aiBuilderError, setAiBuilderError] = React.useState<string | null>(null);
 
-  const effectiveRole: UserRole = role ?? 'child';
-
-  React.useEffect(() => {
-    if (!role) {
-      void setRole('child');
-    }
-  }, [role, setRole]);
+  const effectiveRole = 'adult' as const;
 
   const loadDashboard = React.useCallback(
     async (showLoader = false) => {
@@ -402,6 +437,8 @@ const HomeScreen = () => {
       return;
     }
 
+    setChildLoginSummary(null);
+    setIsChildLoginModalVisible(false);
     resetCreateChildForm();
     const userLastName =
       extractLastNameFromFamilyName(family?.name) ||
@@ -420,6 +457,44 @@ const HomeScreen = () => {
     }
 
     setIsCreateChildModalVisible(false);
+  };
+
+  const closeChildLoginModal = () => {
+    setIsChildLoginModalVisible(false);
+  };
+
+  const presentChildLoginSummary = (input: {
+    firstName: string;
+    lastName: string;
+    fallbackFullName: string;
+    registrationPreview:
+      | {
+          firstName: string;
+          lastName: string;
+          email: string;
+        }
+      | null
+      | undefined;
+  }) => {
+    const preview = input.registrationPreview;
+    const resolvedFirstName = preview?.firstName?.trim() || input.firstName;
+    const resolvedLastName = preview?.lastName?.trim() || input.lastName;
+    const resolvedFullName =
+      `${resolvedFirstName} ${resolvedLastName}`.trim() || input.fallbackFullName;
+    const resolvedEmail =
+      preview?.email?.trim() ||
+      buildChildLoginEmailFallback(session?.email, resolvedFirstName) ||
+      null;
+
+    if (!resolvedEmail) {
+      return;
+    }
+
+    setChildLoginSummary({
+      fullName: resolvedFullName,
+      email: resolvedEmail,
+    });
+    setIsChildLoginModalVisible(true);
   };
 
   const handleCreateChild = async () => {
@@ -448,6 +523,13 @@ const HomeScreen = () => {
     let usedFamilyId: string | null = null;
     let createChildStrategy: 'explicit-family-id' | 'store-register-child' = 'store-register-child';
     let familyResolutionDebug: FamilyResolutionDebug | null = null;
+    let registrationPreview:
+      | {
+          firstName: string;
+          lastName: string;
+          email: string;
+        }
+      | null = null;
 
     try {
       familyResolutionDebug = await resolveFamilyId();
@@ -456,12 +538,13 @@ const HomeScreen = () => {
       if (familyId) {
         createChildStrategy = 'explicit-family-id';
         try {
-          await childrenService.createChild({
+          const createdResult = await childrenService.createChild({
             firstName,
             lastName,
             password: childPassword,
             familyId,
           });
+          registrationPreview = createdResult.registrationPreview;
         } catch (error) {
           if (!isFamilyNotFoundError(error)) {
             throw error;
@@ -497,8 +580,20 @@ const HomeScreen = () => {
           setSelectedChildId(createdChild.id),
           loadDashboard(false),
         ]);
+        presentChildLoginSummary({
+          firstName,
+          lastName,
+          fallbackFullName: createdChild.fullName,
+          registrationPreview,
+        });
       } else {
         await loadDashboard(false);
+        presentChildLoginSummary({
+          firstName,
+          lastName,
+          fallbackFullName: `${firstName} ${lastName}`.trim(),
+          registrationPreview,
+        });
       }
 
       setScreenError(null);
@@ -519,6 +614,12 @@ const HomeScreen = () => {
               setSelectedChildId(createdChild.id),
               loadDashboard(false),
             ]);
+            presentChildLoginSummary({
+              firstName,
+              lastName,
+              fallbackFullName: createdChild.fullName,
+              registrationPreview,
+            });
             setScreenError(null);
             return;
           }
@@ -651,55 +752,8 @@ const HomeScreen = () => {
     <ScreenContainer>
       <SectionHeader
         title="Home"
-        subtitle={
-          effectiveRole === 'adult'
-            ? `Adult dashboard: ${me?.fullName ?? 'Parent'}`
-            : `Hello, ${me?.fullName ?? 'Hero'}!`
-        }
+        subtitle={`Adult dashboard: ${me?.fullName ?? 'Parent'}`}
       />
-
-      <View style={[styles.roleSwitcher, { borderColor: colors.border, backgroundColor: colors.card }]}> 
-        <Pressable
-          onPress={() => {
-            void setRole('adult');
-          }}
-          style={[
-            styles.roleChip,
-            {
-              backgroundColor: effectiveRole === 'adult' ? '#ff2d55' : colors.background,
-              borderColor: effectiveRole === 'adult' ? '#ff2d55' : colors.border,
-            },
-          ]}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-        >
-          <Text
-            style={[styles.roleChipLabel, { color: effectiveRole === 'adult' ? '#ffffff' : colors.text }]}
-            allowFontScaling
-          >
-            Adult
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            void setRole('child');
-          }}
-          style={[
-            styles.roleChip,
-            {
-              backgroundColor: effectiveRole === 'child' ? '#ff2d55' : colors.background,
-              borderColor: effectiveRole === 'child' ? '#ff2d55' : colors.border,
-            },
-          ]}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-        >
-          <Text
-            style={[styles.roleChipLabel, { color: effectiveRole === 'child' ? '#ffffff' : colors.text }]}
-            allowFontScaling
-          >
-            Child
-          </Text>
-        </Pressable>
-      </View>
 
       {screenError ? <EmptyState title="Dashboard error" description={screenError} /> : null}
 
@@ -1027,6 +1081,54 @@ const HomeScreen = () => {
       </Modal>
 
       <Modal
+        visible={isChildLoginModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeChildLoginModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]} allowFontScaling>
+              Child Login
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]} allowFontScaling>
+              Child profile created. Use these credentials to sign in:
+            </Text>
+
+            <View style={[styles.loginSummaryBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <Text style={[styles.loginSummaryLabel, { color: colors.textSecondary }]} allowFontScaling>
+                Name
+              </Text>
+              <Text style={[styles.loginSummaryValue, { color: colors.text }]} allowFontScaling>
+                {childLoginSummary?.fullName ?? '—'}
+              </Text>
+
+              <Text style={[styles.loginSummaryLabel, { color: colors.textSecondary }]} allowFontScaling>
+                Email
+              </Text>
+              <Text style={[styles.loginSummaryValue, { color: colors.text }]} allowFontScaling>
+                {childLoginSummary?.email ?? '—'}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={closeChildLoginModal}
+              style={({ pressed }) => [
+                styles.modalSingleButton,
+                styles.modalButtonPrimary,
+                { opacity: pressed ? 0.9 : 1 },
+              ]}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+            >
+              <Text style={[styles.modalButtonLabel, styles.modalButtonLabelPrimary]} allowFontScaling>
+                Done
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={isAiBuilderModalVisible}
         transparent
         animationType="fade"
@@ -1342,6 +1444,16 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderWidth: 1,
       elevation: 2,
     },
+    modalSingleButton: {
+      minHeight: 42,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      borderWidth: 1,
+      elevation: 2,
+      width: '100%',
+    },
     modalButtonPrimary: {
       backgroundColor: '#ff2d55',
       borderColor: '#ff2d55',
@@ -1359,6 +1471,25 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     modalButtonLabelPrimary: {
       color: '#ffffff',
     },
+    loginSummaryBox: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 4,
+      marginTop: 4,
+      marginBottom: 8,
+      elevation: 1,
+    },
+    loginSummaryLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '600',
+    },
+    loginSummaryValue: {
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+      marginBottom: 2,
+    },
   });
 
-export default HomeScreen;
+export default AdultHomeScreen;

@@ -53,4 +53,23 @@ export const getStyles = (
       fontSize: isTablet ? 14 : 13,
       color: c.textSecondary,
     },
+    roleChipsRow: {
+      marginTop: 12,
+      flexDirection: 'row',
+      gap: 10,
+    },
+    roleChip: {
+      flex: 1,
+      minHeight: isTablet ? 44 : 40,
+      borderWidth: 1,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      elevation: 1,
+    },
+    roleChipLabel: {
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+    },
   });

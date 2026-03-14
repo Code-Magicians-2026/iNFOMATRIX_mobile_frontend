@@ -3,6 +3,8 @@ export { default as CompletionBadge } from './CompletionBadge';
 export { default as LoadingState } from './LoadingState';
 export { default as PrimaryButton } from './PrimaryButton';
 export { default as QuestCard } from './QuestCard';
+export { default as QuestRewardEditor } from './QuestRewardEditor';
 export { default as ScreenContainer } from './ScreenContainer';
 export { default as SectionHeader } from './SectionHeader';
 export { default as StatCard } from './StatCard';
+export { default as UpgradePlanBanner } from './UpgradePlanBanner';

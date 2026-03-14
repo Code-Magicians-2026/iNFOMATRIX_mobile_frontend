@@ -18,16 +18,21 @@ type OfflineSeedBadgeRecord = {
   difficulty: string;
   badgeType: 'basic' | 'fire';
   imageKey:
-    | 'fire_flame'
-    | 'fire_rocket'
-    | 'fire_crown'
-    | 'fire_trophy'
-    | 'fire_streak'
-    | 'basic_star'
-    | 'basic_medal'
-    | 'basic_target'
-    | 'basic_shield'
-    | 'basic_lightning';
+    | 'ref1'
+    | 'ref2'
+    | 'ref3'
+    | 'ref4'
+    | 'ref5'
+    | 'ref6'
+    | 'ref7'
+    | 'ref8'
+    | 'ref9'
+    | 'ref10'
+    | 'ref11'
+    | 'ref12'
+    | 'ref13'
+    | 'ref14'
+    | 'ref15';
   earnedAt: string;
 };
 
@@ -38,7 +43,7 @@ const offlineSeedBadges: OfflineSeedBadgeRecord[] = [
     questId: 'offline-quest-4',
     difficulty: 'easy',
     badgeType: 'basic',
-    imageKey: 'basic_star',
+    imageKey: 'ref1',
     earnedAt: '2026-03-12T07:56:00.000Z',
   },
   {
@@ -47,7 +52,7 @@ const offlineSeedBadges: OfflineSeedBadgeRecord[] = [
     questId: 'offline-quest-5',
     difficulty: 'medium',
     badgeType: 'fire',
-    imageKey: 'fire_trophy',
+    imageKey: 'ref4',
     earnedAt: '2026-03-11T17:46:00.000Z',
   },
   {
@@ -56,7 +61,7 @@ const offlineSeedBadges: OfflineSeedBadgeRecord[] = [
     questId: 'offline-seed-achievement',
     difficulty: 'easy',
     badgeType: 'basic',
-    imageKey: 'basic_target',
+    imageKey: 'ref3',
     earnedAt: '2026-03-10T16:30:00.000Z',
   },
 ];

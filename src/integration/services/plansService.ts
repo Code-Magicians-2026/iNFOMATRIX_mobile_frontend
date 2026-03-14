@@ -7,7 +7,14 @@ import {
   persistOfflineStateIfEnabled,
   syncMockLayerContextFromAuth,
 } from '@/src/integration/services/offline-mode';
-import type { GeneratedPlan, Quest, QuestStatus, QuestStep } from '@/shared/models/mvp-contracts.model';
+import type {
+  GeneratedPlan,
+  Quest,
+  QuestPhoto,
+  QuestStatus,
+  QuestStep,
+} from '@/shared/models/mvp-contracts.model';
+import { isQuestRewardType } from '@/shared/models/quest-reward.model';
 
 export type GeneratePlanInput = {
   targetUserId: string;
@@ -72,6 +79,54 @@ const pickArray = (source: UnknownRecord, keys: string[]): unknown[] | null => {
   }
 
   return null;
+};
+
+const pickObject = (source: UnknownRecord, keys: string[]): UnknownRecord | null => {
+  for (const key of keys) {
+    const value = source[key];
+    if (isObject(value)) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const toQuestPhoto = (value: unknown): QuestPhoto | null => {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const uri = toNonEmptyString(value.uri);
+  if (!uri) {
+    return null;
+  }
+
+  return {
+    uri,
+    fileName: toNonEmptyString(value.fileName),
+    mimeType: toNonEmptyString(value.mimeType),
+    createdAt: toNonEmptyString(value.createdAt) ?? new Date().toISOString(),
+    syncStatus:
+      value.syncStatus === 'not_sent' || value.syncStatus === 'pending' || value.syncStatus === 'sent'
+        ? value.syncStatus
+        : 'not_sent',
+  };
+};
+
+const toQuestPhotoFromPromptPhoto = (photo?: GeneratePlanInput['photo']): QuestPhoto | null => {
+  const uri = photo?.uri?.trim();
+  if (!uri) {
+    return null;
+  }
+
+  return {
+    uri,
+    fileName: toNonEmptyString(photo?.fileName) ?? null,
+    mimeType: toNonEmptyString(photo?.mimeType) ?? null,
+    createdAt: new Date().toISOString(),
+    syncStatus: 'not_sent',
+  };
 };
 
 const toQuestStatus = (value: string | null): QuestStatus => {
@@ -308,6 +363,18 @@ const buildQuestFromPayload = (
   const description =
     pickString(payload, ['description', 'details', 'text', 'content']) ??
     normalizedPrompt;
+  const rewardTypeCandidate = pickString(payload, ['rewardType', 'rewardKind', 'rewardCategory']);
+  const rewardType = isQuestRewardType(rewardTypeCandidate) ? rewardTypeCandidate : undefined;
+  const rewardTitle = pickString(payload, ['rewardTitle', 'rewardLabel']) ?? undefined;
+  const rewardDescription = pickString(payload, ['rewardDescription', 'rewardNote']) ?? undefined;
+  const rewardValue = pickNumber(payload, ['rewardValue']) ?? null;
+  const rewardCurrencyOrUnit = pickString(payload, ['rewardCurrencyOrUnit', 'rewardUnit']) ?? null;
+  const beforePhotoFromPayload = toQuestPhoto(pickObject(payload, ['beforePhoto', 'before_photo', 'photoBefore']));
+  const beforePhoto = beforePhotoFromPayload ?? toQuestPhotoFromPromptPhoto(input.photo);
+  const afterPhoto = toQuestPhoto(pickObject(payload, ['afterPhoto', 'after_photo', 'photoAfter']));
+  const reportPhotoRequired = Boolean(beforePhoto?.uri);
+  const visionSummary = pickString(payload, ['visionSummary', 'summaryVision', 'aiSummaryVision']) ?? null;
+  const visionSummaryCheckedAt = pickString(payload, ['visionSummaryCheckedAt']) ?? null;
   const steps = buildStepsFromPayload(payload, id, title, description, forcedStepCandidates);
   const completedStepsCount = steps.filter((step) => step.status === 'completed').length;
 
@@ -319,6 +386,17 @@ const buildQuestFromPayload = (
     category: pickString(payload, ['category', 'type']) ?? undefined,
     difficulty: pickString(payload, ['difficulty', 'level']) ?? 'medium',
     rewardXp: Math.max(1, Math.round(rewardXp)),
+    rewardType,
+    rewardTitle,
+    rewardDescription,
+    rewardValue,
+    rewardCurrencyOrUnit,
+    beforePhoto,
+    afterPhoto,
+    reportPhotoRequired,
+    photosSyncStatus: 'local_only',
+    visionSummary,
+    visionSummaryCheckedAt,
     estimatedMinutes: Math.max(1, Math.round(estimatedMinutes)),
     status: (() => {
       const rawStatus = pickString(payload, ['status', 'questStatus']);

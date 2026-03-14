@@ -11,6 +11,15 @@ import {
 } from '@/src/integration/services/offline-mode';
 
 export type CreateChildInput = RegisterChildRequestDto;
+export type ChildRegistrationPreview = {
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+export type CreateChildResult = {
+  child: ChildProfile;
+  registrationPreview: ChildRegistrationPreview | null;
+};
 const CHILDREN_CACHE_TTL_MS = 20_000;
 type GetChildrenOptions = {
   forceRefresh?: boolean;
@@ -44,6 +53,52 @@ const pickString = (source: UnknownRecord, keys: string[]): string | null => {
     const value = toNonEmptyString(source[key]);
     if (value) {
       return value;
+    }
+  }
+
+  return null;
+};
+
+const extractChildRegistrationPreview = (
+  payload: unknown,
+  depth = 0,
+): ChildRegistrationPreview | null => {
+  if (depth > 4 || payload === null || payload === undefined) {
+    return null;
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const parsed = extractChildRegistrationPreview(item, depth + 1);
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  if (!isObject(payload)) {
+    return null;
+  }
+
+  const firstName = pickString(payload, ['firstName', 'FirstName']);
+  const lastName = pickString(payload, ['lastName', 'LastName']);
+  const email = pickString(payload, ['email', 'Email']);
+
+  if (firstName && lastName && email) {
+    return {
+      firstName,
+      lastName,
+      email,
+    };
+  }
+
+  const nestedCandidates = [payload.data, payload.result, payload.value, payload.item];
+  for (const candidate of nestedCandidates) {
+    const parsed = extractChildRegistrationPreview(candidate, depth + 1);
+    if (parsed) {
+      return parsed;
     }
   }
 
@@ -105,7 +160,7 @@ const toChildProfile = (payload: unknown, index: number): ChildProfile | null =>
     pickString(payload, ['id', 'childId', 'userId', 'Id', 'ChildId', 'UserId']) ??
     `api-child-${index + 1}`;
   const fullName = buildFullName(payload) ?? `Child ${index + 1}`;
-  const age = toNumber(payload.age) ?? toNumber(payload.Age) ?? 10;
+  const age = toNumber(payload.age) ?? toNumber(payload.Age) ?? 0;
   const createdByAdultId =
     pickString(payload, ['createdByAdultId', 'adultId', 'parentId', 'CreatedByAdultId']) ??
     'adult-1';
@@ -273,7 +328,7 @@ export const childrenService = {
     }
   },
 
-  createChild: async (input: CreateChildInput): Promise<ChildProfile> => {
+  createChild: async (input: CreateChildInput): Promise<CreateChildResult> => {
     if (isOfflineTestingModeEnabled()) {
       syncMockLayerContextFromAuth();
       const created = await createChildMock({
@@ -281,7 +336,10 @@ export const childrenService = {
         age: 10,
       });
       await persistOfflineStateIfEnabled();
-      return created;
+      return {
+        child: created,
+        registrationPreview: null,
+      };
     }
 
     const session = useAuthStore.getState().session;
@@ -289,7 +347,9 @@ export const childrenService = {
       throw new Error('Для створення дитини потрібна авторизація.');
     }
 
-    await withAuthRecovery((token) => authService.registerChild(input, token));
+    const { payload: registerChildPayload } = await withAuthRecovery(
+      (token) => authService.registerChild(input, token),
+    );
     childrenCache = null;
     inFlightChildrenRequest = null;
     const children = await childrenService.getChildren({ forceRefresh: true });
@@ -302,6 +362,9 @@ export const childrenService = {
       throw new Error('Дитину створено, але не вдалося оновити список дітей.');
     }
 
-    return resolved;
+    return {
+      child: resolved,
+      registrationPreview: extractChildRegistrationPreview(registerChildPayload),
+    };
   },
 };

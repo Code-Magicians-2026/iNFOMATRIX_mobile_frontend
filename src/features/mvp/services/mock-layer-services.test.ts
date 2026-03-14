@@ -14,6 +14,8 @@ import {
   resetMockLayerState,
   setMockMeId,
   toggleQuestStepMock,
+  updateQuestAfterPhotoMock,
+  updateQuestBeforePhotoMock,
 } from '@/src/features/mvp/services/mock-layer-services';
 
 describe('mock-layer-services', () => {
@@ -60,6 +62,8 @@ describe('mock-layer-services', () => {
     expect(generatedPlan.status).toBe('draft');
     expect(generatedPlan.summary).toContain('AI demo');
     expect(generatedPlan.summary).toContain('Vision demo');
+    expect(generatedPlan.quests[0]?.beforePhoto?.uri).toBe('file:///camera/photo-1.jpg');
+    expect(generatedPlan.quests[0]?.reportPhotoRequired).toBe(true);
 
     const approvedPlan = await approvePlanMock(generatedPlan.id);
     const childQuests = await getQuestsMock('child-1');
@@ -67,6 +71,9 @@ describe('mock-layer-services', () => {
     expect(approvedPlan.status).toBe('approved');
     expect(childQuests.some((quest) => quest.id === approvedPlan.quests[0]?.id)).toBe(true);
     expect(childQuests.some((quest) => quest.status === 'active')).toBe(true);
+    const approvedQuest = childQuests.find((quest) => quest.id === approvedPlan.quests[0]?.id);
+    expect(approvedQuest?.beforePhoto?.uri).toBe('file:///camera/photo-1.jpg');
+    expect(approvedQuest?.reportPhotoRequired).toBe(true);
   });
 
   it('binds approved plan quests to the exact target child', async () => {
@@ -144,6 +151,10 @@ describe('mock-layer-services', () => {
     expect(questToComplete).toBeDefined();
 
     const progressBefore = await getProgressMock('child-1');
+    const steps = [...(questToComplete?.steps ?? [])].sort((left, right) => left.order - right.order);
+    for (const step of steps) {
+      await toggleQuestStepMock(questToComplete!.id, step.id);
+    }
     const completedQuest = await completeQuestMock(questToComplete!.id);
     const progressAfter = await getProgressMock('child-1');
 
@@ -155,7 +166,7 @@ describe('mock-layer-services', () => {
     expect(progressAfter.stats.quests).toBeGreaterThan(0);
   });
 
-  it('archives quest only after all steps are completed', async () => {
+  it('keeps quest active after steps and archives only after explicit completion', async () => {
     const questsBefore = await getQuestsMock('child-1');
     const quest = questsBefore.find((item) => item.status === 'active' && (item.steps?.length ?? 0) > 1);
     expect(quest).toBeDefined();
@@ -167,17 +178,69 @@ describe('mock-layer-services', () => {
 
     for (let index = 0; index < steps.length; index += 1) {
       const updatedQuest = await toggleQuestStepMock(quest!.id, steps[index]!.id);
-
-      if (index < steps.length - 1) {
-        expect(updatedQuest.status).toBe('active');
-      } else {
-        expect(updatedQuest.status).toBe('archived');
-      }
+      expect(updatedQuest.status).toBe('active');
     }
 
+    const completedQuest = await completeQuestMock(quest!.id);
     const progressAfter = await getProgressMock('child-1');
+    expect(completedQuest.status).toBe('archived');
     expect(progressAfter.xp).toBe(progressBefore.xp + quest!.rewardXp);
     expect(progressAfter.activeQuestsCount).toBeLessThan(progressBefore.activeQuestsCount);
     expect(progressAfter.completedQuestsCount).toBeGreaterThan(progressBefore.completedQuestsCount);
+  });
+
+  it('requires after photo on completion when before photo exists', async () => {
+    const quest = (await getQuestsMock('child-1')).find((item) => item.status === 'active');
+    expect(quest).toBeDefined();
+
+    const withBeforePhoto = await updateQuestBeforePhotoMock(quest!.id, {
+      uri: 'file:///photos/quest-before.jpg',
+      fileName: 'quest-before.jpg',
+      mimeType: 'image/jpeg',
+    });
+
+    expect(withBeforePhoto.reportPhotoRequired).toBe(true);
+    expect(withBeforePhoto.beforePhoto?.uri).toContain('quest-before.jpg');
+
+    const steps = [...(withBeforePhoto.steps ?? [])].sort((left, right) => left.order - right.order);
+    for (const step of steps) {
+      await toggleQuestStepMock(withBeforePhoto.id, step.id);
+    }
+
+    await expect(completeQuestMock(withBeforePhoto.id)).rejects.toThrow('Quest report photo is required');
+
+    const withAfterPhoto = await updateQuestAfterPhotoMock(withBeforePhoto.id, {
+      uri: 'file:///photos/quest-after.jpg',
+      fileName: 'quest-after.jpg',
+      mimeType: 'image/jpeg',
+    });
+
+    expect(withAfterPhoto.afterPhoto?.uri).toContain('quest-after.jpg');
+
+    const completedQuest = await completeQuestMock(withBeforePhoto.id);
+    expect(completedQuest.status).toBe('archived');
+    expect(completedQuest.afterPhoto?.uri).toContain('quest-after.jpg');
+  });
+
+  it('updates before photo for draft quest in generated plan', async () => {
+    const generatedPlan = await generatePlanMock({
+      targetUserId: 'child-1',
+      prompt: 'Create one draft mission.',
+      category: 'study',
+    });
+
+    const draftQuest = generatedPlan.quests[0];
+    expect(draftQuest).toBeDefined();
+
+    await updateQuestBeforePhotoMock(draftQuest!.id, {
+      uri: 'file:///photos/draft-before.jpg',
+      fileName: 'draft-before.jpg',
+      mimeType: 'image/jpeg',
+    });
+
+    const plans = await getPlansMock({ targetUserId: 'child-1', limit: 1 });
+    const updatedDraftQuest = plans[0]?.quests.find((quest) => quest.id === draftQuest!.id);
+    expect(updatedDraftQuest?.beforePhoto?.uri).toContain('draft-before.jpg');
+    expect(updatedDraftQuest?.reportPhotoRequired).toBe(true);
   });
 });

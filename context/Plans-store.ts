@@ -1,7 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-import type { GeneratedPlan, Quest, QuestStep } from '@/shared/models/mvp-contracts.model';
+import type {
+  GeneratedPlan,
+  Quest,
+  QuestPhoto,
+  QuestPhotosSyncStatus,
+  QuestStep,
+} from '@/shared/models/mvp-contracts.model';
+import { isQuestRewardType } from '@/shared/models/quest-reward.model';
 
 interface PlansState {
   plans: GeneratedPlan[];
@@ -23,6 +30,23 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
+
+const toQuestPhoto = (value: unknown): QuestPhoto | null => {
+  if (!isObject(value) || !isNonEmptyString(value.uri)) {
+    return null;
+  }
+
+  return {
+    uri: value.uri.trim(),
+    fileName: isNonEmptyString(value.fileName) ? value.fileName.trim() : null,
+    mimeType: isNonEmptyString(value.mimeType) ? value.mimeType.trim() : null,
+    createdAt: isNonEmptyString(value.createdAt) ? value.createdAt : new Date().toISOString(),
+    syncStatus:
+      value.syncStatus === 'not_sent' || value.syncStatus === 'pending' || value.syncStatus === 'sent'
+        ? value.syncStatus
+        : undefined,
+  };
+};
 
 const toQuestStep = (value: unknown, fallbackQuestId: string, index: number): QuestStep | null => {
   if (!isObject(value) || !isNonEmptyString(value.title)) {
@@ -55,6 +79,17 @@ const toQuest = (value: unknown, index: number): Quest | null => {
   }
 
   const rawSteps = Array.isArray(value.steps) ? value.steps : [];
+  const beforePhoto = toQuestPhoto(value.beforePhoto);
+  const afterPhoto = toQuestPhoto(value.afterPhoto);
+  const photosSyncStatus: QuestPhotosSyncStatus =
+    value.photosSyncStatus === 'pending_sync' || value.photosSyncStatus === 'synced'
+      ? value.photosSyncStatus
+      : 'local_only';
+  const reportPhotoRequired = Boolean(beforePhoto?.uri);
+  const visionSummary = isNonEmptyString(value.visionSummary) ? value.visionSummary.trim() : null;
+  const visionSummaryCheckedAt = isNonEmptyString(value.visionSummaryCheckedAt)
+    ? value.visionSummaryCheckedAt
+    : null;
   const steps = rawSteps
     .map((step, stepIndex) => toQuestStep(step, id, stepIndex))
     .filter((step): step is QuestStep => step !== null);
@@ -68,6 +103,15 @@ const toQuest = (value: unknown, index: number): Quest | null => {
     category: isNonEmptyString(value.category) ? value.category : undefined,
     difficulty: isNonEmptyString(value.difficulty) ? value.difficulty : 'medium',
     rewardXp: typeof value.rewardXp === 'number' && Number.isFinite(value.rewardXp) ? value.rewardXp : 50,
+    rewardType: isQuestRewardType(value.rewardType) ? value.rewardType : undefined,
+    rewardTitle: isNonEmptyString(value.rewardTitle) ? value.rewardTitle.trim() : undefined,
+    rewardDescription: isNonEmptyString(value.rewardDescription) ? value.rewardDescription.trim() : undefined,
+    rewardValue:
+      typeof value.rewardValue === 'number' && Number.isFinite(value.rewardValue)
+        ? value.rewardValue
+        : null,
+    rewardCurrencyOrUnit: isNonEmptyString(value.rewardCurrencyOrUnit) ? value.rewardCurrencyOrUnit.trim() : null,
+    rewardUpdatedAt: isNonEmptyString(value.rewardUpdatedAt) ? value.rewardUpdatedAt : undefined,
     estimatedMinutes:
       typeof value.estimatedMinutes === 'number' && Number.isFinite(value.estimatedMinutes)
         ? value.estimatedMinutes
@@ -79,6 +123,12 @@ const toQuest = (value: unknown, index: number): Quest | null => {
       value.status === 'draft'
         ? value.status
         : 'draft',
+    beforePhoto,
+    afterPhoto,
+    reportPhotoRequired,
+    photosSyncStatus,
+    visionSummary,
+    visionSummaryCheckedAt,
     steps: steps.length > 0 ? steps : undefined,
     stepsCount: steps.length > 0 ? steps.length : undefined,
     completedStepsCount: steps.length > 0 ? completedStepsCount : undefined,
@@ -116,9 +166,12 @@ const toGeneratedPlan = (value: unknown, index: number): GeneratedPlan | null =>
 };
 
 const cloneStep = (step: QuestStep): QuestStep => ({ ...step });
+const cloneQuestPhoto = (photo: QuestPhoto): QuestPhoto => ({ ...photo });
 
 const cloneQuest = (quest: Quest): Quest => ({
   ...quest,
+  beforePhoto: quest.beforePhoto ? cloneQuestPhoto(quest.beforePhoto) : quest.beforePhoto ?? null,
+  afterPhoto: quest.afterPhoto ? cloneQuestPhoto(quest.afterPhoto) : quest.afterPhoto ?? null,
   steps: quest.steps?.map(cloneStep),
 });
 

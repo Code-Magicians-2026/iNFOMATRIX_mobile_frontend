@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +22,7 @@ import {
   SectionHeader,
   StatCard,
 } from '@/shared/components/ui';
+import achievementsStorage from '@/src/features/profile/services/achievementsStorage';
 import { cameraService, childrenService, plansService, userService } from '@/src/integration/services';
 import type { GeneratePlanInput } from '@/src/integration/services';
 import type { MediaPermissionState } from '@/src/integration/services/cameraService';
@@ -71,17 +72,31 @@ const buildFallbackMeProfile = (role: UserRole): UserProfile => ({
 
 const normalizePromptValue = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
-const resolvePhotoAchievementLabel = (photo: CapturedPhoto): string => {
+const resolvePromptPhotoAchievementId = (photo: CapturedPhoto): 'scene_scout' | 'detail_hunter' | 'eagle_eye' => {
   const width = photo.width ?? 0;
   const height = photo.height ?? 0;
   const megapixels = (width * height) / 1_000_000;
   const fileSizeMb = (photo.fileSize ?? 0) / (1024 * 1024);
 
   if (megapixels >= 6) {
-    return 'Achievement: Eagle Eye';
+    return 'eagle_eye';
   }
 
   if (fileSizeMb >= 4) {
+    return 'detail_hunter';
+  }
+
+  return 'scene_scout';
+};
+
+const resolvePhotoAchievementLabel = (photo: CapturedPhoto): string => {
+  const achievementId = resolvePromptPhotoAchievementId(photo);
+
+  if (achievementId === 'eagle_eye') {
+    return 'Achievement: Eagle Eye';
+  }
+
+  if (achievementId === 'detail_hunter') {
     return 'Achievement: Detail Hunter';
   }
 
@@ -277,6 +292,21 @@ const AgentChatScreen = () => {
 
     const preparedPhoto = await cameraService.preparePhoto(photo);
     setCapturedPhoto(preparedPhoto);
+
+    const actorUserId = me?.id ?? currentUser?.id ?? null;
+    if (!actorUserId) {
+      return;
+    }
+
+    try {
+      const unlockResult = await achievementsStorage.unlockAchievement({
+        userId: actorUserId,
+        achievementId: resolvePromptPhotoAchievementId(preparedPhoto),
+      });
+      if (unlockResult.isNewUnlock) {
+        Vibration.vibrate([0, 35, 20, 55]);
+      }
+    } catch {}
   };
 
   const handleAllowCameraAccess = async () => {
