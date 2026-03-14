@@ -13,6 +13,7 @@ import {
   getQuestsMock,
   resetMockLayerState,
   setMockMeId,
+  toggleQuestStepMock,
 } from '@/src/features/mvp/services/mock-layer-services';
 
 describe('mock-layer-services', () => {
@@ -132,11 +133,37 @@ describe('mock-layer-services', () => {
     const completedQuest = await completeQuestMock(questToComplete!.id);
     const progressAfter = await getProgressMock('child-1');
 
-    expect(completedQuest.status).toBe('completed');
+    expect(completedQuest.status).toBe('archived');
     expect(progressAfter.xp).toBe(progressBefore.xp + completedQuest.rewardXp);
     expect(progressAfter.streak).toBe(progressBefore.streak + 1);
     expect(progressAfter.completedQuestsCount).toBeGreaterThanOrEqual(progressBefore.completedQuestsCount);
     expect(progressAfter.activeQuestsCount).toBeLessThanOrEqual(progressBefore.activeQuestsCount);
-    expect(progressAfter.stats[completedQuest.category]).toBeGreaterThan(0);
+    expect(progressAfter.stats.quests).toBeGreaterThan(0);
+  });
+
+  it('archives quest only after all steps are completed', async () => {
+    const questsBefore = await getQuestsMock('child-1');
+    const quest = questsBefore.find((item) => item.status === 'active' && (item.steps?.length ?? 0) > 1);
+    expect(quest).toBeDefined();
+
+    const steps = [...(quest?.steps ?? [])].sort((left, right) => left.order - right.order);
+    expect(steps.length).toBeGreaterThan(1);
+
+    const progressBefore = await getProgressMock('child-1');
+
+    for (let index = 0; index < steps.length; index += 1) {
+      const updatedQuest = await toggleQuestStepMock(quest!.id, steps[index]!.id);
+
+      if (index < steps.length - 1) {
+        expect(updatedQuest.status).toBe('active');
+      } else {
+        expect(updatedQuest.status).toBe('archived');
+      }
+    }
+
+    const progressAfter = await getProgressMock('child-1');
+    expect(progressAfter.xp).toBe(progressBefore.xp + quest!.rewardXp);
+    expect(progressAfter.activeQuestsCount).toBeLessThan(progressBefore.activeQuestsCount);
+    expect(progressAfter.completedQuestsCount).toBeGreaterThan(progressBefore.completedQuestsCount);
   });
 });

@@ -10,6 +10,7 @@ export {
   getQuestsMock,
   resetMockLayerState,
   setMockMeId,
+  toggleQuestStepMock,
 } from './mock-layer-services';
 
 export type {

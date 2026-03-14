@@ -42,10 +42,10 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
   return 'child-1';
 };
 
-const toCategoryLabel = (value: string) => {
+const toMetricLabel = (value: string) => {
   const normalized = value.trim();
   if (!normalized) {
-    return 'General';
+    return 'Quests';
   }
 
   return normalized[0].toUpperCase() + normalized.slice(1);
@@ -203,7 +203,7 @@ const ProfileScreen = () => {
     [progress?.stats],
   );
 
-  const strongestCategory = categoryStats[0];
+  const strongestMetric = categoryStats[0];
 
   const childBadges = React.useMemo(() => {
     const badges: string[] = [];
@@ -217,12 +217,12 @@ const ProfileScreen = () => {
     if (totalXp >= 500) {
       badges.push('XP Hunter');
     }
-    if ((strongestCategory?.[1] ?? 0) >= 3) {
-      badges.push(`${toCategoryLabel(strongestCategory?.[0] ?? 'focus')} Specialist`);
+    if ((strongestMetric?.[1] ?? 0) >= 3) {
+      badges.push(`${toMetricLabel(strongestMetric?.[0] ?? 'quests')} Specialist`);
     }
 
     return badges;
-  }, [completedQuests, streak, strongestCategory, totalXp]);
+  }, [completedQuests, streak, strongestMetric, totalXp]);
 
   if (isLoading) {
     return (
@@ -267,16 +267,16 @@ const ProfileScreen = () => {
           </Text>
         </StatCard>
 
-        <StatCard title="Category Stats" subtitle="Completed quests by category" style={styles.card}>
+        <StatCard title="Quest Stats" subtitle="Completed quest metrics" style={styles.card}>
           {categoryStats.length > 0 ? (
-            categoryStats.map(([category, count]) => (
-              <Text key={category} style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                {toCategoryLabel(category)}: {count}
+            categoryStats.map(([metric, count]) => (
+              <Text key={metric} style={[styles.metricText, { color: colors.text }]} allowFontScaling>
+                {toMetricLabel(metric)}: {count}
               </Text>
             ))
           ) : (
             <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-              Complete quests to build category stats.
+              Complete quests to build quest stats.
             </Text>
           )}
         </StatCard>
@@ -300,7 +300,7 @@ const ProfileScreen = () => {
             </View>
 
             <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-              Strongest category: {strongestCategory ? toCategoryLabel(strongestCategory[0]) : 'Not enough data'}
+              Top quest metric: {strongestMetric ? toMetricLabel(strongestMetric[0]) : 'Not enough data'}
             </Text>
 
             <View style={styles.badgesWrap}>

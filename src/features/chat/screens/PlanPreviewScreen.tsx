@@ -99,9 +99,6 @@ const PlanPreviewScreen = () => {
                   {quest.title}
                 </Text>
                 <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  Category: {quest.category}
-                </Text>
-                <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
                   Difficulty: {quest.difficulty}
                 </Text>
                 <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>

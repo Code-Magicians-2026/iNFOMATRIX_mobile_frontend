@@ -1,7 +1,8 @@
 import React from 'react';
 import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
@@ -39,8 +40,10 @@ const QUICK_PROMPTS = [
   'Make homework feel like a game',
 ] as const;
 
-const CATEGORY_OPTIONS = ['study', 'routine', 'household', 'health'] as const;
 const INTENSITY_OPTIONS = ['low', 'medium', 'high'] as const;
+type IntensityOption = (typeof INTENSITY_OPTIONS)[number];
+const BRAND_RED = '#ff2d55';
+const BRAND_RED_BORDER = 'rgba(255, 45, 85, 0.48)';
 
 type TargetMode = 'myself' | 'child';
 
@@ -74,6 +77,8 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
   return 'child-1';
 };
 
+const normalizePromptValue = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+
 const AgentChatScreen = () => {
   const navigation = useNavigation<ChatNavigation>();
   const colors = useThemeStore((s) => s.colors);
@@ -93,13 +98,11 @@ const AgentChatScreen = () => {
 
   const [me, setMe] = React.useState<UserProfile | null>(null);
   const [children, setChildren] = React.useState<ChildProfile[]>([]);
-  const [targetMode, setTargetMode] = React.useState<TargetMode>(
-    effectiveRole === 'adult' ? 'child' : 'myself',
-  );
+  const [targetMode, setTargetMode] = React.useState<TargetMode>('myself');
 
   const [prompt, setPrompt] = React.useState('');
-  const [category, setCategory] = React.useState<string>('study');
-  const [intensity, setIntensity] = React.useState<string>('medium');
+  const [selectedQuickPromptIndex, setSelectedQuickPromptIndex] = React.useState<number | null>(null);
+  const [intensity, setIntensity] = React.useState<IntensityOption>('medium');
   const [capturedPhoto, setCapturedPhoto] = React.useState<CapturedPhoto | null>(null);
   const [cameraPermissionState, setCameraPermissionState] =
     React.useState<MediaPermissionState>('undetermined');
@@ -165,16 +168,19 @@ const AgentChatScreen = () => {
 
       if (childrenData.length === 0) {
         setTargetMode('myself');
+        await setSelectedChildId(null);
         return;
       }
 
       const isSelectedChildValid = selectedChildId
         ? childrenData.some((child) => child.id === selectedChildId)
         : false;
-
-      if (selectedChildId && !isSelectedChildValid) {
-        await setSelectedChildId(null);
+      const fallbackChildId = childrenData[0]?.id ?? null;
+      const resolvedChildId = isSelectedChildValid ? selectedChildId : fallbackChildId;
+      if (resolvedChildId !== selectedChildId) {
+        await setSelectedChildId(resolvedChildId);
       }
+      setTargetMode(resolvedChildId ? 'child' : 'myself');
     } catch {
       setContextError('Failed to load AI Plan Builder context.');
     } finally {
@@ -186,22 +192,47 @@ const AgentChatScreen = () => {
     void loadBuilderContext();
   }, [loadBuilderContext]);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadBuilderContext();
+      void refreshPermissionsState();
+
+      return undefined;
+    }, [loadBuilderContext, refreshPermissionsState]),
+  );
+
   const selectedChild = React.useMemo(
     () => children.find((child) => child.id === selectedChildId) ?? null,
     [children, selectedChildId],
   );
 
   const canUseChildTarget = effectiveRole === 'adult' && children.length > 0;
+  const resolvedIntensity: IntensityOption = INTENSITY_OPTIONS.includes(intensity)
+    ? intensity
+    : 'medium';
   const activeTargetLabel = targetMode === 'myself'
     ? me?.fullName ?? 'Myself'
     : selectedChild?.fullName ?? 'No active child';
   const isChildTargetWithoutSelection =
     targetMode === 'child' && canUseChildTarget && !selectedChild;
-  const isGenerateDisabled = isGenerating || prompt.trim().length === 0 || !capturedPhoto?.uri;
+  const isGenerateDisabled = isGenerating || prompt.trim().length === 0;
   const isCameraBlocked = cameraPermissionState === 'blocked';
   const isGalleryBlocked = galleryPermissionState === 'blocked';
   const shouldShowPermissionHelp =
     cameraPermissionState !== 'granted' || galleryPermissionState !== 'granted';
+  const activeQuickPromptIndex = React.useMemo(() => {
+    const normalizedPrompt = normalizePromptValue(prompt);
+    if (!normalizedPrompt) {
+      return null;
+    }
+
+    const index = QUICK_PROMPTS.findIndex(
+      (item) => normalizePromptValue(item) === normalizedPrompt,
+    );
+    return index >= 0 ? index : null;
+  }, [prompt]);
+
+  const resolvedQuickPromptIndex = selectedQuickPromptIndex ?? activeQuickPromptIndex;
 
   const assignPreparedPhoto = async (photo: CapturedPhoto | null) => {
     if (!photo) {
@@ -322,11 +353,6 @@ const AgentChatScreen = () => {
       return;
     }
 
-    if (!capturedPhoto?.uri) {
-      setGenerationError('Add one room/situation photo before generating a plan.');
-      return;
-    }
-
     const targetUserId = targetMode === 'myself' ? me?.id : selectedChild?.id;
     if (!targetUserId) {
       setGenerationError('No active child selected. Select child target before generation.');
@@ -340,12 +366,13 @@ const AgentChatScreen = () => {
       const request: GeneratePlanInput = {
         targetUserId,
         prompt: normalizedPrompt,
-        category,
-        intensity,
-        photo: capturedPhoto,
+        intensity: resolvedIntensity,
+        ...(capturedPhoto ? { photo: capturedPhoto } : {}),
       };
 
-      const generatedPlan = await plansService.uploadPhotoAndGenerate(request);
+      const generatedPlan = capturedPhoto?.uri
+        ? await plansService.uploadPhotoAndGenerate(request)
+        : await plansService.generatePlan(request);
 
       navigation.navigate('PlanPreview', {
         plan: generatedPlan,
@@ -378,133 +405,154 @@ const AgentChatScreen = () => {
       {generationError ? (
         <View style={styles.card}>
           <EmptyState title="Generation failed" description={generationError} />
-          <PrimaryButton
-            label="Try generate again"
-            onPress={() => {
-              void handleGeneratePlan();
-            }}
-            disabled={isGenerateDisabled}
-            style={styles.retryButton}
-          />
+          <View style={styles.errorActions}>
+            <PrimaryButton
+              label="Close"
+              variant="secondary"
+              onPress={() => setGenerationError(null)}
+              style={styles.retryButton}
+            />
+            <PrimaryButton
+              label="Try generate again"
+              onPress={() => {
+                void handleGeneratePlan();
+              }}
+              disabled={isGenerateDisabled}
+              style={styles.retryButton}
+            />
+          </View>
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <StatCard title="Selected Target" subtitle={`Active: ${activeTargetLabel}`} style={styles.card}>
-          <View style={styles.optionRow}>
-            <Pressable
-              onPress={() => {
-                setTargetMode('myself');
-                setGenerationError(null);
-              }}
-              style={[
-                styles.optionChip,
-                {
-                  borderColor: targetMode === 'myself' ? '#ff2d55' : colors.border,
-                  backgroundColor: targetMode === 'myself' ? '#ff2d55' : colors.background,
-                },
-              ]}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-            >
-              <Text
-                style={[styles.optionChipLabel, { color: targetMode === 'myself' ? '#ffffff' : colors.text }]}
-                allowFontScaling
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {effectiveRole === 'adult' ? (
+          <StatCard title="Selected Target" subtitle={`Active: ${activeTargetLabel}`} style={styles.card}>
+            <View key={`target-mode-${targetMode}-${selectedChildId ?? 'none'}`} style={styles.optionRow}>
+              <Pressable
+                onPress={() => {
+                  setTargetMode('myself');
+                  setGenerationError(null);
+                }}
+                style={[
+                  styles.optionChip,
+                  {
+                    borderColor: targetMode === 'myself' ? BRAND_RED : BRAND_RED_BORDER,
+                    backgroundColor: targetMode === 'myself' ? BRAND_RED : colors.background,
+                  },
+                ]}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               >
-                Myself
-              </Text>
-            </Pressable>
+                <Text
+                  style={[styles.optionChipLabel, { color: targetMode === 'myself' ? '#ffffff' : BRAND_RED }]}
+                  allowFontScaling
+                >
+                  Myself
+                </Text>
+              </Pressable>
 
-            <Pressable
-              onPress={() => {
-                if (!canUseChildTarget) {
-                  return;
-                }
+              <Pressable
+                onPress={() => {
+                  if (!canUseChildTarget) {
+                    return;
+                  }
 
-                setTargetMode('child');
-                setGenerationError(null);
-              }}
-              style={[
-                styles.optionChip,
-                {
-                  borderColor: targetMode === 'child' ? '#ff2d55' : colors.border,
-                  backgroundColor: targetMode === 'child' ? '#ff2d55' : colors.background,
-                  opacity: canUseChildTarget ? 1 : 0.6,
-                },
-              ]}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-            >
-              <Text
-                style={[styles.optionChipLabel, { color: targetMode === 'child' ? '#ffffff' : colors.text }]}
-                allowFontScaling
+                  if (!selectedChild && children[0]) {
+                    void setSelectedChildId(children[0].id);
+                  }
+
+                  setTargetMode('child');
+                  setGenerationError(null);
+                }}
+                style={[
+                  styles.optionChip,
+                  {
+                    borderColor: targetMode === 'child' ? BRAND_RED : BRAND_RED_BORDER,
+                    backgroundColor: targetMode === 'child' ? BRAND_RED : colors.background,
+                    opacity: canUseChildTarget ? 1 : 0.6,
+                  },
+                ]}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               >
-                Child
-              </Text>
-            </Pressable>
-          </View>
+                <Text
+                  style={[styles.optionChipLabel, { color: targetMode === 'child' ? '#ffffff' : BRAND_RED }]}
+                  allowFontScaling
+                >
+                  Child
+                </Text>
+              </Pressable>
+            </View>
 
-          {targetMode === 'child' ? (
-            canUseChildTarget ? (
-              isChildTargetWithoutSelection ? (
-                <View style={styles.childList}>
-                  <EmptyState
-                    title="No active child selected"
-                    description="Select child profile to generate a plan for them."
-                  />
-                  <PrimaryButton
-                    label="Select first child"
-                    variant="secondary"
-                    onPress={() => {
-                      const firstChild = children[0];
-                      if (firstChild) {
-                        void setSelectedChildId(firstChild.id);
-                      }
-                    }}
-                  />
-                </View>
-              ) : (
-                <View style={styles.childList}>
-                  {children.map((child) => {
-                    const isSelected = child.id === selectedChild?.id;
-
-                    return (
-                      <Pressable
-                        key={child.id}
-                        onPress={() => {
-                          void setSelectedChildId(child.id);
+            {targetMode === 'child' ? (
+              canUseChildTarget ? (
+                isChildTargetWithoutSelection ? (
+                  <View style={styles.childList}>
+                    <EmptyState
+                      title="No active child selected"
+                      description="Select child profile to generate a plan for them."
+                    />
+                    <PrimaryButton
+                      label="Select first child"
+                      variant="secondary"
+                      onPress={() => {
+                        const firstChild = children[0];
+                        if (firstChild) {
+                          void setSelectedChildId(firstChild.id);
+                          setTargetMode('child');
                           setGenerationError(null);
-                        }}
-                        style={[
-                          styles.childRow,
-                          {
-                            borderColor: isSelected ? '#ff2d55' : colors.border,
-                            backgroundColor: isSelected ? '#ff2d55' : colors.background,
-                          },
-                        ]}
-                        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                      >
-                        <Text style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
-                          {child.fullName}
-                        </Text>
-                        <Text
-                          style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
-                          allowFontScaling
+                        }
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.childList}>
+                    {children.map((child) => {
+                      const isSelected = child.id === selectedChild?.id;
+
+                      return (
+                        <Pressable
+                          key={child.id}
+                          onPress={() => {
+                            void setSelectedChildId(child.id);
+                            setTargetMode('child');
+                            setGenerationError(null);
+                          }}
+                          style={[
+                            styles.childRow,
+                            {
+                              borderColor: isSelected ? BRAND_RED : BRAND_RED_BORDER,
+                              backgroundColor: isSelected ? BRAND_RED : colors.background,
+                            },
+                          ]}
+                          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                         >
-                          Age {child.age} | Lvl {child.level}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                          <Text style={[styles.childName, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
+                            {child.fullName}
+                          </Text>
+                          <Text
+                            style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
+                            allowFontScaling
+                          >
+                            Age {child.age} | Lvl {child.level}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )
+              ) : (
+                <EmptyState title="No child profiles" description="Create child profile from Home first." />
               )
-            ) : (
-              <EmptyState title="No child profiles" description="Create child profile from Home first." />
-            )
-          ) : null}
-        </StatCard>
+            ) : null}
+          </StatCard>
+        ) : null}
 
         <StatCard title="Room / Situation Photo" subtitle="Photo is AI context for plan generation" style={styles.card}>
           <Text style={[styles.photoHintText, { color: colors.textSecondary }]} allowFontScaling>
-            Add one photo so AI can understand the current room/situation before generating the plan.
+            Add a photo optionally to give AI better room/situation context for generation.
           </Text>
 
           {shouldShowPermissionHelp ? (
@@ -649,6 +697,12 @@ const AgentChatScreen = () => {
             value={prompt}
             onChangeText={(value) => {
               setPrompt(value);
+              if (selectedQuickPromptIndex !== null) {
+                const selectedValue = QUICK_PROMPTS[selectedQuickPromptIndex] ?? '';
+                if (normalizePromptValue(value) !== normalizePromptValue(selectedValue)) {
+                  setSelectedQuickPromptIndex(null);
+                }
+              }
               if (generationError) {
                 setGenerationError(null);
               }
@@ -667,80 +721,87 @@ const AgentChatScreen = () => {
               },
             ]}
           />
-        </StatCard>
-
-        <StatCard title="Category" subtitle="Plan focus" style={styles.card}>
-          <View style={styles.optionRow}>
-            {CATEGORY_OPTIONS.map((item) => {
-              const isSelected = category === item;
-              return (
-                <Pressable
-                  key={item}
-                  onPress={() => setCategory(item)}
-                  style={[
-                    styles.optionChip,
-                    {
-                      borderColor: isSelected ? '#ff2d55' : colors.border,
-                      backgroundColor: isSelected ? '#ff2d55' : colors.background,
-                    },
-                  ]}
-                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                >
-                  <Text
-                    style={[styles.optionChipLabel, { color: isSelected ? '#ffffff' : colors.text }]}
-                    allowFontScaling
-                  >
-                    {item}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          <View style={styles.micButtonWrap}>
+            <Pressable
+              onPress={() => {
+                setGenerationError('Voice input is not configured yet. Use keyboard prompt for now.');
+              }}
+              disabled={isGenerating}
+              style={[styles.micButton, isGenerating ? styles.micButtonDisabled : null]}
+              android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+            >
+              <Ionicons name="mic" size={isTablet ? 20 : 18} color="#ffffff" />
+              <Text style={styles.micButtonText} allowFontScaling>
+                Voice input
+              </Text>
+            </Pressable>
           </View>
         </StatCard>
 
         <StatCard title="Intensity" subtitle="How demanding the plan should be" style={styles.card}>
-          <View style={styles.optionRow}>
+          <View key={`intensity-${resolvedIntensity}`} style={styles.optionRow}>
             {INTENSITY_OPTIONS.map((item) => {
-              const isSelected = intensity === item;
+              const isSelected = resolvedIntensity === item;
+              const optionLabel = item.charAt(0).toUpperCase() + item.slice(1);
               return (
                 <Pressable
                   key={item}
-                  onPress={() => setIntensity(item)}
+                  onPress={() => {
+                    setIntensity(item);
+                    setGenerationError(null);
+                  }}
                   style={[
                     styles.optionChip,
                     {
-                      borderColor: isSelected ? '#ff2d55' : colors.border,
-                      backgroundColor: isSelected ? '#ff2d55' : colors.background,
+                      borderColor: isSelected ? BRAND_RED : BRAND_RED_BORDER,
+                      backgroundColor: isSelected ? BRAND_RED : colors.background,
                     },
                   ]}
                   android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                 >
                   <Text
-                    style={[styles.optionChipLabel, { color: isSelected ? '#ffffff' : colors.text }]}
+                    style={[styles.optionChipLabel, { color: isSelected ? '#ffffff' : BRAND_RED }]}
                     allowFontScaling
                   >
-                    {item}
+                    {optionLabel}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
+          <Text style={[styles.helperTextStrong, { color: BRAND_RED }]} allowFontScaling>
+            Selected intensity: {resolvedIntensity.charAt(0).toUpperCase() + resolvedIntensity.slice(1)}
+          </Text>
         </StatCard>
 
         <StatCard title="Quick Prompts" subtitle="Tap to prefill" style={styles.card}>
-          <View style={styles.quickPromptList}>
-            {QUICK_PROMPTS.map((quickPrompt) => (
-              <Pressable
-                key={quickPrompt}
-                onPress={() => setPrompt(quickPrompt)}
-                style={[styles.quickPromptItem, { borderColor: colors.border, backgroundColor: colors.background }]}
-                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-              >
-                <Text style={[styles.quickPromptText, { color: colors.text }]} allowFontScaling>
-                  {quickPrompt}
-                </Text>
-              </Pressable>
-            ))}
+          <View key={`quick-prompts-${resolvedQuickPromptIndex ?? 'none'}`} style={styles.quickPromptList}>
+            {QUICK_PROMPTS.map((quickPrompt, index) => {
+              const isSelected = resolvedQuickPromptIndex === index;
+
+              return (
+                <Pressable
+                  key={`${quickPrompt}-${isSelected ? 'selected' : 'idle'}`}
+                  onPress={() => {
+                    setSelectedQuickPromptIndex(index);
+                    setPrompt(quickPrompt);
+                    setGenerationError(null);
+                  }}
+                  style={[
+                    styles.quickPromptItem,
+                    {
+                      borderColor: isSelected ? BRAND_RED : colors.border,
+                      backgroundColor: isSelected ? BRAND_RED : colors.background,
+                    },
+                  ]}
+                  android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                >
+                  <Text style={[styles.quickPromptText, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
+                    {quickPrompt}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </StatCard>
 
@@ -841,16 +902,21 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       paddingBottom: Math.max(14, Math.round(spacing * 1.1)),
     },
     card: {
-      width: '100%',
+      width: "100%",
       maxWidth: cardMaxWidth,
-      alignSelf: 'center',
+      alignSelf: "center",
     },
     retryButton: {
       marginTop: 8,
+      flex: 1,
+    },
+    errorActions: {
+      flexDirection: 'row',
+      gap: 10,
     },
     optionRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+      flexDirection: "row",
+      flexWrap: "wrap",
       gap: 8,
     },
     optionChip: {
@@ -858,15 +924,15 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderRadius: 999,
       minHeight: 36,
       paddingHorizontal: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
       elevation: 1,
     },
     optionChipLabel: {
       fontSize: isTablet ? 14 : 13,
-      fontWeight: '700',
-      textTransform: 'capitalize',
+      fontWeight: "700",
+      textTransform: "capitalize",
     },
     childList: {
       gap: 8,
@@ -878,21 +944,21 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       paddingHorizontal: 12,
       paddingVertical: 10,
       gap: 2,
-      overflow: 'hidden',
+      overflow: "hidden",
       elevation: 1,
     },
     childName: {
       fontSize: isTablet ? 15 : 14,
-      fontWeight: '700',
+      fontWeight: "700",
     },
     childMeta: {
       fontSize: isTablet ? 13 : 12,
-      fontWeight: '500',
+      fontWeight: "500",
     },
     photoHintText: {
       fontSize: isTablet ? 14 : 13,
       lineHeight: isTablet ? 20 : 18,
-      fontWeight: '500',
+      fontWeight: "500",
     },
     permissionCard: {
       borderWidth: 1,
@@ -906,22 +972,22 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     permissionStatusText: {
       fontSize: isTablet ? 13 : 12,
       lineHeight: isTablet ? 18 : 16,
-      fontWeight: '500',
+      fontWeight: "500",
     },
     photoContainer: {
       gap: 6,
       marginTop: 2,
     },
     photoPreviewRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       gap: 10,
     },
     photoThumbnail: {
       width: isTablet ? 124 : 108,
       height: isTablet ? 124 : 108,
       borderRadius: 10,
-      backgroundColor: '#101214',
+      backgroundColor: "#101214",
     },
     photoMetaBlock: {
       flex: 1,
@@ -929,16 +995,16 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     photoMeta: {
       fontSize: isTablet ? 13 : 12,
-      fontWeight: '500',
+      fontWeight: "500",
     },
     photoActions: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+      flexDirection: "row",
+      flexWrap: "wrap",
       gap: 8,
       marginTop: 10,
     },
     photoPrimaryActions: {
-      flexDirection: 'row',
+      flexDirection: "row",
       gap: 8,
       marginTop: 10,
     },
@@ -953,30 +1019,30 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       minWidth: isTablet ? 150 : 132,
       minHeight: 44,
       borderRadius: 10,
-      backgroundColor: '#ff2d55',
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
+      backgroundColor: "#ff2d55",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
       elevation: 2,
     },
     cameraButtonLabel: {
-      color: '#ffffff',
+      color: "#ffffff",
       fontSize: isTablet ? 15 : 14,
-      fontWeight: '700',
+      fontWeight: "700",
     },
     secondaryPhotoButton: {
       minWidth: isTablet ? 132 : 118,
       minHeight: 44,
       borderWidth: 1,
       borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
       elevation: 1,
     },
     secondaryPhotoButtonLabel: {
       fontSize: isTablet ? 14 : 13,
-      fontWeight: '700',
+      fontWeight: "700",
     },
     promptInput: {
       borderWidth: 1,
@@ -994,23 +1060,23 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       borderRadius: 10,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      overflow: 'hidden',
+      overflow: "hidden",
       elevation: 1,
     },
     quickPromptText: {
       fontSize: isTablet ? 15 : 14,
-      fontWeight: '600',
+      fontWeight: "600",
     },
     generateButton: {
-      width: '100%',
+      width: "100%",
       maxWidth: cardMaxWidth,
-      alignSelf: 'center',
+      alignSelf: "center",
       minHeight: 46,
       borderRadius: 10,
-      backgroundColor: '#ff2d55',
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
+      backgroundColor: "#ff2d55",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
       elevation: 2,
     },
     generateButtonDisabled: {
@@ -1018,21 +1084,50 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     generateButtonLabel: {
       fontSize: isTablet ? 16 : 15,
-      fontWeight: '700',
-      color: '#ffffff',
+      fontWeight: "700",
+      color: "#ffffff",
+    },
+    micButtonWrap: {
+      marginTop: 8,
+      marginBottom: 2,
+    },
+    micButton: {
+      width: "100%",
+      minHeight: isTablet ? 52 : 48,
+      borderRadius: 12,
+      backgroundColor: "#ff2d55",
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+      elevation: 3,
+    },
+    micButtonText: {
+      color: "#ffffff",
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: "700",
+    },
+    micButtonDisabled: {
+      opacity: 0.7,
+    },
+    helperTextStrong: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: "700",
+      marginTop: 2,
     },
     modalBackdrop: {
       flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.45)',
-      alignItems: 'center',
-      justifyContent: 'center',
+      backgroundColor: "rgba(0, 0, 0, 0.45)",
+      alignItems: "center",
+      justifyContent: "center",
       paddingHorizontal: spacing,
       paddingVertical: spacing,
     },
     modalCard: {
-      width: '100%',
+      width: "100%",
       maxWidth: cardMaxWidth + 60,
-      maxHeight: '90%',
+      maxHeight: "90%",
       borderRadius: 14,
       borderWidth: 1,
       padding: isTablet ? 18 : 14,
@@ -1040,7 +1135,7 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       elevation: 4,
     },
     loadingCard: {
-      width: '100%',
+      width: "100%",
       maxWidth: cardMaxWidth,
       borderWidth: 1,
       borderRadius: 14,
@@ -1055,15 +1150,15 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       paddingBottom: 4,
     },
     codeText: {
-      fontFamily: 'monospace',
+      fontFamily: "monospace",
       fontSize: isTablet ? 13 : 12,
       lineHeight: isTablet ? 19 : 17,
-      fontWeight: '500',
+      fontWeight: "500",
     },
     ruleText: {
       fontSize: isTablet ? 14 : 13,
       lineHeight: isTablet ? 20 : 18,
-      fontWeight: '500',
+      fontWeight: "500",
     },
   });
 

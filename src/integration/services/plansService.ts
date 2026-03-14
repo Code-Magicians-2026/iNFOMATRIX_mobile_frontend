@@ -26,8 +26,10 @@ export const buildGeneratePlanFormData = (input: GeneratePlanInput): FormData =>
   const formData = new FormData();
   formData.append('targetUserId', input.targetUserId);
   formData.append('prompt', input.prompt);
-  formData.append('category', input.category);
   formData.append('intensity', input.intensity);
+  if (input.category) {
+    formData.append('category', input.category);
+  }
 
   if (input.photo?.uri) {
     const photoPart: ReactNativeFilePart = {
@@ -59,7 +61,7 @@ export const plansService = {
 
   uploadPhotoAndGenerate: async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
     if (!input.photo?.uri) {
-      throw new Error('Photo is required for uploadPhotoAndGenerate.');
+      return generatePlanMock(input);
     }
 
     const formData = buildGeneratePlanFormData(input);

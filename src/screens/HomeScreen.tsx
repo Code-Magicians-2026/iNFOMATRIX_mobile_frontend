@@ -37,6 +37,8 @@ const PLAN_PROMPTS = [
   'Generate a confidence plan focused on consistency and wins.',
 ] as const;
 
+const PLAN_INTENSITY_OPTIONS = ['low', 'medium', 'high'] as const;
+
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
     return 'adult-1';
@@ -82,6 +84,11 @@ const HomeScreen = () => {
   const [childInterests, setChildInterests] = React.useState('');
   const [childNotes, setChildNotes] = React.useState('');
   const [createChildError, setCreateChildError] = React.useState<string | null>(null);
+
+  const [isAiBuilderModalVisible, setIsAiBuilderModalVisible] = React.useState(false);
+  const [aiPrompt, setAiPrompt] = React.useState(PLAN_PROMPTS[0]);
+  const [aiIntensity, setAiIntensity] = React.useState<(typeof PLAN_INTENSITY_OPTIONS)[number]>('medium');
+  const [aiBuilderError, setAiBuilderError] = React.useState<string | null>(null);
 
   const effectiveRole: UserRole = role ?? 'child';
 
@@ -181,7 +188,7 @@ const HomeScreen = () => {
   );
 
   const completedToday = React.useMemo(
-    () => todayQuests.filter((quest) => quest.status === 'completed').length,
+    () => todayQuests.filter((quest) => quest.status === 'archived' || quest.status === 'completed').length,
     [todayQuests],
   );
 
@@ -255,24 +262,53 @@ const HomeScreen = () => {
     }
   };
 
-  const handleCreateAiPlan = async () => {
+  const openAiBuilderModal = () => {
     if (!selectedChild) {
       return;
     }
 
+    setAiBuilderError(null);
+    setAiPrompt(PLAN_PROMPTS[Math.floor(Math.random() * PLAN_PROMPTS.length)] ?? PLAN_PROMPTS[0]);
+    setAiIntensity('medium');
+    setIsAiBuilderModalVisible(true);
+  };
+
+  const closeAiBuilderModal = () => {
+    if (isGeneratingPlan) {
+      return;
+    }
+
+    setIsAiBuilderModalVisible(false);
+    setAiBuilderError(null);
+  };
+
+  const handleCreateAiPlan = async () => {
+    if (!selectedChild) {
+      setAiBuilderError('Select child profile first.');
+      return;
+    }
+
+    const normalizedPrompt = aiPrompt.trim();
+    if (!normalizedPrompt) {
+      setAiBuilderError('Prompt is required.');
+      return;
+    }
+
     setIsGeneratingPlan(true);
+    setAiBuilderError(null);
+    setScreenError(null);
     try {
-      const randomPrompt = PLAN_PROMPTS[Math.floor(Math.random() * PLAN_PROMPTS.length)] ?? PLAN_PROMPTS[0];
       const generatedPlan = await plansService.generatePlan({
         targetUserId: selectedChild.id,
-        prompt: randomPrompt,
-        category: 'study',
-        intensity: 'medium',
+        prompt: normalizedPrompt,
+        intensity: aiIntensity,
       });
 
       setRecentPlans((prev) => [generatedPlan, ...prev.filter((plan) => plan.id !== generatedPlan.id)].slice(0, 6));
+      setIsAiBuilderModalVisible(false);
+      await loadDashboard(false);
     } catch {
-      setScreenError('Failed to generate AI plan.');
+      setAiBuilderError('Failed to generate AI plan. Please try different settings.');
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -442,11 +478,8 @@ const HomeScreen = () => {
                   style={styles.actionButton}
                 />
                 <PrimaryButton
-                  label="Create AI plan"
-                  onPress={() => {
-                    void handleCreateAiPlan();
-                  }}
-                  loading={isGeneratingPlan}
+                  label="Open AI Builder"
+                  onPress={openAiBuilderModal}
                   disabled={!selectedChild}
                   style={styles.actionButton}
                 />
@@ -686,6 +719,145 @@ const HomeScreen = () => {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={isAiBuilderModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAiBuilderModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]} allowFontScaling>
+              AI Builder
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]} allowFontScaling>
+              Build a quest plan for {selectedChild?.fullName ?? 'selected child'} with custom settings.
+            </Text>
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Quick templates
+            </Text>
+            <View style={styles.templateList}>
+              {PLAN_PROMPTS.map((prompt) => {
+                const isSelected = aiPrompt.trim() === prompt;
+                return (
+                  <Pressable
+                    key={prompt}
+                    onPress={() => setAiPrompt(prompt)}
+                    style={[
+                      styles.templateChip,
+                      {
+                        borderColor: isSelected ? '#ff2d55' : colors.border,
+                        backgroundColor: isSelected ? '#ff2d55' : colors.background,
+                      },
+                    ]}
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                  >
+                    <Text
+                      style={[styles.templateChipLabel, { color: isSelected ? '#ffffff' : colors.textSecondary }]}
+                      allowFontScaling
+                      numberOfLines={2}
+                    >
+                      {prompt}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Prompt
+            </Text>
+            <TextInput
+              value={aiPrompt}
+              onChangeText={setAiPrompt}
+              placeholder="Describe the plan and expected quest outcome..."
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, styles.notesInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              editable={!isGeneratingPlan}
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
+              Intensity
+            </Text>
+            <View style={styles.optionList}>
+              {PLAN_INTENSITY_OPTIONS.map((intensity) => {
+                const isSelected = aiIntensity === intensity;
+                return (
+                  <Pressable
+                    key={intensity}
+                    onPress={() => setAiIntensity(intensity)}
+                    style={[
+                      styles.optionChip,
+                      {
+                        borderColor: isSelected ? '#ff2d55' : colors.border,
+                        backgroundColor: isSelected ? '#ff2d55' : colors.background,
+                      },
+                    ]}
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                  >
+                    <Text style={[styles.optionChipLabel, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
+                      {intensity}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+                        <Text style={[styles.helperText, { color: colors.textSecondary }]} allowFontScaling>
+              Low = fewer/light quests, High = more difficult and longer quests.
+            </Text>
+
+            {aiBuilderError ? (
+              <Text style={styles.errorText} allowFontScaling>
+                {aiBuilderError}
+              </Text>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={closeAiBuilderModal}
+                disabled={isGeneratingPlan}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.modalButtonSecondary,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                    opacity: pressed && !isGeneratingPlan ? 0.9 : 1,
+                  },
+                ]}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+              >
+                <Text style={[styles.modalButtonLabel, { color: colors.text }]} allowFontScaling>
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  void handleCreateAiPlan();
+                }}
+                disabled={isGeneratingPlan || !selectedChild}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.modalButtonPrimary,
+                  (isGeneratingPlan || !selectedChild) && styles.modalButtonDisabled,
+                  { opacity: pressed && !isGeneratingPlan ? 0.9 : 1 },
+                ]}
+                android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
+              >
+                <Text style={[styles.modalButtonLabel, styles.modalButtonLabelPrimary]} allowFontScaling>
+                  {isGeneratingPlan ? 'Generating...' : 'Generate plan'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 };
@@ -845,6 +1017,42 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontWeight: '600',
       marginTop: 4,
     },
+    templateList: {
+      gap: 8,
+    },
+    templateChip: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      minHeight: 48,
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    templateChipLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '600',
+      lineHeight: isTablet ? 18 : 16,
+    },
+    optionList: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    optionChip: {
+      borderWidth: 1,
+      borderRadius: 999,
+      minHeight: 36,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    optionChipLabel: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '700',
+      textTransform: 'capitalize',
+    },
     input: {
       minHeight: 42,
       borderWidth: 1,
@@ -855,6 +1063,11 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     notesInput: {
       minHeight: 84,
+    },
+    helperText: {
+      fontSize: isTablet ? 12 : 11,
+      fontWeight: '500',
+      marginTop: 2,
     },
     errorText: {
       color: '#d93a5a',

@@ -1,10 +1,13 @@
 import React from 'react';
 import {
+  Animated,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  Vibration,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -16,6 +19,7 @@ import type {
   ChildProfile,
   ProgressSummary,
   Quest,
+  QuestStep,
   UserRole,
 } from '@/shared/models/mvp-contracts.model';
 import {
@@ -47,12 +51,30 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
 };
 
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
+const STEP_TOGGLE_VIBRATION_PATTERN = [0, 45, 25, 65];
+const QUEST_VICTORY_VIBRATION_PATTERN = [0, 80, 60, 120, 80, 220];
+
+const isQuestArchived = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
+
+const getQuestCompletionDate = (quest: Quest) => quest.archivedAt ?? quest.completedAt ?? quest.createdAt;
+
+const getQuestProgress = (quest: Quest) => {
+  const stepsCount = quest.stepsCount ?? quest.steps?.length ?? 0;
+  const completedStepsCount =
+    quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
+
+  return { stepsCount, completedStepsCount };
+};
+
+const isQuestDone = (quest: Quest) => {
+  const { stepsCount, completedStepsCount } = getQuestProgress(quest);
+
+  return isQuestArchived(quest) || (stepsCount > 0 && completedStepsCount === stepsCount);
+};
 
 type CompletionFeedback = {
   questTitle: string;
   rewardXp: number;
-  category: string;
-  categoryValue: number;
   totalXp: number;
   streak: number;
 };
@@ -80,11 +102,13 @@ const QuestsScreen = () => {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [screenError, setScreenError] = React.useState<string | null>(null);
-  const [completingQuestId, setCompletingQuestId] = React.useState<string | null>(null);
-  const [detailsQuest, setDetailsQuest] = React.useState<Quest | null>(null);
+  const [togglingStepId, setTogglingStepId] = React.useState<string | null>(null);
+  const [detailsQuestId, setDetailsQuestId] = React.useState<string | null>(null);
   const [completionFeedback, setCompletionFeedback] = React.useState<CompletionFeedback | null>(null);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
+  const completionShakeX = React.useRef(new Animated.Value(0)).current;
+  const completionScale = React.useRef(new Animated.Value(1)).current;
 
   React.useEffect(() => {
     if (!role) {
@@ -203,51 +227,68 @@ const QuestsScreen = () => {
     [quests],
   );
 
-  const completedQuests = React.useMemo(
-    () => quests.filter((quest) => quest.status === 'completed'),
+  const archivedQuests = React.useMemo(
+    () => quests.filter((quest) => isQuestArchived(quest)),
     [quests],
   );
 
   const completedToday = React.useMemo(() => {
     const today = getTodayIsoDate();
-    return completedQuests.filter((quest) => quest.createdAt?.slice(0, 10) === today).length;
-  }, [completedQuests]);
+    return archivedQuests.filter((quest) => getQuestCompletionDate(quest)?.slice(0, 10) === today).length;
+  }, [archivedQuests]);
 
   const xpToday = React.useMemo(() => {
     const today = getTodayIsoDate();
-    return completedQuests
-      .filter((quest) => quest.createdAt?.slice(0, 10) === today)
+    return archivedQuests
+      .filter((quest) => getQuestCompletionDate(quest)?.slice(0, 10) === today)
       .reduce((sum, quest) => sum + quest.rewardXp, 0);
-  }, [completedQuests]);
+  }, [archivedQuests]);
 
-  const handleCompleteQuest = async (id: string) => {
-    const questToComplete = quests.find((quest) => quest.id === id);
-    if (!questToComplete) {
+  const detailsQuest = React.useMemo(
+    () => quests.find((quest) => quest.id === detailsQuestId) ?? null,
+    [detailsQuestId, quests],
+  );
+
+  React.useEffect(() => {
+    if (detailsQuestId && !detailsQuest) {
+      setDetailsQuestId(null);
+    }
+  }, [detailsQuest, detailsQuestId]);
+
+  const handleToggleStep = async (questId: string, step: QuestStep) => {
+    const questToUpdate = quests.find((quest) => quest.id === questId);
+    if (!questToUpdate) {
       setScreenError('Selected quest was not found.');
       return;
     }
 
-    setCompletingQuestId(id);
+    if (isQuestArchived(questToUpdate)) {
+      return;
+    }
+
+    Vibration.vibrate(STEP_TOGGLE_VIBRATION_PATTERN);
+    setTogglingStepId(step.id);
     setScreenError(null);
 
     try {
-      const completedQuest = await questsService.completeQuest(id);
+      const updatedQuest = await questsService.toggleQuestStep(questId, step.id);
+      setQuests((current) => current.map((quest) => (quest.id === questId ? updatedQuest : quest)));
       const refreshedProgress = await refreshData(false);
 
-      if (refreshedProgress) {
+      const movedToArchive = !isQuestArchived(questToUpdate) && isQuestArchived(updatedQuest);
+      if (movedToArchive && refreshedProgress) {
+        Vibration.vibrate(QUEST_VICTORY_VIBRATION_PATTERN);
         setCompletionFeedback({
-          questTitle: completedQuest.title,
-          rewardXp: completedQuest.rewardXp,
-          category: completedQuest.category,
-          categoryValue: refreshedProgress.stats[completedQuest.category] ?? 0,
+          questTitle: updatedQuest.title,
+          rewardXp: updatedQuest.rewardXp,
           totalXp: refreshedProgress.xp,
           streak: refreshedProgress.streak,
         });
       }
     } catch {
-      setScreenError('Could not complete quest. Please try again.');
+      setScreenError('Could not update quest step. Please try again.');
     } finally {
-      setCompletingQuestId(null);
+      setTogglingStepId(null);
     }
   };
 
@@ -256,12 +297,64 @@ const QuestsScreen = () => {
       return undefined;
     }
 
+    completionShakeX.setValue(0);
+    completionScale.setValue(1);
+
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(completionShakeX, {
+          toValue: 14,
+          duration: 55,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: -12,
+          duration: 55,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: 10,
+          duration: 48,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: -8,
+          duration: 44,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionShakeX, {
+          toValue: 0,
+          duration: 42,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.sequence([
+        Animated.timing(completionScale, {
+          toValue: 1.04,
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(completionScale, {
+          toValue: 1,
+          duration: 150,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
     const timer = setTimeout(() => {
       setCompletionFeedback(null);
     }, 4200);
 
     return () => clearTimeout(timer);
-  }, [completionFeedback]);
+  }, [completionFeedback, completionScale, completionShakeX]);
 
   const handleSelectChild = async (childId: string) => {
     setScreenError(null);
@@ -299,7 +392,7 @@ const QuestsScreen = () => {
             subtitle={
               isChildExecutionMode
                 ? 'Execution mode: complete assigned quests and earn XP'
-                : 'Review mode: view assigned quests for selected child'
+                : 'Parent mode: review and update selected child quests'
             }
           />
 
@@ -365,11 +458,6 @@ const QuestsScreen = () => {
             title="Quest Progress"
             subtitle={isChildExecutionMode ? 'Execution metrics' : `Target: ${targetLabel}`}
           >
-            {!isChildExecutionMode ? (
-              <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
-                Adult mode is read-only. Completion is available in child mode.
-              </Text>
-            ) : null}
             <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
               Active quests: {activeQuests.length}
             </Text>
@@ -387,21 +475,35 @@ const QuestsScreen = () => {
             </Text>
           </StatCard>
 
-          {isChildExecutionMode && completionFeedback ? (
-            <StatCard title="Quest completed" subtitle={completionFeedback.questTitle}>
-              <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
-                +{completionFeedback.rewardXp} XP
-              </Text>
-              <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-                Quest completed
-              </Text>
-              <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
-                {completionFeedback.category} stat increased to {completionFeedback.categoryValue}
-              </Text>
-              <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
-                Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}
-              </Text>
-            </StatCard>
+          {completionFeedback ? (
+            <Animated.View
+              style={[
+                styles.completionAnimatedWrap,
+                {
+                  transform: [{ translateX: completionShakeX }, { scale: completionScale }],
+                },
+              ]}
+            >
+              <StatCard title="Quest completed" subtitle={completionFeedback.questTitle}>
+                <View style={styles.completionCheckWrap}>
+                  <Text style={styles.completionCheckLabel} allowFontScaling={false}>
+                    ✓
+                  </Text>
+                </View>
+                <Text style={[styles.successXp, { color: '#1f9b54' }]} allowFontScaling>
+                  +{completionFeedback.rewardXp} XP
+                </Text>
+                <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+                  All steps completed
+                </Text>
+                <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+                  Quest moved to Archive
+                </Text>
+                <Text style={[styles.progressText, { color: colors.textSecondary }]} allowFontScaling>
+                  Total XP: {completionFeedback.totalXp} | Streak: {completionFeedback.streak}
+                </Text>
+              </StatCard>
+            </Animated.View>
           ) : null}
 
           <PrimaryButton
@@ -422,9 +524,7 @@ const QuestsScreen = () => {
                   <QuestCard
                     key={quest.id}
                     quest={quest}
-                    onComplete={isChildExecutionMode ? handleCompleteQuest : undefined}
-                    onViewDetails={setDetailsQuest}
-                    isCompleting={completingQuestId === quest.id}
+                    onViewDetails={() => setDetailsQuestId(quest.id)}
                   />
                 ))
               ) : (
@@ -442,25 +542,21 @@ const QuestsScreen = () => {
           </View>
 
           <View style={styles.sectionBlock}>
-            <SectionHeader title="Completed Quests" />
+            <SectionHeader title="Archived" />
             {targetUserId ? (
-              completedQuests.length > 0 ? (
-                completedQuests.map((quest) => (
-                  <QuestCard key={quest.id} quest={quest} onViewDetails={setDetailsQuest} />
+              archivedQuests.length > 0 ? (
+                archivedQuests.map((quest) => (
+                  <QuestCard key={quest.id} quest={quest} onViewDetails={() => setDetailsQuestId(quest.id)} />
                 ))
               ) : (
                 <EmptyState
-                  title="No completed quests yet"
-                  description={
-                    isChildExecutionMode
-                      ? 'Complete active quests to move them here.'
-                      : 'Child has no completed quests yet.'
-                  }
+                  title="Archive is empty"
+                  description="Complete all quest steps to move quests here."
                 />
               )
             ) : (
               <EmptyState
-                title="No completed quests"
+                title="No archived quests"
                 description="Create child profile and approve a plan first."
               />
             )}
@@ -481,16 +577,37 @@ const QuestsScreen = () => {
       ) : null}
 
       <Modal
-        visible={Boolean(detailsQuest)}
+        visible={Boolean(detailsQuestId)}
         transparent
         animationType="fade"
-        onRequestClose={() => setDetailsQuest(null)}
+        onRequestClose={() => setDetailsQuestId(null)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Animated.View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                transform: [{ translateX: completionShakeX }, { scale: completionScale }],
+              },
+            ]}
+          >
             {detailsQuest ? (
               <>
                 <SectionHeader title="Quest Details" subtitle={detailsQuest.title} />
+                <View style={styles.detailsTitleRow}>
+                  <Text style={[styles.detailsTitleText, { color: colors.text }]} allowFontScaling>
+                    {detailsQuest.title}
+                  </Text>
+                  {isQuestDone(detailsQuest) ? (
+                    <View style={styles.detailsDoneCheckWrap}>
+                      <Text style={styles.detailsDoneCheckLabel} allowFontScaling={false}>
+                        ✓
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Original task: {detailsQuest.originalTask ?? 'Generated from approved AI plan'}
                 </Text>
@@ -498,25 +615,93 @@ const QuestsScreen = () => {
                   {detailsQuest.description}
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                  Category: {detailsQuest.category}
+                  Progress: {getQuestProgress(detailsQuest).completedStepsCount} / {getQuestProgress(detailsQuest).stepsCount} steps
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Difficulty: {detailsQuest.difficulty}
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
-                  Reward XP: {detailsQuest.rewardXp}
+                  Reward: +{detailsQuest.rewardXp} XP
                 </Text>
                 <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
                   Estimated minutes: {detailsQuest.estimatedMinutes}
                 </Text>
+
+                <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
+                  Steps
+                </Text>
+
+                <View style={styles.stepsList}>
+                  {[...(detailsQuest.steps ?? [])]
+                    .sort((left, right) => left.order - right.order)
+                    .map((step) => {
+                      const isCompleted = step.status === 'completed';
+                      const isStepReadOnly = isQuestArchived(detailsQuest);
+                      const isStepUpdating = togglingStepId === step.id;
+
+                      return (
+                        <Pressable
+                          key={step.id}
+                          style={[
+                            styles.stepRow,
+                            {
+                              borderColor: isCompleted ? '#1f9b54' : colors.border,
+                              backgroundColor: isCompleted ? '#e3f7ea' : colors.background,
+                            },
+                            (isStepReadOnly || isStepUpdating) ? styles.stepRowDisabled : null,
+                          ]}
+                          android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                          onPress={() => {
+                            void handleToggleStep(detailsQuest.id, step);
+                          }}
+                          disabled={isStepReadOnly || isStepUpdating}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: isCompleted, disabled: isStepReadOnly || isStepUpdating }}
+                        >
+                          <View style={styles.stepTitleRow}>
+                            <View
+                              style={[
+                                styles.stepCheckbox,
+                                {
+                                  borderColor: isCompleted ? '#1f9b54' : colors.border,
+                                  backgroundColor: isCompleted ? '#1f9b54' : 'transparent',
+                                },
+                              ]}
+                            >
+                              {isCompleted ? (
+                                <Text style={styles.stepCheckmark} allowFontScaling={false}>
+                                  ✓
+                                </Text>
+                              ) : null}
+                            </View>
+                            <Text style={[styles.stepTitle, { color: colors.text }]} allowFontScaling>
+                              {step.title}
+                            </Text>
+                          </View>
+                          {step.description ? (
+                            <Text style={[styles.stepDescription, { color: colors.textSecondary }]} allowFontScaling>
+                              {step.description}
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                </View>
+
+                {isQuestArchived(detailsQuest) ? (
+                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]} allowFontScaling>
+                    Archived quests are read-only.
+                  </Text>
+                ) : null}
+
                 <PrimaryButton
                   label="Close"
                   variant="secondary"
-                  onPress={() => setDetailsQuest(null)}
+                  onPress={() => setDetailsQuestId(null)}
                 />
               </>
             ) : null}
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </ScreenContainer>
@@ -535,6 +720,25 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     successXp: {
       fontSize: isTablet ? 24 : 21,
       fontWeight: '800',
+    },
+    completionAnimatedWrap: {
+      width: '100%',
+    },
+    completionCheckWrap: {
+      width: isTablet ? 34 : 30,
+      height: isTablet ? 34 : 30,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#1f9b54',
+      elevation: 2,
+      marginBottom: 4,
+    },
+    completionCheckLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 22 : 20,
+      fontWeight: '900',
+      lineHeight: isTablet ? 24 : 22,
     },
     childList: {
       gap: 8,
@@ -609,9 +813,82 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontSize: isTablet ? 15 : 13,
       fontWeight: '500',
     },
+    detailsTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    detailsTitleText: {
+      flex: 1,
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: '700',
+    },
+    detailsDoneCheckWrap: {
+      width: isTablet ? 24 : 22,
+      height: isTablet ? 24 : 22,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#1f9b54',
+      elevation: 1,
+    },
+    detailsDoneCheckLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '900',
+      lineHeight: isTablet ? 16 : 15,
+    },
     previewText: {
       fontSize: isTablet ? 16 : 14,
       lineHeight: isTablet ? 22 : 20,
+    },
+    stepsHeading: {
+      fontSize: isTablet ? 18 : 16,
+      fontWeight: '700',
+    },
+    stepsList: {
+      gap: 8,
+    },
+    stepRow: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      overflow: 'hidden',
+      gap: 4,
+      elevation: 1,
+    },
+    stepRowDisabled: {
+      opacity: 0.7,
+    },
+    stepTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    stepCheckbox: {
+      width: isTablet ? 22 : 20,
+      height: isTablet ? 22 : 20,
+      borderWidth: 2,
+      borderRadius: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepCheckmark: {
+      color: '#ffffff',
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '900',
+    },
+    stepTitle: {
+      flex: 1,
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '600',
+    },
+    stepDescription: {
+      fontSize: isTablet ? 13 : 12,
+      lineHeight: isTablet ? 18 : 16,
+      paddingLeft: 30,
     },
   });
 

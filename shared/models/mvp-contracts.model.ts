@@ -39,10 +39,24 @@ export interface PlanRequest {
   id: string;
   targetUserId: string;
   prompt: string;
-  category: string;
+  category?: string;
   intensity: string;
   photo?: CapturedPhoto;
   status: string;
+}
+
+export type QuestStepStatus = 'pending' | 'completed';
+
+export type QuestStatus = 'draft' | 'active' | 'completed' | 'archived';
+
+export interface QuestStep {
+  id: string;
+  questId: string;
+  title: string;
+  description?: string;
+  order: number;
+  status: QuestStepStatus;
+  completedAt?: string;
 }
 
 export interface Quest {
@@ -50,14 +64,20 @@ export interface Quest {
   assignedToUserId: string;
   title: string;
   description: string;
-  category: string;
+  // Legacy field kept optional for old mock payload compatibility.
+  category?: string;
   difficulty: string;
   rewardXp: number;
   estimatedMinutes: number;
-  status: string;
+  status: QuestStatus;
+  stepsCount?: number;
+  completedStepsCount?: number;
+  steps?: QuestStep[];
   // Legacy MVP fields still used by existing screens.
   originalTask?: string;
   createdAt?: string;
+  completedAt?: string;
+  archivedAt?: string;
 }
 
 export interface GeneratedPlan {

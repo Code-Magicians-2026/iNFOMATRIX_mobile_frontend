@@ -1,32 +1,41 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Quest } from '@/shared/models/mvp-contracts.model';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import PrimaryButton from './PrimaryButton';
 
 type QuestCardProps = {
   quest: Quest;
-  onComplete?: (id: string) => void;
   onViewDetails?: (quest: Quest) => void;
-  isCompleting?: boolean;
 };
 
-const QuestCard = ({ quest, onComplete, onViewDetails, isCompleting = false }: QuestCardProps) => {
+const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
   const colors = useThemeStore((s) => s.colors);
   const { isTablet } = useResponsiveLayout();
   const styles = React.useMemo(() => getStyles(isTablet), [isTablet]);
 
-  const isCompleted = quest.status === 'completed';
-  const canComplete = typeof onComplete === 'function';
+  const isArchived = quest.status === 'archived' || quest.status === 'completed';
   const canViewDetails = typeof onViewDetails === 'function';
+  const stepsCount = quest.stepsCount ?? quest.steps?.length ?? 0;
+  const completedStepsCount =
+    quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
+  const isDone = isArchived || (stepsCount > 0 && completedStepsCount === stepsCount);
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[styles.title, { color: colors.text }]} allowFontScaling>
-        {quest.title}
-      </Text>
+      <View style={styles.titleRow}>
+        <Text style={[styles.title, { color: colors.text }]} allowFontScaling>
+          {quest.title}
+        </Text>
+        {isDone ? (
+          <View style={styles.doneCheckWrap}>
+            <Text style={styles.doneCheckLabel} allowFontScaling={false}>
+              ✓
+            </Text>
+          </View>
+        ) : null}
+      </View>
       {quest.originalTask ? (
         <Text style={[styles.originalTask, { color: colors.textSecondary }]} allowFontScaling>
           Original task: {quest.originalTask}
@@ -37,62 +46,35 @@ const QuestCard = ({ quest, onComplete, onViewDetails, isCompleting = false }: Q
       </Text>
 
       <View style={styles.metaGrid}>
+        <Text style={[styles.progressText, { color: colors.text }]} allowFontScaling>
+          Progress: {completedStepsCount} / {stepsCount} steps
+        </Text>
         <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
           Difficulty: {quest.difficulty}
         </Text>
         <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
-          Category: {quest.category}
-        </Text>
-        <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
-          Reward XP: {quest.rewardXp}
-        </Text>
-        <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
-          Estimated: {quest.estimatedMinutes} min
-        </Text>
-        <Text style={[styles.metaText, { color: colors.textSecondary }]} allowFontScaling>
-          Status: {quest.status}
+          Reward: +{quest.rewardXp} XP
         </Text>
       </View>
 
-      {isCompleted ? (
-        <View style={styles.completedWrap}>
-          <View style={styles.completedBox}>
-            <Text style={styles.completedBadge} allowFontScaling>
-              COMPLETED
+      <View style={styles.footer}>
+        {isArchived ? (
+          <Text style={styles.completedBadge} allowFontScaling>
+            ARCHIVED
+          </Text>
+        ) : null}
+        {canViewDetails ? (
+          <Pressable
+            onPress={() => onViewDetails(quest)}
+            style={[styles.detailsButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <Text style={[styles.detailsButtonLabel, { color: colors.text }]} allowFontScaling>
+              View details
             </Text>
-            <Text style={[styles.earnedXp, { color: colors.text }]} allowFontScaling>
-              Earned XP: +{quest.rewardXp}
-            </Text>
-          </View>
-          {canViewDetails ? (
-            <PrimaryButton
-              label="View details"
-              variant="secondary"
-              onPress={() => onViewDetails(quest)}
-              style={styles.completedDetailsButton}
-            />
-          ) : null}
-        </View>
-      ) : canComplete || canViewDetails ? (
-        <View style={styles.actionsRow}>
-          {canComplete ? (
-            <PrimaryButton
-              label="Complete"
-              onPress={() => onComplete(quest.id)}
-              loading={isCompleting}
-              style={styles.actionButton}
-            />
-          ) : null}
-          {canViewDetails ? (
-            <PrimaryButton
-              label="View details"
-              variant={canComplete ? 'secondary' : 'tertiary'}
-              onPress={() => onViewDetails(quest)}
-              style={styles.actionButton}
-            />
-          ) : null}
-        </View>
-      ) : null}
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 };
@@ -110,6 +92,27 @@ const getStyles = (isTablet: boolean) =>
       fontSize: isTablet ? 22 : 18,
       fontWeight: '700',
     },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    doneCheckWrap: {
+      width: isTablet ? 24 : 22,
+      height: isTablet ? 24 : 22,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#1f9b54',
+      elevation: 1,
+    },
+    doneCheckLabel: {
+      color: '#ffffff',
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '900',
+      lineHeight: isTablet ? 16 : 15,
+    },
     originalTask: {
       fontSize: isTablet ? 15 : 13,
       fontWeight: '500',
@@ -121,21 +124,14 @@ const getStyles = (isTablet: boolean) =>
     metaGrid: {
       gap: 4,
     },
+    progressText: {
+      fontSize: isTablet ? 15 : 13,
+      fontWeight: '700',
+    },
     metaText: {
       fontSize: isTablet ? 14 : 13,
     },
-    actionsRow: {
-      flexDirection: 'row',
-      gap: 10,
-    },
-    actionButton: {
-      flex: 1,
-      minHeight: 44,
-    },
-    completedWrap: {
-      gap: 10,
-    },
-    completedBox: {
+    footer: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -151,12 +147,18 @@ const getStyles = (isTablet: boolean) =>
       borderRadius: 999,
       overflow: 'hidden',
     },
-    earnedXp: {
-      fontSize: isTablet ? 15 : 13,
-      fontWeight: '700',
-    },
-    completedDetailsButton: {
+    detailsButton: {
+      borderWidth: 1,
+      borderRadius: 10,
       minHeight: 40,
+      paddingHorizontal: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    detailsButtonLabel: {
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '700',
     },
   });
 

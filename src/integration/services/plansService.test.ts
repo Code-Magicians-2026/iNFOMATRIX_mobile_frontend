@@ -27,15 +27,15 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     expect(plan.summary).toContain('using camera context');
   });
 
-  it('throws when photo is missing', async () => {
-    await expect(
-      plansService.uploadPhotoAndGenerate({
-        targetUserId: 'child-1',
-        prompt: 'Create tidy room and homework plan.',
-        category: 'routine',
-        intensity: 'medium',
-      }),
-    ).rejects.toThrow('Photo is required for uploadPhotoAndGenerate.');
+  it('generates plan when photo is missing', async () => {
+    const plan = await plansService.uploadPhotoAndGenerate({
+      targetUserId: 'child-1',
+      prompt: 'Create tidy room and homework plan.',
+      category: 'routine',
+      intensity: 'medium',
+    });
+
+    expect(plan.status).toBe('draft');
+    expect(plan.summary).not.toContain('using camera context');
   });
 });
-
