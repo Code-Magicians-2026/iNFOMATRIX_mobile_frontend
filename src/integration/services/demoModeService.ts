@@ -1,9 +1,11 @@
 import type { UserRole } from '@/shared/models/mvp-contracts.model';
 import {
   applyDemoScenarioMock,
+  resetMockLayerState,
   type DemoScenarioApplyResult,
   type DemoScenarioKey,
 } from '@/src/features/mvp/services/mock-layer-services';
+import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 
 export type DemoScenario = {
   key: DemoScenarioKey;
@@ -47,8 +49,15 @@ export const DEMO_SCENARIOS: DemoScenario[] = [
 
 export const demoModeService = {
   scenarios: DEMO_SCENARIOS,
-  activateScenario: async (scenario: DemoScenarioKey): Promise<DemoScenarioApplyResult> =>
-    applyDemoScenarioMock(scenario),
+  isEnabled: (): boolean => runtimeModeService.isDemoModeEnabled(),
+  activateScenario: async (scenario: DemoScenarioKey): Promise<DemoScenarioApplyResult> => {
+    runtimeModeService.enableDemoMode();
+    return applyDemoScenarioMock(scenario);
+  },
+  deactivate: () => {
+    runtimeModeService.disableDemoMode();
+    resetMockLayerState();
+  },
 };
 
 export type { DemoScenarioApplyResult, DemoScenarioKey };

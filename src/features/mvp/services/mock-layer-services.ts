@@ -322,55 +322,48 @@ const normalizeCapturedPhoto = (photo?: CapturedPhoto): CapturedPhoto | undefine
 };
 
 const buildPlanQuests = (input: GeneratePlanMockInput, planId: string): Quest[] => {
-  const questCount = 3;
-  const baseReward = 70;
-  const baseDuration = 28;
-  const difficulty = 'medium';
-  const nowMs = Date.now();
+  const questId = `${planId}-quest-1`;
+  const normalizedPrompt = input.prompt.trim();
 
-  return Array.from({ length: questCount }, (_, index) => {
-    const questId = `${planId}-quest-${index + 1}`;
-    const title = `Mission ${index + 1}`;
-    const description = `${input.prompt.trim()} Step ${index + 1}: keep focus and complete with quality.`;
-
-    return normalizeQuest({
+  return [
+    normalizeQuest({
       id: questId,
       assignedToUserId: input.targetUserId,
-      title,
-      description,
-      difficulty,
-      rewardXp: baseReward + index * 10,
-      estimatedMinutes: baseDuration + index * 5,
+      title: 'Main Mission',
+      description: normalizedPrompt,
+      difficulty: 'medium',
+      rewardXp: 120,
+      estimatedMinutes: 40,
       status: 'draft',
-      createdAt: new Date(nowMs + index * 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
       steps: [
         {
           id: `${questId}-step-1`,
           questId,
-          title: 'Open quest and read mission',
-          description: 'Understand what should be done before starting.',
+          title: 'Preparation',
+          description: 'Review the objective and prepare resources.',
           order: 1,
           status: 'pending',
         },
         {
           id: `${questId}-step-2`,
           questId,
-          title: `Do mission task ${index + 1}`,
-          description: input.prompt.trim(),
+          title: 'Core action',
+          description: normalizedPrompt,
           order: 2,
           status: 'pending',
         },
         {
           id: `${questId}-step-3`,
           questId,
-          title: 'Review result and finish',
-          description: 'Check quality and mark the quest complete.',
+          title: 'Validation',
+          description: 'Check the result and mark the mission complete.',
           order: 3,
           status: 'pending',
         },
       ],
-    });
-  });
+    }),
+  ];
 };
 
 export const resetMockLayerState = () => {
@@ -570,7 +563,7 @@ export const generatePlanMock = async (input: GeneratePlanMockInput): Promise<Ge
   const generatedPlan: GeneratedPlan = {
     id: planId,
     title: `${targetUser.fullName}: AI Plan`,
-    summary: `Generated ${quests.length} quests${normalizedPhoto ? ' using camera context.' : '.'}`,
+    summary: `Generated ${quests.length} quest${quests.length > 1 ? 's' : ''}${normalizedPhoto ? ' using camera context.' : '.'}`,
     childMessage: `You can do this, ${targetUser.fullName}. Start with one quest and keep going.`,
     quests,
     totalEstimatedMinutes: quests.reduce((sum, quest) => sum + quest.estimatedMinutes, 0),

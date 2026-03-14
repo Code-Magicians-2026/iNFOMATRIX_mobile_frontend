@@ -6,6 +6,7 @@ import { ApiError } from '@/src/features/auth/api/client';
 import type { TokenDto } from '@/src/features/auth/dto/auth.dto';
 import type { AuthSession } from '@/src/features/auth/models/auth-session.model';
 import { authService } from '@/src/integration/services/authService';
+import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
 
 interface FamilySummary {
@@ -468,6 +469,8 @@ const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   createSessionFromToken: async (token: TokenDto, fallbackEmail?: string) => {
+    runtimeModeService.disableDemoMode();
+
     const session = buildSessionFromToken(token, fallbackEmail);
     const previousUser = get().currentUser;
     const nextRole: UserRole = get().role ?? previousUser?.role ?? 'adult';
@@ -521,6 +524,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   registerChild: async (payload: RegisterChildInput) => {
+    if (runtimeModeService.isDemoModeEnabled()) {
+      throw new Error('Disable demo mode before creating a child in the real family flow.');
+    }
+
     const session = get().session;
     if (!session) {
       throw new Error('Для додавання дитини потрібно увійти у свій акаунт.');
@@ -613,6 +620,8 @@ const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    runtimeModeService.disableDemoMode();
+
     set({
       session: null,
       currentUser: null,

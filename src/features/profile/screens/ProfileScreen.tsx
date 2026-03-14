@@ -80,6 +80,7 @@ const ProfileScreen = () => {
   const [isDemoModalVisible, setIsDemoModalVisible] = React.useState(false);
   const [applyingScenarioKey, setApplyingScenarioKey] = React.useState<DemoScenarioKey | null>(null);
   const [demoError, setDemoError] = React.useState<string | null>(null);
+  const isDemoModeEnabled = demoModeService.isEnabled();
 
   React.useEffect(() => {
     if (!role) {
@@ -188,6 +189,12 @@ const ProfileScreen = () => {
     } finally {
       setApplyingScenarioKey(null);
     }
+  };
+
+  const handleDisableDemoMode = async () => {
+    setDemoError(null);
+    demoModeService.deactivate();
+    await loadProfile(false);
   };
 
   const level = progress?.level ?? me?.level ?? 1;
@@ -353,16 +360,33 @@ const ProfileScreen = () => {
           />
         </StatCard>
 
-        <StatCard title="Demo Mode" subtitle="Prepared scenarios for full walkthrough" style={styles.card}>
+        <StatCard
+          title="Demo Mode"
+          subtitle={isDemoModeEnabled ? 'Demo mode enabled' : 'Prepared scenarios for full walkthrough'}
+          style={styles.card}
+        >
           <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-            Use predefined states when backend is unavailable or unstable.
+            {isDemoModeEnabled
+              ? 'Demo state is active. Real API flow is paused until demo mode is disabled.'
+              : 'Use predefined states when backend is unavailable or unstable.'}
           </Text>
-          <PrimaryButton
-            label="Open demo scenarios"
-            variant="tertiary"
-            onPress={() => setIsDemoModalVisible(true)}
-            style={styles.scenarioButton}
-          />
+          {isDemoModeEnabled ? (
+            <PrimaryButton
+              label="Disable demo mode"
+              variant="tertiary"
+              onPress={() => {
+                void handleDisableDemoMode();
+              }}
+              style={styles.scenarioButton}
+            />
+          ) : (
+            <PrimaryButton
+              label="Open demo scenarios"
+              variant="tertiary"
+              onPress={() => setIsDemoModalVisible(true)}
+              style={styles.scenarioButton}
+            />
+          )}
           {demoError ? (
             <Text style={styles.errorText} allowFontScaling>
               {demoError}

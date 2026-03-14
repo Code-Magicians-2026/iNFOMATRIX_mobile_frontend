@@ -1,10 +1,15 @@
 import useAuthStore from '@/context/Auth-store';
 import { authService } from '@/src/integration/services/authService';
 import type { RegisterChildRequestDto } from '@/src/features/auth/dto/auth.dto';
+import { createChildMock, getChildrenMock } from '@/src/features/mvp/services';
+import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { ChildProfile } from '@/shared/models/mvp-contracts.model';
 
 export type CreateChildInput = RegisterChildRequestDto;
 const CHILDREN_CACHE_TTL_MS = 20_000;
+type GetChildrenOptions = {
+  forceRefresh?: boolean;
+};
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -135,61 +140,80 @@ let inFlightChildrenRequest:
   | {
       accessToken: string;
       promise: Promise<ChildProfile[]>;
+      requestId: number;
     }
   | null = null;
+let childrenRequestId = 0;
 
 export const childrenService = {
-  getChildren: async (): Promise<ChildProfile[]> => {
+  getChildren: async (options: GetChildrenOptions = {}): Promise<ChildProfile[]> => {
+    if (runtimeModeService.isDemoModeEnabled()) {
+      return getChildrenMock();
+    }
+
     const accessToken = useAuthStore.getState().session?.accessToken;
     if (!accessToken) {
       throw new Error('Для отримання списку дітей потрібна авторизація.');
     }
 
+    const forceRefresh = options.forceRefresh === true;
     const now = Date.now();
     const isFreshCache =
+      !forceRefresh &&
       childrenCache?.accessToken === accessToken &&
       now - childrenCache.fetchedAt < CHILDREN_CACHE_TTL_MS;
     if (isFreshCache && childrenCache) {
       return cloneChildren(childrenCache.children);
     }
 
-    if (inFlightChildrenRequest?.accessToken === accessToken) {
+    if (!forceRefresh && inFlightChildrenRequest?.accessToken === accessToken) {
       const children = await inFlightChildrenRequest.promise;
       return cloneChildren(children);
     }
 
+    const requestId = childrenRequestId + 1;
+    childrenRequestId = requestId;
     const requestPromise = (async () => {
       const response = await authService.getFamilyChildren(accessToken);
       const rawChildren = extractChildrenList(response);
-      const children = rawChildren
+      return rawChildren
         .map((item, index) => toChildProfile(item, index))
         .filter((item): item is ChildProfile => item !== null);
-
-      childrenCache = {
-        accessToken,
-        fetchedAt: Date.now(),
-        children: cloneChildren(children),
-      };
-
-      return children;
     })();
 
     inFlightChildrenRequest = {
       accessToken,
       promise: requestPromise,
+      requestId,
     };
 
     try {
       const children = await requestPromise;
+      if (inFlightChildrenRequest?.requestId === requestId) {
+        childrenCache = {
+          accessToken,
+          fetchedAt: Date.now(),
+          children: cloneChildren(children),
+        };
+      }
       return cloneChildren(children);
     } finally {
-      if (inFlightChildrenRequest?.promise === requestPromise) {
+      if (inFlightChildrenRequest?.requestId === requestId) {
         inFlightChildrenRequest = null;
       }
     }
   },
 
   createChild: async (input: CreateChildInput): Promise<ChildProfile> => {
+    if (runtimeModeService.isDemoModeEnabled()) {
+      const fullName = `${input.firstName} ${input.lastName}`.trim();
+      const createdChild = await createChildMock({
+        fullName,
+        age: 10,
+      });
+      return cloneChildProfile(createdChild);
+    }
+
     const accessToken = useAuthStore.getState().session?.accessToken;
     if (!accessToken) {
       throw new Error('Для створення дитини потрібна авторизація.');
@@ -198,7 +222,7 @@ export const childrenService = {
     await authService.registerChild(input, accessToken);
     childrenCache = null;
     inFlightChildrenRequest = null;
-    const children = await childrenService.getChildren();
+    const children = await childrenService.getChildren({ forceRefresh: true });
     const fullName = `${input.firstName} ${input.lastName}`.trim().toLowerCase();
     const resolved =
       children.find((child) => child.fullName.trim().toLowerCase() === fullName) ??

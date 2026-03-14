@@ -6,7 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
-import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
 import type {
   ChildProfile,
   GeneratedPlan,
@@ -25,6 +25,7 @@ import {
 } from '@/shared/components/ui';
 import {
   childrenService,
+  demoModeService,
   plansService,
   progressService,
   questsService,
@@ -34,6 +35,8 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const XP_PER_LEVEL = 300;
 const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
+const CREATE_CHILD_SYNC_ATTEMPTS = 5;
+const CREATE_CHILD_SYNC_DELAY_MS = 1200;
 
 const PLAN_PROMPTS = [
   'Build a balanced plan for school progress and healthy routine.',
@@ -53,6 +56,29 @@ const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) =>
   }
 
   return 'child-1';
+};
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const isRecoverableCreateChildError = (error: unknown): boolean => {
+  if (error instanceof ApiError) {
+    return [400, 408, 409, 500, 502, 503, 504].includes(error.status);
+  }
+
+  if (error instanceof Error) {
+    const normalized = error.message.trim().toLowerCase();
+    return (
+      normalized.includes('already') ||
+      normalized.includes('exist') ||
+      normalized.includes('timeout') ||
+      normalized.includes('timed out')
+    );
+  }
+
+  return false;
 };
 
 const HomeScreen = () => {
@@ -222,6 +248,11 @@ const HomeScreen = () => {
   };
 
   const openCreateChildModal = async () => {
+    if (demoModeService.isEnabled()) {
+      setScreenError('Disable demo mode first to create a child in the real family flow.');
+      return;
+    }
+
     if (!session) {
       setScreenError('Sign in first to create a child profile.');
       return;
@@ -240,33 +271,35 @@ const HomeScreen = () => {
     setIsCreateChildModalVisible(false);
   };
 
-  const syncCreatedChildInBackground = React.useCallback(
-    (existingChildIds: Set<string>, firstName: string, lastName: string) => {
+  const resolveCreatedChild = React.useCallback(
+    async (
+      existingChildIds: Set<string>,
+      firstName: string,
+      lastName: string,
+      attempts = CREATE_CHILD_SYNC_ATTEMPTS,
+    ): Promise<ChildProfile | null> => {
       const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
 
-      void (async () => {
-        try {
-          const refreshedChildren = await childrenService.getChildren();
-          const createdChild: ChildProfile | null =
-            refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
-            refreshedChildren.find(
-              (child) => child.fullName.trim().toLowerCase() === expectedFullName,
-            ) ??
-            null;
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
+        const createdChild: ChildProfile | null =
+          refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+          refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
+          null;
 
-          if (createdChild) {
-            await setSelectedChildId(createdChild.id);
-          }
-
-          await loadDashboard(false);
-        } catch {
-          setScreenError(
-            'Child created, but failed to refresh list immediately. Pull to refresh dashboard.',
-          );
+        if (createdChild) {
+          setChildren(refreshedChildren);
+          return createdChild;
         }
-      })();
+
+        if (attempt < attempts - 1) {
+          await sleep(CREATE_CHILD_SYNC_DELAY_MS);
+        }
+      }
+
+      return null;
     },
-    [loadDashboard, setSelectedChildId],
+    [],
   );
 
   const handleCreateChild = async () => {
@@ -289,18 +322,38 @@ const HomeScreen = () => {
 
     setIsCreatingChild(true);
     setCreateChildError(null);
+    const existingChildIds = new Set(children.map((child) => child.id));
+
     try {
-      const existingChildIds = new Set(children.map((child) => child.id));
       await registerChild({
         firstName,
         lastName,
         password: childPassword,
       });
 
+      const createdChild = await resolveCreatedChild(existingChildIds, firstName, lastName);
       setIsCreateChildModalVisible(false);
       resetCreateChildForm();
-      syncCreatedChildInBackground(existingChildIds, firstName, lastName);
+
+      if (createdChild) {
+        await setSelectedChildId(createdChild.id);
+      }
+
+      await loadDashboard(false);
     } catch (error) {
+      if (isRecoverableCreateChildError(error)) {
+        try {
+          const createdChild = await resolveCreatedChild(existingChildIds, firstName, lastName);
+          if (createdChild) {
+            setIsCreateChildModalVisible(false);
+            resetCreateChildForm();
+            await setSelectedChildId(createdChild.id);
+            await loadDashboard(false);
+            return;
+          }
+        } catch {}
+      }
+
       setCreateChildError(
         getApiErrorMessage(error, 'Failed to create child profile. Please try again.'),
       );

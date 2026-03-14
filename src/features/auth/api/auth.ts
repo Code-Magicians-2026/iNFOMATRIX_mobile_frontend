@@ -25,8 +25,17 @@ interface UnknownApiObject {
   [key: string]: unknown;
 }
 
+const resolveAccessToken = (accessToken: string): string => {
+  const normalized = accessToken.trim();
+  if (!normalized) {
+    throw new Error('Access token is required for authenticated family requests.');
+  }
+
+  return normalized;
+};
+
 const withAuthorization = ({ accessToken }: AuthorizedRequestOptions) => ({
-  accessToken,
+  accessToken: resolveAccessToken(accessToken),
 });
 
 export const register = async (payload: RegisterRequestDto): Promise<EmailDto> =>

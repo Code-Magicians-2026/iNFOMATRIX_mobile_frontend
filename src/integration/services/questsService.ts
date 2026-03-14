@@ -5,9 +5,11 @@ import {
   getQuestsMock,
   toggleQuestStepMock,
 } from '@/src/features/mvp/services';
+import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { Quest, QuestStep } from '@/shared/models/mvp-contracts.model';
 
 const hasAuthenticatedSession = () => Boolean(useAuthStore.getState().session?.accessToken);
+const isDemoModeEnabled = () => runtimeModeService.isDemoModeEnabled();
 
 const isArchivedQuest = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
 
@@ -119,104 +121,104 @@ const getQuestsFromPlansCache = (userId: string): Quest[] => {
 
 export const questsService = {
   getQuests: async (userId: string): Promise<Quest[]> => {
-    if (hasAuthenticatedSession()) {
-      return getQuestsFromPlansCache(userId);
+    if (isDemoModeEnabled()) {
+      return getQuestsMock(userId);
     }
 
-    return getQuestsMock(userId);
+    return getQuestsFromPlansCache(userId);
   },
 
   completeQuest: async (questId: string): Promise<Quest> => {
-    if (hasAuthenticatedSession()) {
-      const planQuest = usePlansStore
-        .getState()
-        .getPlans()
-        .flatMap((plan) => plan.quests)
-        .find((quest) => quest.id === questId);
-
-      if (!planQuest) {
-        throw new Error(`Quest '${questId}' was not found.`);
-      }
-
-      const normalizedQuest = normalizeQuestForLocal(planQuest);
-      if (isArchivedQuest(normalizedQuest)) {
-        return normalizedQuest;
-      }
-
-      const doneAt = nowIso();
-      const completedQuest: Quest = {
-        ...normalizedQuest,
-        status: 'archived',
-        completedAt: normalizedQuest.completedAt ?? doneAt,
-        archivedAt: normalizedQuest.archivedAt ?? doneAt,
-        steps: (normalizedQuest.steps ?? []).map((step) => ({
-          ...step,
-          status: 'completed',
-          completedAt: step.completedAt ?? doneAt,
-        })),
-        completedStepsCount: normalizedQuest.stepsCount ?? normalizedQuest.steps?.length ?? 0,
-      };
-
-      await persistUpdatedQuestToPlansCache(completedQuest);
-      return completedQuest;
-    }
-
-    const updatedQuest = await completeQuestMock(questId);
-    await persistUpdatedQuestToPlansCache(updatedQuest);
-    return updatedQuest;
-  },
-
-  toggleQuestStep: async (questId: string, stepId: string): Promise<Quest> => {
-    if (hasAuthenticatedSession()) {
-      const planQuest = usePlansStore
-        .getState()
-        .getPlans()
-        .flatMap((plan) => plan.quests)
-        .find((quest) => quest.id === questId);
-
-      if (!planQuest) {
-        throw new Error(`Quest '${questId}' was not found.`);
-      }
-
-      const normalizedQuest = normalizeQuestForLocal(planQuest);
-      if (isArchivedQuest(normalizedQuest)) {
-        return normalizedQuest;
-      }
-
-      const steps = [...(normalizedQuest.steps ?? [])];
-      const stepIndex = steps.findIndex((step) => step.id === stepId);
-      if (stepIndex < 0) {
-        throw new Error(`Step '${stepId}' was not found for quest '${questId}'.`);
-      }
-
-      const currentStep = steps[stepIndex];
-      const nextCompleted = currentStep.status !== 'completed';
-      steps[stepIndex] = {
-        ...currentStep,
-        status: nextCompleted ? 'completed' : 'pending',
-        completedAt: nextCompleted ? nowIso() : undefined,
-      };
-
-      const completedStepsCount = steps.filter((step) => step.status === 'completed').length;
-      const stepsCount = steps.length;
-      const isDone = stepsCount > 0 && completedStepsCount === stepsCount;
-      const doneAt = isDone ? nowIso() : undefined;
-
-      const updatedQuest: Quest = {
-        ...normalizedQuest,
-        status: isDone ? 'archived' : 'active',
-        steps,
-        stepsCount,
-        completedStepsCount,
-        completedAt: isDone ? (normalizedQuest.completedAt ?? doneAt) : undefined,
-        archivedAt: isDone ? (normalizedQuest.archivedAt ?? doneAt) : undefined,
-      };
-
+    if (isDemoModeEnabled()) {
+      const updatedQuest = await completeQuestMock(questId);
       await persistUpdatedQuestToPlansCache(updatedQuest);
       return updatedQuest;
     }
 
-    const updatedQuest = await toggleQuestStepMock(questId, stepId);
+    const planQuest = usePlansStore
+      .getState()
+      .getPlans()
+      .flatMap((plan) => plan.quests)
+      .find((quest) => quest.id === questId);
+
+    if (!planQuest) {
+      throw new Error(`Quest '${questId}' was not found.`);
+    }
+
+    const normalizedQuest = normalizeQuestForLocal(planQuest);
+    if (isArchivedQuest(normalizedQuest)) {
+      return normalizedQuest;
+    }
+
+    const doneAt = nowIso();
+    const completedQuest: Quest = {
+      ...normalizedQuest,
+      status: 'archived',
+      completedAt: normalizedQuest.completedAt ?? doneAt,
+      archivedAt: normalizedQuest.archivedAt ?? doneAt,
+      steps: (normalizedQuest.steps ?? []).map((step) => ({
+        ...step,
+        status: 'completed',
+        completedAt: step.completedAt ?? doneAt,
+      })),
+      completedStepsCount: normalizedQuest.stepsCount ?? normalizedQuest.steps?.length ?? 0,
+    };
+
+    await persistUpdatedQuestToPlansCache(completedQuest);
+    return completedQuest;
+  },
+
+  toggleQuestStep: async (questId: string, stepId: string): Promise<Quest> => {
+    if (isDemoModeEnabled()) {
+      const updatedQuest = await toggleQuestStepMock(questId, stepId);
+      await persistUpdatedQuestToPlansCache(updatedQuest);
+      return updatedQuest;
+    }
+
+    const planQuest = usePlansStore
+      .getState()
+      .getPlans()
+      .flatMap((plan) => plan.quests)
+      .find((quest) => quest.id === questId);
+
+    if (!planQuest) {
+      throw new Error(`Quest '${questId}' was not found.`);
+    }
+
+    const normalizedQuest = normalizeQuestForLocal(planQuest);
+    if (isArchivedQuest(normalizedQuest)) {
+      return normalizedQuest;
+    }
+
+    const steps = [...(normalizedQuest.steps ?? [])];
+    const stepIndex = steps.findIndex((step) => step.id === stepId);
+    if (stepIndex < 0) {
+      throw new Error(`Step '${stepId}' was not found for quest '${questId}'.`);
+    }
+
+    const currentStep = steps[stepIndex];
+    const nextCompleted = currentStep.status !== 'completed';
+    steps[stepIndex] = {
+      ...currentStep,
+      status: nextCompleted ? 'completed' : 'pending',
+      completedAt: nextCompleted ? nowIso() : undefined,
+    };
+
+    const completedStepsCount = steps.filter((step) => step.status === 'completed').length;
+    const stepsCount = steps.length;
+    const isDone = stepsCount > 0 && completedStepsCount === stepsCount;
+    const doneAt = isDone ? nowIso() : undefined;
+
+    const updatedQuest: Quest = {
+      ...normalizedQuest,
+      status: isDone ? 'archived' : 'active',
+      steps,
+      stepsCount,
+      completedStepsCount,
+      completedAt: isDone ? (normalizedQuest.completedAt ?? doneAt) : undefined,
+      archivedAt: isDone ? (normalizedQuest.archivedAt ?? doneAt) : undefined,
+    };
+
     await persistUpdatedQuestToPlansCache(updatedQuest);
     return updatedQuest;
   },
