@@ -1,6 +1,4 @@
 import useAuthStore from '@/context/Auth-store';
-import { getMeMock, setMockMeId } from '@/src/features/mvp/services';
-import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { UserProfile } from '@/shared/models/mvp-contracts.model';
 
 const buildFallbackUser = (): UserProfile => {
@@ -23,17 +21,7 @@ const buildFallbackUser = (): UserProfile => {
 };
 
 export const userService = {
-  setCurrentUserId: (userId: string) => {
-    if (runtimeModeService.isDemoModeEnabled()) {
-      setMockMeId(userId);
-    }
-  },
-
   getMe: async (): Promise<UserProfile> => {
-    if (runtimeModeService.isDemoModeEnabled()) {
-      return getMeMock();
-    }
-
     const authUser = useAuthStore.getState().currentUser;
     if (authUser) {
       return { ...authUser };

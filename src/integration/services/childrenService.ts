@@ -1,8 +1,6 @@
 import useAuthStore from '@/context/Auth-store';
 import { authService } from '@/src/integration/services/authService';
 import type { RegisterChildRequestDto } from '@/src/features/auth/dto/auth.dto';
-import { createChildMock, getChildrenMock } from '@/src/features/mvp/services';
-import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { ChildProfile } from '@/shared/models/mvp-contracts.model';
 
 export type CreateChildInput = RegisterChildRequestDto;
@@ -147,10 +145,6 @@ let childrenRequestId = 0;
 
 export const childrenService = {
   getChildren: async (options: GetChildrenOptions = {}): Promise<ChildProfile[]> => {
-    if (runtimeModeService.isDemoModeEnabled()) {
-      return getChildrenMock();
-    }
-
     const accessToken = useAuthStore.getState().session?.accessToken;
     if (!accessToken) {
       throw new Error('Для отримання списку дітей потрібна авторизація.');
@@ -205,15 +199,6 @@ export const childrenService = {
   },
 
   createChild: async (input: CreateChildInput): Promise<ChildProfile> => {
-    if (runtimeModeService.isDemoModeEnabled()) {
-      const fullName = `${input.firstName} ${input.lastName}`.trim();
-      const createdChild = await createChildMock({
-        fullName,
-        age: 10,
-      });
-      return cloneChildProfile(createdChild);
-    }
-
     const accessToken = useAuthStore.getState().session?.accessToken;
     if (!accessToken) {
       throw new Error('Для створення дитини потрібна авторизація.');

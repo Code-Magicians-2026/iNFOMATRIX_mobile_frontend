@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
-import { resetMockLayerState, setMockMeId } from '@/src/features/mvp/services';
-import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 
 import { plansService } from './plansService';
 
@@ -16,9 +14,6 @@ const createResponse = (status: number, body: unknown, contentType = 'applicatio
 describe('plansService.uploadPhotoAndGenerate', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
-    resetMockLayerState();
-    runtimeModeService.disableDemoMode();
-    setMockMeId('adult-1');
     await usePlansStore.getState().clear();
     useAuthStore.setState({
       session: null,
@@ -30,35 +25,28 @@ describe('plansService.uploadPhotoAndGenerate', () => {
     });
   });
 
-  it('generates plan when photo is provided', async () => {
-    runtimeModeService.enableDemoMode();
-
-    const plan = await plansService.uploadPhotoAndGenerate({
-      targetUserId: 'child-1',
-      prompt: 'Create tidy room and homework plan.',
-      category: 'routine',
-      photo: {
-        uri: 'file:///camera/room.jpg',
-        mimeType: 'image/jpeg',
-        fileName: 'room.jpg',
-      },
-    });
-
-    expect(plan.status).toBe('draft');
-    expect(plan.summary).toContain('using camera context');
+  it('requires auth token for uploadPhotoAndGenerate', async () => {
+    await expect(
+      plansService.uploadPhotoAndGenerate({
+        targetUserId: 'child-1',
+        prompt: 'Create tidy room and homework plan.',
+        category: 'routine',
+        photo: {
+          uri: 'file:///camera/room.jpg',
+          mimeType: 'image/jpeg',
+          fileName: 'room.jpg',
+        },
+      }),
+    ).rejects.toThrow('Sign in is required to generate AI plans.');
   });
 
-  it('generates plan when photo is missing', async () => {
-    runtimeModeService.enableDemoMode();
-
-    const plan = await plansService.uploadPhotoAndGenerate({
-      targetUserId: 'child-1',
-      prompt: 'Create tidy room and homework plan.',
-      category: 'routine',
-    });
-
-    expect(plan.status).toBe('draft');
-    expect(plan.summary).not.toContain('using camera context');
+  it('requires auth token for generatePlan', async () => {
+    await expect(
+      plansService.generatePlan({
+        targetUserId: 'child-1',
+        prompt: 'Create tidy room and homework plan.',
+      }),
+    ).rejects.toThrow('Sign in is required to generate AI plans.');
   });
 
   it('uses swagger contract /api/ai/quest with Prompt multipart and auth token', async () => {

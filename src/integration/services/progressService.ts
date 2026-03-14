@@ -1,7 +1,5 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
-import { getProgressMock } from '@/src/features/mvp/services';
-import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { ProgressSummary } from '@/shared/models/mvp-contracts.model';
 
 const XP_PER_LEVEL = 300;
@@ -34,11 +32,5 @@ const buildProgressFromLocalPlans = (userId: string): ProgressSummary => {
 };
 
 export const progressService = {
-  getProgress: async (userId: string): Promise<ProgressSummary> => {
-    if (runtimeModeService.isDemoModeEnabled()) {
-      return getProgressMock(userId);
-    }
-
-    return buildProgressFromLocalPlans(userId);
-  },
+  getProgress: async (userId: string): Promise<ProgressSummary> => buildProgressFromLocalPlans(userId),
 };

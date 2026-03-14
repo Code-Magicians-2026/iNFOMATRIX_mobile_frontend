@@ -1,18 +1,28 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
 import { generateQuestByPrompt, generateQuestByPromptWithPhoto } from '@/src/features/chat/api/quest';
-import {
-  approvePlanMock,
-  generatePlanMock,
-  getPlansMock,
-  type GeneratePlanMockInput,
-  type GetPlansMockInput,
-} from '@/src/features/mvp/services';
-import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { GeneratedPlan, Quest, QuestStatus, QuestStep } from '@/shared/models/mvp-contracts.model';
 
-export type GeneratePlanInput = GeneratePlanMockInput;
-export type GetPlansInput = GetPlansMockInput;
+export type GeneratePlanInput = {
+  targetUserId: string;
+  prompt: string;
+  category?: string;
+  intensity?: string;
+  photo?: {
+    uri: string;
+    width?: number;
+    height?: number;
+    fileName?: string;
+    mimeType?: string;
+    fileSize?: number;
+    previewUri?: string;
+  };
+};
+
+export type GetPlansInput = {
+  targetUserId?: string;
+  limit?: number;
+};
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -392,13 +402,9 @@ export const buildGeneratePlanFormData = (input: GeneratePlanInput): FormData =>
 };
 
 const generatePlanViaApiContract = async (input: GeneratePlanInput): Promise<GeneratedPlan> => {
-  if (runtimeModeService.isDemoModeEnabled()) {
-    return generatePlanMock(input);
-  }
-
   const accessToken = useAuthStore.getState().session?.accessToken;
   if (!accessToken) {
-    throw new Error('Sign in is required to generate AI plans outside demo mode.');
+    throw new Error('Sign in is required to generate AI plans.');
   }
 
   const normalizedPrompt = input.prompt.trim();
@@ -420,10 +426,6 @@ const generatePlanViaApiContract = async (input: GeneratePlanInput): Promise<Gen
 
 export const plansService = {
   getPlans: async (input: GetPlansInput = {}): Promise<GeneratedPlan[]> => {
-    if (runtimeModeService.isDemoModeEnabled()) {
-      return getPlansMock(input);
-    }
-
     const plans = usePlansStore.getState().getPlans();
     return applyGetPlansFilters(plans, input);
   },
@@ -436,10 +438,6 @@ export const plansService = {
   },
 
   approvePlan: async (planId: string): Promise<GeneratedPlan> => {
-    if (runtimeModeService.isDemoModeEnabled()) {
-      return approvePlanMock(planId);
-    }
-
     const approvedPlan = await usePlansStore.getState().approvePlan(planId);
     if (approvedPlan) {
       return approvedPlan;

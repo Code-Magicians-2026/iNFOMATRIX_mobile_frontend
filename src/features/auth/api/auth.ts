@@ -1,4 +1,4 @@
-import { request } from './client';
+import { ApiError, request } from './client';
 import type {
   ConfirmEmailRequestDto,
   CreateFamilyRequestDto,
@@ -24,6 +24,39 @@ interface AuthorizedRequestOptions {
 interface UnknownApiObject {
   [key: string]: unknown;
 }
+
+const RETRIABLE_STATUSES = new Set([408, 502, 503, 504]);
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const shouldRetryTransientError = (error: unknown): boolean =>
+  error instanceof ApiError && RETRIABLE_STATUSES.has(error.status);
+
+const requestWithTransientRetry = async <T>(
+  execute: () => Promise<T>,
+  maxAttempts = 2,
+): Promise<T> => {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await execute();
+    } catch (error) {
+      lastError = error;
+      const canRetry = attempt < maxAttempts && shouldRetryTransientError(error);
+      if (!canRetry) {
+        throw error;
+      }
+
+      await sleep(350 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Request failed');
+};
 
 const resolveAccessToken = (accessToken: string): string => {
   const normalized = accessToken.trim();
@@ -77,18 +110,22 @@ export const createFamily = async (
   });
 
 export const getFamily = async (options: AuthorizedRequestOptions): Promise<unknown> =>
-  request<unknown>('/api/families', {
-    method: 'GET',
-    ...withAuthorization(options),
-    timeoutMs: 15000,
-  });
+  requestWithTransientRetry(() =>
+    request<unknown>('/api/families', {
+      method: 'GET',
+      ...withAuthorization(options),
+      timeoutMs: 45000,
+    }),
+  );
 
 export const getFamilyChildren = async (options: AuthorizedRequestOptions): Promise<unknown> =>
-  request<unknown>('/api/children', {
-    method: 'GET',
-    ...withAuthorization(options),
-    timeoutMs: 15000,
-  });
+  requestWithTransientRetry(() =>
+    request<unknown>('/api/children', {
+      method: 'GET',
+      ...withAuthorization(options),
+      timeoutMs: 45000,
+    }),
+  );
 
 export const registerChild = async (
   payload: RegisterChildRequestDto,

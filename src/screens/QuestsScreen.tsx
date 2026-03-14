@@ -44,18 +44,6 @@ import {
   type BadgeImageKey,
 } from '@/shared/components/ui/badge-catalog';
 
-const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
-  if (role === 'adult') {
-    return 'adult-1';
-  }
-
-  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
-    return currentUserId;
-  }
-
-  return 'child-1';
-};
-
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 const STEP_TOGGLE_VIBRATION_PATTERN = [0, 45, 25, 65];
 const QUEST_VICTORY_VIBRATION_PATTERN = [0, 80, 60, 120, 80, 220];
@@ -94,7 +82,6 @@ const QuestsScreen = () => {
   const styles = React.useMemo(() => getStyles(cardMaxWidth, isTablet, spacing), [cardMaxWidth, isTablet, spacing]);
 
   const role = useAuthStore((s) => s.role);
-  const currentUser = useAuthStore((s) => s.currentUser);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
@@ -138,13 +125,6 @@ const QuestsScreen = () => {
 
     try {
       setScreenError(null);
-
-      const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-      try {
-        userService.setCurrentUserId(targetMockUserId);
-      } catch {
-        userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
-      }
 
       if (effectiveRole === 'adult') {
         const [meData, childrenData] = await Promise.all([
@@ -243,7 +223,7 @@ const QuestsScreen = () => {
       setIsRefreshing(false);
       lastRefreshAtRef.current = Date.now();
     }
-  }, [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId]);
+  }, [effectiveRole, selectedChildId, setSelectedChildId]);
 
   React.useEffect(() => {
     void refreshData(true);

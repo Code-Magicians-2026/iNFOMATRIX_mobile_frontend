@@ -12,6 +12,15 @@ interface ApiProblemDetails {
   errors?: Record<string, string[]>;
 }
 
+const normalizeAccessToken = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed.replace(/^Bearer\s+/i, '').trim();
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -95,7 +104,10 @@ export const request = async <T>(path: string, options: ApiRequestOptions = {}):
   }
 
   if (accessToken && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
+    const normalizedAccessToken = normalizeAccessToken(accessToken);
+    if (normalizedAccessToken) {
+      headers.set('Authorization', `Bearer ${normalizedAccessToken}`);
+    }
   }
 
   const controller = new AbortController();

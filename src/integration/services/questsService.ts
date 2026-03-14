@@ -1,15 +1,8 @@
 import useAuthStore from '@/context/Auth-store';
 import usePlansStore from '@/context/Plans-store';
-import {
-  completeQuestMock,
-  getQuestsMock,
-  toggleQuestStepMock,
-} from '@/src/features/mvp/services';
-import { runtimeModeService } from '@/src/integration/services/runtimeModeService';
 import type { Quest, QuestStep } from '@/shared/models/mvp-contracts.model';
 
 const hasAuthenticatedSession = () => Boolean(useAuthStore.getState().session?.accessToken);
-const isDemoModeEnabled = () => runtimeModeService.isDemoModeEnabled();
 
 const isArchivedQuest = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
 
@@ -120,21 +113,9 @@ const getQuestsFromPlansCache = (userId: string): Quest[] => {
 };
 
 export const questsService = {
-  getQuests: async (userId: string): Promise<Quest[]> => {
-    if (isDemoModeEnabled()) {
-      return getQuestsMock(userId);
-    }
-
-    return getQuestsFromPlansCache(userId);
-  },
+  getQuests: async (userId: string): Promise<Quest[]> => getQuestsFromPlansCache(userId),
 
   completeQuest: async (questId: string): Promise<Quest> => {
-    if (isDemoModeEnabled()) {
-      const updatedQuest = await completeQuestMock(questId);
-      await persistUpdatedQuestToPlansCache(updatedQuest);
-      return updatedQuest;
-    }
-
     const planQuest = usePlansStore
       .getState()
       .getPlans()
@@ -169,12 +150,6 @@ export const questsService = {
   },
 
   toggleQuestStep: async (questId: string, stepId: string): Promise<Quest> => {
-    if (isDemoModeEnabled()) {
-      const updatedQuest = await toggleQuestStepMock(questId, stepId);
-      await persistUpdatedQuestToPlansCache(updatedQuest);
-      return updatedQuest;
-    }
-
     const planQuest = usePlansStore
       .getState()
       .getPlans()

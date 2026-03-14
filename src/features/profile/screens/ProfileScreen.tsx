@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -18,30 +18,15 @@ import {
 } from '@/shared/components/ui';
 import {
   childrenService,
-  demoModeService,
   plansService,
   progressService,
   userService,
-  type DemoScenario,
-  type DemoScenarioKey,
 } from '@/src/integration/services';
 
 type ProfileNavigation = NativeStackNavigationProp<AppStackParamList>;
 
 const XP_PER_LEVEL = 300;
 const PROFILE_FOCUS_REFRESH_COOLDOWN_MS = 5000;
-
-const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
-  if (role === 'adult') {
-    return 'adult-1';
-  }
-
-  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
-    return currentUserId;
-  }
-
-  return 'child-1';
-};
 
 const toMetricLabel = (value: string) => {
   const normalized = value.trim();
@@ -60,10 +45,8 @@ const ProfileScreen = () => {
   const session = useAuthStore((s) => s.session);
   const family = useAuthStore((s) => s.family);
   const role = useAuthStore((s) => s.role);
-  const currentUser = useAuthStore((s) => s.currentUser);
   const refreshFamily = useAuthStore((s) => s.refreshFamily);
   const setRole = useAuthStore((s) => s.setRole);
-  const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const logout = useAuthStore((s) => s.logout);
 
   const effectiveRole: UserRole = role ?? 'child';
@@ -78,10 +61,6 @@ const ProfileScreen = () => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [screenError, setScreenError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [isDemoModalVisible, setIsDemoModalVisible] = React.useState(false);
-  const [applyingScenarioKey, setApplyingScenarioKey] = React.useState<DemoScenarioKey | null>(null);
-  const [demoError, setDemoError] = React.useState<string | null>(null);
-  const isDemoModeEnabled = demoModeService.isEnabled();
   const lastProfileRefreshAtRef = React.useRef(0);
 
   React.useEffect(() => {
@@ -99,13 +78,6 @@ const ProfileScreen = () => {
 
     try {
       setScreenError(null);
-
-      const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-      try {
-        userService.setCurrentUserId(targetMockUserId);
-      } catch {
-        userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
-      }
 
       const meData = await userService.getMe();
       const progressData = await progressService.getProgress(meData.id);
@@ -142,7 +114,7 @@ const ProfileScreen = () => {
       setIsRefreshing(false);
       lastProfileRefreshAtRef.current = Date.now();
     }
-  }, [currentUser?.id, effectiveRole, refreshFamily, session]);
+  }, [effectiveRole, refreshFamily, session]);
 
   React.useEffect(() => {
     void loadProfile(true);
@@ -169,39 +141,6 @@ const ProfileScreen = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleApplyDemoScenario = async (scenario: DemoScenario) => {
-    setDemoError(null);
-    setApplyingScenarioKey(scenario.key);
-
-    try {
-      const result = await demoModeService.activateScenario(scenario.key);
-
-      await setRole(result.role);
-      await setSelectedChildId(result.selectedChildId);
-
-      if (result.previewPlan && result.previewRequest && result.previewTargetLabel) {
-        navigation.navigate('PlanPreview', {
-          plan: result.previewPlan,
-          request: result.previewRequest,
-          targetLabel: result.previewTargetLabel,
-        });
-      }
-
-      await loadProfile(false);
-      setIsDemoModalVisible(false);
-    } catch {
-      setDemoError('Failed to apply demo scenario. Please try again.');
-    } finally {
-      setApplyingScenarioKey(null);
-    }
-  };
-
-  const handleDisableDemoMode = async () => {
-    setDemoError(null);
-    demoModeService.deactivate();
-    await loadProfile(false);
   };
 
   const level = progress?.level ?? me?.level ?? 1;
@@ -368,40 +307,6 @@ const ProfileScreen = () => {
         </StatCard>
 
         <StatCard
-          title="Demo Mode"
-          subtitle={isDemoModeEnabled ? 'Demo mode enabled' : 'Prepared scenarios for full walkthrough'}
-          style={styles.card}
-        >
-          <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-            {isDemoModeEnabled
-              ? 'Demo state is active. Real API flow is paused until demo mode is disabled.'
-              : 'Use predefined states when backend is unavailable or unstable.'}
-          </Text>
-          {isDemoModeEnabled ? (
-            <PrimaryButton
-              label="Disable demo mode"
-              variant="tertiary"
-              onPress={() => {
-                void handleDisableDemoMode();
-              }}
-              style={styles.scenarioButton}
-            />
-          ) : (
-            <PrimaryButton
-              label="Open demo scenarios"
-              variant="tertiary"
-              onPress={() => setIsDemoModalVisible(true)}
-              style={styles.scenarioButton}
-            />
-          )}
-          {demoError ? (
-            <Text style={styles.errorText} allowFontScaling>
-              {demoError}
-            </Text>
-          ) : null}
-        </StatCard>
-
-        <StatCard
           title={session ? 'Signed in account' : 'Guest mode'}
           subtitle={session ? 'Session active' : 'Sign in to sync progress'}
           style={styles.card}
@@ -472,47 +377,6 @@ const ProfileScreen = () => {
         />
       </ScrollView>
 
-      <Modal
-        visible={isDemoModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsDemoModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SectionHeader title="Demo Scenarios" subtitle="One tap setup for jury demo" />
-            <ScrollView contentContainerStyle={styles.modalContent}>
-              {demoModeService.scenarios.map((scenario) => {
-                const isApplying = applyingScenarioKey === scenario.key;
-                return (
-                  <View key={scenario.key} style={[styles.scenarioItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                    <Text style={[styles.scenarioTitle, { color: colors.text }]} allowFontScaling>
-                      {scenario.title}
-                    </Text>
-                    <Text style={[styles.scenarioDescription, { color: colors.textSecondary }]} allowFontScaling>
-                      {scenario.description}
-                    </Text>
-                    <PrimaryButton
-                      label={isApplying ? 'Applying...' : 'Apply scenario'}
-                      loading={isApplying}
-                      disabled={Boolean(applyingScenarioKey)}
-                      onPress={() => {
-                        void handleApplyDemoScenario(scenario);
-                      }}
-                    />
-                  </View>
-                );
-              })}
-            </ScrollView>
-            <PrimaryButton
-              label="Close"
-              variant="secondary"
-              disabled={Boolean(applyingScenarioKey)}
-              onPress={() => setIsDemoModalVisible(false)}
-            />
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 };
@@ -531,15 +395,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     metricText: {
       fontSize: isTablet ? 16 : 14,
       fontWeight: '600',
-    },
-    scenarioButton: {
-      marginTop: 4,
-    },
-    errorText: {
-      color: '#d93a5a',
-      fontSize: isTablet ? 13 : 12,
-      fontWeight: '600',
-      marginTop: 4,
     },
     progressTrack: {
       height: 10,
@@ -572,43 +427,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     earnedBadgesButton: {
       marginTop: 6,
-    },
-    modalBackdrop: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.45)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: spacing,
-      paddingVertical: spacing,
-    },
-    modalCard: {
-      width: '100%',
-      maxWidth: cardMaxWidth + 60,
-      maxHeight: '90%',
-      borderWidth: 1,
-      borderRadius: 14,
-      padding: isTablet ? 18 : 14,
-      gap: 10,
-      elevation: 4,
-    },
-    modalContent: {
-      gap: 10,
-      paddingBottom: 4,
-    },
-    scenarioItem: {
-      borderWidth: 1,
-      borderRadius: 10,
-      padding: 10,
-      gap: 8,
-      elevation: 1,
-    },
-    scenarioTitle: {
-      fontSize: isTablet ? 16 : 14,
-      fontWeight: '700',
-    },
-    scenarioDescription: {
-      fontSize: isTablet ? 14 : 12,
-      fontWeight: '500',
     },
   });
 

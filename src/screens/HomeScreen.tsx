@@ -25,7 +25,6 @@ import {
 } from '@/shared/components/ui';
 import {
   childrenService,
-  demoModeService,
   plansService,
   progressService,
   questsService,
@@ -35,7 +34,7 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 const XP_PER_LEVEL = 300;
 const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
-const CREATE_CHILD_SYNC_ATTEMPTS = 5;
+const CREATE_CHILD_SYNC_ATTEMPTS = 12;
 const CREATE_CHILD_SYNC_DELAY_MS = 1200;
 
 const PLAN_PROMPTS = [
@@ -46,25 +45,31 @@ const PLAN_PROMPTS = [
 
 type HomeNavigation = NativeStackNavigationProp<AppStackParamList>;
 
-const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
-  if (role === 'adult') {
-    return 'adult-1';
-  }
-
-  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
-    return currentUserId;
-  }
-
-  return 'child-1';
-};
-
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
 
+const INVALID_LAST_NAME_TOKENS = new Set([
+  'profile',
+  'user',
+  'parent',
+  'adult',
+  'child',
+  'local',
+]);
+
 const extractLastNameFromFullName = (fullName: string | null | undefined): string => {
   if (!fullName) {
+    return '';
+  }
+
+  const normalizedFullName = fullName.trim();
+  if (!normalizedFullName) {
+    return '';
+  }
+
+  if (normalizedFullName.toLowerCase().includes('profile')) {
     return '';
   }
 
@@ -77,7 +82,36 @@ const extractLastNameFromFullName = (fullName: string | null | undefined): strin
     return '';
   }
 
-  return parts[parts.length - 1] ?? '';
+  const candidate = (parts[parts.length - 1] ?? '').trim();
+  if (!candidate || INVALID_LAST_NAME_TOKENS.has(candidate.toLowerCase())) {
+    return '';
+  }
+
+  return candidate;
+};
+
+const extractLastNameFromFamilyName = (familyName: string | null | undefined): string => {
+  if (!familyName) {
+    return '';
+  }
+
+  const normalized = familyName
+    .trim()
+    .replace(/['’]s$/i, '')
+    .replace(/\s+family$/i, '')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const parts = normalized.split(/\s+/).filter((part) => part.length > 0);
+  const candidate = (parts[parts.length - 1] ?? '').trim();
+  if (!candidate || INVALID_LAST_NAME_TOKENS.has(candidate.toLowerCase())) {
+    return '';
+  }
+
+  return candidate;
 };
 
 const isRecoverableCreateChildError = (error: unknown): boolean => {
@@ -110,6 +144,7 @@ const HomeScreen = () => {
   const role = useAuthStore((s) => s.role);
   const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const family = useAuthStore((s) => s.family);
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
@@ -159,16 +194,20 @@ const HomeScreen = () => {
       try {
         setScreenError(null);
 
-        const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-        try {
-          userService.setCurrentUserId(targetMockUserId);
-        } catch {
-          userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
-        }
-
         if (effectiveRole === 'adult') {
-          const [meData, childrenData, planData] = await Promise.all([
-            userService.getMe(),
+          const meData = await userService.getMe();
+
+          if (!session?.accessToken) {
+            setMe(meData);
+            setChildren([]);
+            setRecentPlans([]);
+            setProgress(null);
+            setTodayQuests([]);
+            setScreenError('Sign in to load family dashboard data.');
+            return;
+          }
+
+          const [childrenData, planData] = await Promise.all([
             childrenService.getChildren(),
             plansService.getPlans({ limit: 6 }),
           ]);
@@ -208,15 +247,19 @@ const HomeScreen = () => {
         setRecentPlans([]);
         setTodayQuests(questData.slice(0, 5));
         setProgress(progressData);
-      } catch {
-        setScreenError('Failed to load dashboard data. Please try again.');
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setScreenError('Session expired. Sign in again to load dashboard data.');
+        } else {
+          setScreenError(getApiErrorMessage(error, 'Failed to load dashboard data. Please try again.'));
+        }
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
         lastDashboardRefreshAtRef.current = Date.now();
       }
     },
-    [currentUser?.id, effectiveRole, selectedChildId, setSelectedChildId],
+    [effectiveRole, selectedChildId, session?.accessToken, setSelectedChildId],
   );
 
   React.useEffect(() => {
@@ -265,11 +308,6 @@ const HomeScreen = () => {
   };
 
   const openCreateChildModal = async () => {
-    if (demoModeService.isEnabled()) {
-      setScreenError('Disable demo mode first to create a child in the real family flow.');
-      return;
-    }
-
     if (!session) {
       setScreenError('Sign in first to create a child profile.');
       return;
@@ -277,6 +315,7 @@ const HomeScreen = () => {
 
     resetCreateChildForm();
     const userLastName =
+      extractLastNameFromFamilyName(family?.name) ||
       extractLastNameFromFullName(currentUser?.fullName) ||
       extractLastNameFromFullName(me?.fullName);
     if (userLastName) {
@@ -304,16 +343,18 @@ const HomeScreen = () => {
       const expectedFullName = `${firstName} ${lastName}`.trim().toLowerCase();
 
       for (let attempt = 0; attempt < attempts; attempt += 1) {
-        const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
-        const createdChild: ChildProfile | null =
-          refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
-          refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
-          null;
+        try {
+          const refreshedChildren = await childrenService.getChildren({ forceRefresh: true });
+          const createdChild: ChildProfile | null =
+            refreshedChildren.find((child) => !existingChildIds.has(child.id)) ??
+            refreshedChildren.find((child) => child.fullName.trim().toLowerCase() === expectedFullName) ??
+            null;
 
-        if (createdChild) {
-          setChildren(refreshedChildren);
-          return createdChild;
-        }
+          if (createdChild) {
+            setChildren(refreshedChildren);
+            return createdChild;
+          }
+        } catch {}
 
         if (attempt < attempts - 1) {
           await sleep(CREATE_CHILD_SYNC_DELAY_MS);
@@ -323,6 +364,27 @@ const HomeScreen = () => {
       return null;
     },
     [],
+  );
+
+  const syncCreatedChildInBackground = React.useCallback(
+    (existingChildIds: Set<string>, firstName: string, lastName: string) => {
+      void (async () => {
+        const createdChild = await resolveCreatedChild(existingChildIds, firstName, lastName);
+
+        if (createdChild) {
+          await setSelectedChildId(createdChild.id);
+          setScreenError(null);
+          await loadDashboard(false);
+          return;
+        }
+
+        await loadDashboard(false);
+        setScreenError(
+          'Child request sent, but list refresh is delayed. Pull to refresh in a few seconds.',
+        );
+      })();
+    },
+    [loadDashboard, resolveCreatedChild, setSelectedChildId],
   );
 
   const handleCreateChild = async () => {
@@ -354,27 +416,16 @@ const HomeScreen = () => {
         password: childPassword,
       });
 
-      const createdChild = await resolveCreatedChild(existingChildIds, firstName, lastName);
       setIsCreateChildModalVisible(false);
       resetCreateChildForm();
-
-      if (createdChild) {
-        await setSelectedChildId(createdChild.id);
-      }
-
-      await loadDashboard(false);
+      syncCreatedChildInBackground(existingChildIds, firstName, lastName);
     } catch (error) {
       if (isRecoverableCreateChildError(error)) {
-        try {
-          const createdChild = await resolveCreatedChild(existingChildIds, firstName, lastName);
-          if (createdChild) {
-            setIsCreateChildModalVisible(false);
-            resetCreateChildForm();
-            await setSelectedChildId(createdChild.id);
-            await loadDashboard(false);
-            return;
-          }
-        } catch {}
+        setIsCreateChildModalVisible(false);
+        resetCreateChildForm();
+        setScreenError('Request is processing. Syncing child list...');
+        syncCreatedChildInBackground(existingChildIds, firstName, lastName);
+        return;
       }
 
       setCreateChildError(

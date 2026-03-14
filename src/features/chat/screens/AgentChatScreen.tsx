@@ -58,18 +58,6 @@ const resolvePermissionDescription = (state: MediaPermissionState, source: 'came
   return `${source === 'camera' ? 'Camera' : 'Gallery'} access denied.`;
 };
 
-const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
-  if (role === 'adult') {
-    return 'adult-1';
-  }
-
-  if (typeof currentUserId === 'string' && currentUserId.startsWith('child-')) {
-    return currentUserId;
-  }
-
-  return 'child-1';
-};
-
 const buildFallbackMeProfile = (role: UserRole): UserProfile => ({
   id: role === 'adult' ? 'adult-self' : 'child-self',
   fullName: role === 'adult' ? 'Adult Profile' : 'Child Profile',
@@ -151,13 +139,6 @@ const AgentChatScreen = () => {
       let childrenData: ChildProfile[] = [];
 
       if (!meData) {
-        const targetMockUserId = resolveMockUserId(effectiveRole, currentUser?.id);
-        try {
-          userService.setCurrentUserId(targetMockUserId);
-        } catch {
-          userService.setCurrentUserId(effectiveRole === 'adult' ? 'adult-1' : 'child-1');
-        }
-
         meData = await userService.getMe();
       }
 
