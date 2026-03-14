@@ -247,7 +247,9 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().role).toBeNull();
     expect(useAuthStore.getState().selectedChildId).toBeNull();
     expect(useAuthStore.getState().family).toBeNull();
-    expect(removeItemMock).toHaveBeenCalledTimes(1);
+    expect(removeItemMock).toHaveBeenCalledTimes(2);
+    expect(removeItemMock).toHaveBeenCalledWith('AUTH_SESSION');
+    expect(removeItemMock).toHaveBeenCalledWith('AI_PLANS_CACHE_V1');
   });
 });
 

@@ -4,6 +4,7 @@ import type { RegisterChildRequestDto } from '@/src/features/auth/dto/auth.dto';
 import type { ChildProfile } from '@/shared/models/mvp-contracts.model';
 
 export type CreateChildInput = RegisterChildRequestDto;
+const CHILDREN_CACHE_TTL_MS = 20_000;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -115,6 +116,28 @@ const toChildProfile = (payload: unknown, index: number): ChildProfile | null =>
   };
 };
 
+const cloneChildProfile = (child: ChildProfile): ChildProfile => ({
+  ...child,
+  interests: child.interests ? [...child.interests] : undefined,
+});
+
+const cloneChildren = (children: ChildProfile[]) => children.map(cloneChildProfile);
+
+let childrenCache:
+  | {
+      accessToken: string;
+      fetchedAt: number;
+      children: ChildProfile[];
+    }
+  | null = null;
+
+let inFlightChildrenRequest:
+  | {
+      accessToken: string;
+      promise: Promise<ChildProfile[]>;
+    }
+  | null = null;
+
 export const childrenService = {
   getChildren: async (): Promise<ChildProfile[]> => {
     const accessToken = useAuthStore.getState().session?.accessToken;
@@ -122,11 +145,48 @@ export const childrenService = {
       throw new Error('Для отримання списку дітей потрібна авторизація.');
     }
 
-    const response = await authService.getFamilyChildren(accessToken);
-    const rawChildren = extractChildrenList(response);
-    return rawChildren
-      .map((item, index) => toChildProfile(item, index))
-      .filter((item): item is ChildProfile => item !== null);
+    const now = Date.now();
+    const isFreshCache =
+      childrenCache?.accessToken === accessToken &&
+      now - childrenCache.fetchedAt < CHILDREN_CACHE_TTL_MS;
+    if (isFreshCache && childrenCache) {
+      return cloneChildren(childrenCache.children);
+    }
+
+    if (inFlightChildrenRequest?.accessToken === accessToken) {
+      const children = await inFlightChildrenRequest.promise;
+      return cloneChildren(children);
+    }
+
+    const requestPromise = (async () => {
+      const response = await authService.getFamilyChildren(accessToken);
+      const rawChildren = extractChildrenList(response);
+      const children = rawChildren
+        .map((item, index) => toChildProfile(item, index))
+        .filter((item): item is ChildProfile => item !== null);
+
+      childrenCache = {
+        accessToken,
+        fetchedAt: Date.now(),
+        children: cloneChildren(children),
+      };
+
+      return children;
+    })();
+
+    inFlightChildrenRequest = {
+      accessToken,
+      promise: requestPromise,
+    };
+
+    try {
+      const children = await requestPromise;
+      return cloneChildren(children);
+    } finally {
+      if (inFlightChildrenRequest?.promise === requestPromise) {
+        inFlightChildrenRequest = null;
+      }
+    }
   },
 
   createChild: async (input: CreateChildInput): Promise<ChildProfile> => {
@@ -136,6 +196,8 @@ export const childrenService = {
     }
 
     await authService.registerChild(input, accessToken);
+    childrenCache = null;
+    inFlightChildrenRequest = null;
     const children = await childrenService.getChildren();
     const fullName = `${input.firstName} ${input.lastName}`.trim().toLowerCase();
     const resolved =
