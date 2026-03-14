@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "infomatrix_mobile_frontend",
+    "name": "Quest4kid",
     "slug": "infomatrix_mobile_frontend",
-    "version": "0.0.1",
+    "version": "0.7.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "infomatrixmobilefrontend",
@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.vindener.infomatrix_mobile_frontend"
     },
     "web": {
       "output": "static",
@@ -27,6 +28,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Quest4kid to use your camera for AI plan generation.",
+          "photosPermission": "Allow Quest4kid to access your photos for AI plan generation."
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -43,6 +51,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "dcdbec65-d60c-44db-a3ab-51ca1b376a55"
+      }
     }
   }
 }
