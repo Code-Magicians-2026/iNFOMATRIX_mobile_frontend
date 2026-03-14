@@ -39,8 +39,6 @@ const PLAN_PROMPTS = [
   'Generate a confidence plan focused on consistency and wins.',
 ] as const;
 
-const PLAN_INTENSITY_OPTIONS = ['low', 'medium', 'high'] as const;
-
 const resolveMockUserId = (role: UserRole, currentUserId: string | undefined) => {
   if (role === 'adult') {
     return 'adult-1';
@@ -92,7 +90,6 @@ const HomeScreen = () => {
 
   const [isAiBuilderModalVisible, setIsAiBuilderModalVisible] = React.useState(false);
   const [aiPrompt, setAiPrompt] = React.useState<string>(PLAN_PROMPTS[0]);
-  const [aiIntensity, setAiIntensity] = React.useState<(typeof PLAN_INTENSITY_OPTIONS)[number]>('medium');
   const [aiBuilderError, setAiBuilderError] = React.useState<string | null>(null);
 
   const effectiveRole: UserRole = role ?? 'child';
@@ -314,7 +311,6 @@ const HomeScreen = () => {
 
     setAiBuilderError(null);
     setAiPrompt(PLAN_PROMPTS[Math.floor(Math.random() * PLAN_PROMPTS.length)] ?? PLAN_PROMPTS[0]);
-    setAiIntensity('medium');
     setIsAiBuilderModalVisible(true);
   };
 
@@ -346,14 +342,17 @@ const HomeScreen = () => {
       const generatedPlan = await plansService.generatePlan({
         targetUserId: selectedChild.id,
         prompt: normalizedPrompt,
-        intensity: aiIntensity,
       });
 
       setRecentPlans((prev) => [generatedPlan, ...prev.filter((plan) => plan.id !== generatedPlan.id)].slice(0, 6));
       setIsAiBuilderModalVisible(false);
-      await loadDashboard(false);
-    } catch {
-      setAiBuilderError('Failed to generate AI plan. Please try different settings.');
+      if (!session?.accessToken) {
+        await loadDashboard(false);
+      }
+    } catch (error) {
+      setAiBuilderError(
+        getApiErrorMessage(error, 'Failed to generate AI plan. Please try different settings.'),
+      );
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -817,36 +816,6 @@ const HomeScreen = () => {
               editable={!isGeneratingPlan}
             />
 
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Intensity
-            </Text>
-            <View style={styles.optionList}>
-              {PLAN_INTENSITY_OPTIONS.map((intensity) => {
-                const isSelected = aiIntensity === intensity;
-                return (
-                  <Pressable
-                    key={intensity}
-                    onPress={() => setAiIntensity(intensity)}
-                    style={[
-                      styles.optionChip,
-                      {
-                        borderColor: isSelected ? '#ff2d55' : colors.border,
-                        backgroundColor: isSelected ? '#ff2d55' : colors.background,
-                      },
-                    ]}
-                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                  >
-                    <Text style={[styles.optionChipLabel, { color: isSelected ? '#ffffff' : colors.text }]} allowFontScaling>
-                      {intensity}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-                        <Text style={[styles.helperText, { color: colors.textSecondary }]} allowFontScaling>
-              Low = fewer/light quests, High = more difficult and longer quests.
-            </Text>
-
             {aiBuilderError ? (
               <Text style={styles.errorText} allowFontScaling>
                 {aiBuilderError}
@@ -1070,25 +1039,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       fontWeight: '600',
       lineHeight: isTablet ? 18 : 16,
     },
-    optionList: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    optionChip: {
-      borderWidth: 1,
-      borderRadius: 999,
-      minHeight: 36,
-      paddingHorizontal: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-    },
-    optionChipLabel: {
-      fontSize: isTablet ? 13 : 12,
-      fontWeight: '700',
-      textTransform: 'capitalize',
-    },
     input: {
       minHeight: 42,
       borderWidth: 1,
@@ -1099,11 +1049,6 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     notesInput: {
       minHeight: 84,
-    },
-    helperText: {
-      fontSize: isTablet ? 12 : 11,
-      fontWeight: '500',
-      marginTop: 2,
     },
     errorText: {
       color: '#d93a5a',

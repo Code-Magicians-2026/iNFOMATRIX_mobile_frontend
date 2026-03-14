@@ -40,7 +40,7 @@ export interface PlanRequest {
   targetUserId: string;
   prompt: string;
   category?: string;
-  intensity: string;
+  intensity?: string;
   photo?: CapturedPhoto;
   status: string;
 }
