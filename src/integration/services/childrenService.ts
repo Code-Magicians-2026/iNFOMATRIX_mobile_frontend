@@ -3,6 +3,12 @@ import { ApiError } from '@/src/features/auth/api/client';
 import { authService } from '@/src/integration/services/authService';
 import type { RegisterChildRequestDto } from '@/src/features/auth/dto/auth.dto';
 import type { ChildProfile } from '@/shared/models/mvp-contracts.model';
+import { createChildMock, getChildrenMock } from '@/src/features/mvp/services';
+import {
+  isOfflineTestingModeEnabled,
+  persistOfflineStateIfEnabled,
+  syncMockLayerContextFromAuth,
+} from '@/src/integration/services/offline-mode';
 
 export type CreateChildInput = RegisterChildRequestDto;
 const CHILDREN_CACHE_TTL_MS = 20_000;
@@ -195,6 +201,11 @@ let childrenRequestId = 0;
 
 export const childrenService = {
   getChildren: async (options: GetChildrenOptions = {}): Promise<ChildProfile[]> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      return getChildrenMock();
+    }
+
     const accessToken = useAuthStore.getState().session?.accessToken;
     if (!accessToken) {
       throw new Error('Для отримання списку дітей потрібна авторизація.');
@@ -263,6 +274,16 @@ export const childrenService = {
   },
 
   createChild: async (input: CreateChildInput): Promise<ChildProfile> => {
+    if (isOfflineTestingModeEnabled()) {
+      syncMockLayerContextFromAuth();
+      const created = await createChildMock({
+        fullName: `${input.firstName} ${input.lastName}`.trim(),
+        age: 10,
+      });
+      await persistOfflineStateIfEnabled();
+      return created;
+    }
+
     const session = useAuthStore.getState().session;
     if (!session?.accessToken) {
       throw new Error('Для створення дитини потрібна авторизація.');
