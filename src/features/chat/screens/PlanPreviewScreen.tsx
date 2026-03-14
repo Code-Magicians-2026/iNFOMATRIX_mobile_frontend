@@ -29,6 +29,7 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 
 type PlanPreviewRoute = RouteProp<AppStackParamList, 'PlanPreview'>;
 type PlanPreviewNavigation = NativeStackNavigationProp<AppStackParamList>;
+const PLAN_PREVIEW_SELECTED_REWARD_TYPE_COLOR = '#ff0000';
 
 const createRewardDraftMap = (quests: Quest[]): Record<string, QuestRewardDraft> =>
   quests.reduce<Record<string, QuestRewardDraft>>((result, quest) => {
@@ -67,11 +68,15 @@ const PlanPreviewScreen = () => {
   }, [plan.id]);
 
   const updateRewardDraft = React.useCallback(
-    (quest: Quest, nextDraft: QuestRewardDraft) => {
-      setRewardDraftsByQuestId((current) => ({
-        ...current,
-        [quest.id]: nextDraft,
-      }));
+    (quest: Quest, updater: (currentDraft: QuestRewardDraft) => QuestRewardDraft) => {
+      setRewardDraftsByQuestId((current) => {
+        const currentDraft = current[quest.id] ?? createQuestRewardDraftFromQuest(quest);
+        const nextDraft = updater(currentDraft);
+        return {
+          ...current,
+          [quest.id]: nextDraft,
+        };
+      });
       setDirtyRewardQuestIds((current) => ({
         ...current,
         [quest.id]: true,
@@ -345,19 +350,19 @@ const PlanPreviewScreen = () => {
                     <QuestRewardEditor
                       draft={rewardDraft}
                       previewText={rewardPreview}
+                      selectedTypeColor={PLAN_PREVIEW_SELECTED_REWARD_TYPE_COLOR}
                       onChangeType={(type) => {
-                        const nextDraft: QuestRewardDraft = {
+                        updateRewardDraft(quest, (currentDraft) => ({
                           type,
                           valueInput: '',
-                          noteInput: rewardDraft.noteInput,
-                        };
-                        updateRewardDraft(quest, nextDraft);
+                          noteInput: currentDraft.noteInput,
+                        }));
                       }}
                       onChangeValue={(value) => {
-                        updateRewardDraft(quest, { ...rewardDraft, valueInput: value });
+                        updateRewardDraft(quest, (currentDraft) => ({ ...currentDraft, valueInput: value }));
                       }}
                       onChangeNote={(value) => {
-                        updateRewardDraft(quest, { ...rewardDraft, noteInput: value });
+                        updateRewardDraft(quest, (currentDraft) => ({ ...currentDraft, noteInput: value }));
                       }}
                     />
                   ) : null}

@@ -220,6 +220,45 @@ describe('Auth store', () => {
     expect(useAuthStore.getState().selectedChildId).toBeNull();
   });
 
+  it('persists current user progress updates (xp and level)', async () => {
+    useAuthStore.setState({
+      session: {
+        email: 'user@example.com',
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      },
+      currentUser: {
+        id: 'user-1',
+        fullName: 'User One',
+        email: 'user@example.com',
+        role: 'child',
+        level: 1,
+        xp: 0,
+        streak: 0,
+        avatarType: 'adventurer',
+      },
+      role: 'child',
+      selectedChildId: null,
+      family: null,
+      pendingFamilyName: null,
+      isHydrated: true,
+    });
+
+    await useAuthStore.getState().setCurrentUserProgress({
+      userId: 'user-1',
+      xp: 420,
+      level: 2,
+      streak: 3,
+    });
+
+    expect(useAuthStore.getState().currentUser?.xp).toBe(420);
+    expect(useAuthStore.getState().currentUser?.level).toBe(2);
+    expect(useAuthStore.getState().currentUser?.streak).toBe(3);
+    expect(setItemMock).toHaveBeenCalled();
+  });
+
   it('createSessionFromToken clears stale family when account changes', async () => {
     useAuthStore.setState({
       session: {

@@ -16,6 +16,7 @@ type QuestRewardEditorProps = {
   onChangeValue: (value: string) => void;
   onChangeNote: (value: string) => void;
   disabled?: boolean;
+  selectedTypeColor?: string;
 };
 
 const SELECTED_REWARD_COLOR: Record<QuestRewardDraft['type'], string> = {
@@ -33,6 +34,7 @@ const QuestRewardEditor = ({
   onChangeValue,
   onChangeNote,
   disabled = false,
+  selectedTypeColor,
 }: QuestRewardEditorProps) => {
   const colors = useThemeStore((state) => state.colors);
   const { isTablet } = useResponsiveLayout();
@@ -52,15 +54,17 @@ const QuestRewardEditor = ({
       <View style={styles.typeRow}>
         {QUEST_REWARD_EDITOR_OPTIONS.map((option) => {
           const isSelected = option.type === draft.type;
-          const selectedColor = SELECTED_REWARD_COLOR[option.type];
+          const selectedColor = selectedTypeColor ?? SELECTED_REWARD_COLOR[option.type];
           return (
             <Pressable
               key={option.type}
               onPress={() => onChangeType(option.type)}
               disabled={disabled}
+              accessibilityState={{ disabled, selected: isSelected }}
               style={[
                 styles.typeChip,
                 {
+                  borderWidth: isSelected ? 2 : 1,
                   borderColor: isSelected ? selectedColor : colors.border,
                   backgroundColor: isSelected ? selectedColor : colors.card,
                 },

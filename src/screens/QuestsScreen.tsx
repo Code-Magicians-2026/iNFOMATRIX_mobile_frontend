@@ -1,4 +1,5 @@
 import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   Animated,
   Easing,
@@ -44,6 +45,8 @@ import {
   questsService,
   userService,
 } from '@/src/integration/services';
+import achievementsService from '@/src/features/profile/services/achievementsService';
+import type { UnlockedAchievement } from '@/src/features/profile/services/achievementsStorage';
 import earnedBadgesStorage from '@/src/features/profile/services/earnedBadgesStorage';
 import {
   pickRandomBadgeImageKey,
@@ -62,6 +65,8 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 const getTodayIsoDate = () => new Date().toISOString().slice(0, 10);
 const STEP_TOGGLE_VIBRATION_PATTERN = [0, 45, 25, 65];
 const QUEST_VICTORY_VIBRATION_PATTERN = [0, 80, 60, 120, 80, 220];
+const ACHIEVEMENT_UNLOCK_VIBRATION_PATTERN = [0, 40, 30, 60];
+const ACHIEVEMENT_UNLOCK_DURATION_MS = 1900;
 const QUESTS_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
 const isQuestArchived = (quest: Quest) => quest.status === 'archived' || quest.status === 'completed';
@@ -129,6 +134,8 @@ const QuestsScreen = () => {
   const [isSavingReward, setIsSavingReward] = React.useState(false);
   const [rewardSystemNote, setRewardSystemNote] = React.useState<string | null>(null);
   const [isCompletionBadgeSpotlightVisible, setIsCompletionBadgeSpotlightVisible] = React.useState(false);
+  const [achievementUnlockQueue, setAchievementUnlockQueue] = React.useState<UnlockedAchievement[]>([]);
+  const [activeAchievementUnlock, setActiveAchievementUnlock] = React.useState<UnlockedAchievement | null>(null);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
   const initializedRewardDraftQuestIdRef = React.useRef<string | null>(null);
@@ -137,6 +144,8 @@ const QuestsScreen = () => {
   const completionScale = React.useRef(new Animated.Value(1)).current;
   const completionSpotlightScale = React.useRef(new Animated.Value(0.45)).current;
   const completionSpotlightOpacity = React.useRef(new Animated.Value(0)).current;
+  const achievementUnlockOpacity = React.useRef(new Animated.Value(0)).current;
+  const achievementUnlockScale = React.useRef(new Animated.Value(0.92)).current;
 
   React.useEffect(() => {
     if (!role) {
@@ -511,6 +520,63 @@ const QuestsScreen = () => {
     completionSpotlightScale,
   ]);
 
+  React.useEffect(() => {
+    if (activeAchievementUnlock || achievementUnlockQueue.length === 0) {
+      return;
+    }
+
+    const [nextAchievement, ...restQueue] = achievementUnlockQueue;
+    setAchievementUnlockQueue(restQueue);
+    setActiveAchievementUnlock(nextAchievement);
+  }, [achievementUnlockQueue, activeAchievementUnlock]);
+
+  React.useEffect(() => {
+    if (!activeAchievementUnlock) {
+      return undefined;
+    }
+
+    Vibration.vibrate(ACHIEVEMENT_UNLOCK_VIBRATION_PATTERN);
+    achievementUnlockOpacity.setValue(0);
+    achievementUnlockScale.setValue(0.9);
+
+    Animated.parallel([
+      Animated.timing(achievementUnlockOpacity, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.timing(achievementUnlockScale, {
+          toValue: 1.05,
+          duration: 210,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(achievementUnlockScale, {
+          toValue: 1,
+          duration: 140,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    const timer = setTimeout(() => {
+      setActiveAchievementUnlock(null);
+      achievementUnlockOpacity.setValue(0);
+      achievementUnlockScale.setValue(0.92);
+    }, ACHIEVEMENT_UNLOCK_DURATION_MS);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [
+    achievementUnlockOpacity,
+    achievementUnlockScale,
+    activeAchievementUnlock,
+  ]);
+
   const handleSelectChild = async (childId: string) => {
     setScreenError(null);
     try {
@@ -668,6 +734,7 @@ const QuestsScreen = () => {
       const updatedQuest = await questsService.completeQuest(detailsQuest.id);
       setQuests((current) => current.map((quest) => (quest.id === detailsQuest.id ? updatedQuest : quest)));
       const refreshedProgress = await refreshData(false);
+      const progressForAchievements = refreshedProgress ?? progress;
 
       let earnedBadgeImageKey = pickRandomBadgeImageKey();
       try {
@@ -678,6 +745,20 @@ const QuestsScreen = () => {
         });
         earnedBadgeImageKey = earnedBadge.imageKey;
       } catch {}
+
+      if (progressForAchievements) {
+        try {
+          const unlockedAchievements = await achievementsService.unlockFromQuestCompletion({
+            userId: updatedQuest.assignedToUserId,
+            role: effectiveRole,
+            quest: updatedQuest,
+            progress: progressForAchievements,
+          });
+          if (unlockedAchievements.length > 0) {
+            setAchievementUnlockQueue((current) => [...current, ...unlockedAchievements]);
+          }
+        } catch {}
+      }
 
       if (refreshedProgress) {
         Vibration.vibrate(QUEST_VICTORY_VIBRATION_PATTERN);
@@ -946,6 +1027,39 @@ const QuestsScreen = () => {
         </Modal>
       ) : null}
 
+      {activeAchievementUnlock ? (
+        <Modal visible transparent animationType="fade">
+          <View style={styles.achievementUnlockBackdrop} pointerEvents="none">
+            <Animated.View
+              style={[
+                styles.achievementUnlockCard,
+                {
+                  opacity: achievementUnlockOpacity,
+                  transform: [{ scale: achievementUnlockScale }],
+                },
+              ]}
+            >
+              <Text style={styles.achievementUnlockCaption} allowFontScaling>
+                Achievement unlocked!
+              </Text>
+              <View style={styles.achievementUnlockIconWrap}>
+                <Ionicons
+                  name={activeAchievementUnlock.icon as keyof typeof Ionicons.glyphMap}
+                  size={isTablet ? 34 : 30}
+                  color="#ff2d55"
+                />
+              </View>
+              <Text style={styles.achievementUnlockTitle} allowFontScaling>
+                {activeAchievementUnlock.title}
+              </Text>
+              <Text style={styles.achievementUnlockDescription} allowFontScaling>
+                {activeAchievementUnlock.description}
+              </Text>
+            </Animated.View>
+          </View>
+        </Modal>
+      ) : null}
+
       <Modal
         visible={Boolean(detailsQuestId)}
         transparent
@@ -1086,7 +1200,7 @@ const QuestsScreen = () => {
                     After completion, child must submit a result photo.
                   </Text>
                 ) : null}
-                {effectiveRole === 'adult' ? (
+                {effectiveRole === 'adult' && canEditBeforePhoto ? (
                   <View style={styles.inlineActionRow}>
                     <Pressable
                       onPress={() => {
@@ -1098,10 +1212,10 @@ const QuestsScreen = () => {
                           borderColor: colors.border,
                           backgroundColor: colors.background,
                         },
-                        (!canEditBeforePhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                        photoUpdateAction !== null ? styles.inlineActionButtonDisabled : null,
                       ]}
                       android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                      disabled={!canEditBeforePhoto || photoUpdateAction !== null}
+                      disabled={photoUpdateAction !== null}
                     >
                       <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
                         {photoUpdateAction === 'before_gallery' ? 'Loading...' : 'Gallery'}
@@ -1117,10 +1231,10 @@ const QuestsScreen = () => {
                           borderColor: colors.border,
                           backgroundColor: colors.background,
                         },
-                        (!canEditBeforePhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                        photoUpdateAction !== null ? styles.inlineActionButtonDisabled : null,
                       ]}
                       android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                      disabled={!canEditBeforePhoto || photoUpdateAction !== null}
+                      disabled={photoUpdateAction !== null}
                     >
                       <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
                         {photoUpdateAction === 'before_camera' ? 'Loading...' : 'Camera'}
@@ -1137,10 +1251,10 @@ const QuestsScreen = () => {
                             borderColor: colors.border,
                             backgroundColor: colors.background,
                           },
-                          (!canEditBeforePhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                          photoUpdateAction !== null ? styles.inlineActionButtonDisabled : null,
                         ]}
                         android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                        disabled={!canEditBeforePhoto || photoUpdateAction !== null}
+                        disabled={photoUpdateAction !== null}
                       >
                         <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
                           {photoUpdateAction === 'before_remove' ? 'Removing...' : 'Remove'}
@@ -1174,49 +1288,11 @@ const QuestsScreen = () => {
                     Add a result photo to complete this quest.
                   </Text>
                 ) : null}
-                <View style={styles.inlineActionRow}>
-                  <Pressable
-                    onPress={() => {
-                      void handleUpdateAfterPhoto('gallery');
-                    }}
-                    style={[
-                      styles.inlineActionButton,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: colors.background,
-                      },
-                      (!canEditAfterPhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
-                    ]}
-                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                    disabled={!canEditAfterPhoto || photoUpdateAction !== null}
-                  >
-                    <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
-                      {photoUpdateAction === 'after_gallery' ? 'Loading...' : 'Gallery'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      void handleUpdateAfterPhoto('camera');
-                    }}
-                    style={[
-                      styles.inlineActionButton,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: colors.background,
-                      },
-                      (!canEditAfterPhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
-                    ]}
-                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                    disabled={!canEditAfterPhoto || photoUpdateAction !== null}
-                  >
-                    <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
-                      {photoUpdateAction === 'after_camera' ? 'Loading...' : 'Camera'}
-                    </Text>
-                  </Pressable>
-                  {hasQuestPhoto(detailsQuest.afterPhoto) ? (
+                {canEditAfterPhoto ? (
+                  <View style={styles.inlineActionRow}>
                     <Pressable
                       onPress={() => {
-                        void handleUpdateAfterPhoto('remove');
+                        void handleUpdateAfterPhoto('gallery');
                       }}
                       style={[
                         styles.inlineActionButton,
@@ -1224,17 +1300,57 @@ const QuestsScreen = () => {
                           borderColor: colors.border,
                           backgroundColor: colors.background,
                         },
-                        (!canEditAfterPhoto || photoUpdateAction !== null) ? styles.inlineActionButtonDisabled : null,
+                        photoUpdateAction !== null ? styles.inlineActionButtonDisabled : null,
                       ]}
                       android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
-                      disabled={!canEditAfterPhoto || photoUpdateAction !== null}
+                      disabled={photoUpdateAction !== null}
                     >
                       <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
-                        {photoUpdateAction === 'after_remove' ? 'Removing...' : 'Remove'}
+                        {photoUpdateAction === 'after_gallery' ? 'Loading...' : 'Gallery'}
                       </Text>
                     </Pressable>
-                  ) : null}
-                </View>
+                    <Pressable
+                      onPress={() => {
+                        void handleUpdateAfterPhoto('camera');
+                      }}
+                      style={[
+                        styles.inlineActionButton,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        },
+                        photoUpdateAction !== null ? styles.inlineActionButtonDisabled : null,
+                      ]}
+                      android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                      disabled={photoUpdateAction !== null}
+                    >
+                      <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                        {photoUpdateAction === 'after_camera' ? 'Loading...' : 'Camera'}
+                      </Text>
+                    </Pressable>
+                    {hasQuestPhoto(detailsQuest.afterPhoto) ? (
+                      <Pressable
+                        onPress={() => {
+                          void handleUpdateAfterPhoto('remove');
+                        }}
+                        style={[
+                          styles.inlineActionButton,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: colors.background,
+                          },
+                          photoUpdateAction !== null ? styles.inlineActionButtonDisabled : null,
+                        ]}
+                        android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+                        disabled={photoUpdateAction !== null}
+                      >
+                        <Text style={[styles.inlineActionLabel, { color: colors.text }]} allowFontScaling>
+                          {photoUpdateAction === 'after_remove' ? 'Removing...' : 'Remove'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
                 {detailsQuest.visionSummary ? (
                   <View style={styles.visionSummaryWrap}>
                     <Text style={[styles.previewLabel, { color: colors.text }]} allowFontScaling>
@@ -1414,6 +1530,55 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       color: '#ff2d55',
       fontSize: isTablet ? 18 : 16,
       fontWeight: '800',
+    },
+    achievementUnlockBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(8, 11, 16, 0.32)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing,
+      paddingVertical: spacing,
+    },
+    achievementUnlockCard: {
+      width: '100%',
+      maxWidth: isTablet ? 360 : 320,
+      borderRadius: 18,
+      backgroundColor: 'rgba(255, 255, 255, 0.97)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingHorizontal: 18,
+      paddingVertical: 20,
+      elevation: 12,
+    },
+    achievementUnlockCaption: {
+      color: '#ff2d55',
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+    },
+    achievementUnlockIconWrap: {
+      width: isTablet ? 68 : 60,
+      height: isTablet ? 68 : 60,
+      borderRadius: 999,
+      backgroundColor: '#ffe5ec',
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 2,
+      marginTop: 2,
+      marginBottom: 2,
+    },
+    achievementUnlockTitle: {
+      color: '#0d1117',
+      fontSize: isTablet ? 24 : 21,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+    achievementUnlockDescription: {
+      color: '#3f4752',
+      fontSize: isTablet ? 14 : 13,
+      fontWeight: '600',
+      textAlign: 'center',
     },
     childList: {
       gap: 8,

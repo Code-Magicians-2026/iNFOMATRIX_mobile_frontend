@@ -1,12 +1,14 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 
 import useAuthStore from '@/context/Auth-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import useThemeStore from '@/context/Theme-store';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
+import achievementsStorage from '@/src/features/profile/services/achievementsStorage';
 import type { ProgressSummary, UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
@@ -61,7 +63,23 @@ const ProfileScreen = () => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [screenError, setScreenError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [unlockedAchievementsCount, setUnlockedAchievementsCount] = React.useState(0);
+  const [newAchievementsCount, setNewAchievementsCount] = React.useState(0);
   const lastProfileRefreshAtRef = React.useRef(0);
+
+  const loadAchievementsMeta = React.useCallback(async (userId: string) => {
+    try {
+      const [unlockedAchievements, newCount] = await Promise.all([
+        achievementsStorage.getUnlockedAchievementsByUser(userId),
+        achievementsStorage.getNewAchievementsCount(userId),
+      ]);
+      setUnlockedAchievementsCount(unlockedAchievements.length);
+      setNewAchievementsCount(newCount);
+    } catch {
+      setUnlockedAchievementsCount(0);
+      setNewAchievementsCount(0);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!role) {
@@ -88,6 +106,7 @@ const ProfileScreen = () => {
 
       setMe(meData);
       setProgress(progressData);
+      await loadAchievementsMeta(meData.id);
 
       if (effectiveRole === 'adult') {
         const [childrenData, plansData] = await Promise.all([
@@ -112,7 +131,7 @@ const ProfileScreen = () => {
       setIsRefreshing(false);
       lastProfileRefreshAtRef.current = Date.now();
     }
-  }, [effectiveRole, refreshFamily, session]);
+  }, [effectiveRole, loadAchievementsMeta, refreshFamily, session]);
 
   React.useEffect(() => {
     void loadProfile(true);
@@ -128,8 +147,12 @@ const ProfileScreen = () => {
         void loadProfile(false);
       }
 
+      if (me?.id) {
+        void loadAchievementsMeta(me.id);
+      }
+
       return undefined;
-    }, [isLoading, loadProfile]),
+    }, [isLoading, loadAchievementsMeta, loadProfile, me?.id]),
   );
 
   const onLogoutPress = async () => {
@@ -164,6 +187,7 @@ const ProfileScreen = () => {
 
   const strongestMetric = categoryStats[0];
   const canOpenEarnedBadges = Boolean(me?.id);
+  const canOpenAchievements = Boolean(me?.id);
 
   const childBadges = React.useMemo(() => {
     const badges: string[] = [];
@@ -281,6 +305,41 @@ const ProfileScreen = () => {
 
           </StatCard>
         )}
+
+        <StatCard title="Achievements" subtitle="Unlock surprises as you complete quests" style={styles.card}>
+          <Pressable
+            style={[styles.achievementItem, { borderColor: colors.border, backgroundColor: colors.background }]}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
+            onPress={() => {
+              if (!me?.id) {
+                return;
+              }
+
+              navigation.navigate('Achievements', {
+                userId: me.id,
+                displayName: me.fullName,
+              });
+            }}
+            disabled={!canOpenAchievements}
+          >
+            <View style={styles.achievementItemLeft}>
+              <View style={styles.achievementIconWrap}>
+                <Ionicons name="trophy-outline" size={isTablet ? 22 : 20} color="#ff2d55" />
+              </View>
+              <View style={styles.achievementTextWrap}>
+                <Text style={[styles.achievementTitle, { color: colors.text }]} allowFontScaling>
+                  Achievements
+                </Text>
+                <Text style={[styles.achievementSubtitle, { color: colors.textSecondary }]} allowFontScaling>
+                  Unlocked: {unlockedAchievementsCount}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.achievementMeta, { color: newAchievementsCount > 0 ? '#ff2d55' : colors.textSecondary }]} allowFontScaling>
+              {newAchievementsCount > 0 ? `• ${newAchievementsCount} new` : 'Open'}
+            </Text>
+          </Pressable>
+        </StatCard>
 
         <StatCard title="Earned Badges" subtitle="Saved badge collection" style={styles.card}>
           <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
@@ -425,6 +484,50 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
     },
     earnedBadgesButton: {
       marginTop: 6,
+    },
+    achievementItem: {
+      borderWidth: 1,
+      borderRadius: 12,
+      minHeight: isTablet ? 64 : 58,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      overflow: 'hidden',
+      elevation: 1,
+    },
+    achievementItemLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    achievementIconWrap: {
+      width: isTablet ? 40 : 36,
+      height: isTablet ? 40 : 36,
+      borderRadius: 999,
+      backgroundColor: '#ffe5ec',
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 1,
+    },
+    achievementTextWrap: {
+      flex: 1,
+      gap: 2,
+    },
+    achievementTitle: {
+      fontSize: isTablet ? 15 : 14,
+      fontWeight: '700',
+    },
+    achievementSubtitle: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '500',
+    },
+    achievementMeta: {
+      fontSize: isTablet ? 13 : 12,
+      fontWeight: '800',
     },
   });
 

@@ -8,6 +8,7 @@ import ConfirmEmailScreen from '@/src/features/auth/screens/ConfirmEmailScreen';
 import LoginScreen from '@/src/features/auth/screens/LoginScreen';
 import ResetPasswordScreen from '@/src/features/auth/screens/ResetPasswordScreen';
 import RegistrationScreen from '@/src/features/auth/screens/RegistrationScreen';
+import AchievementsScreen from '@/src/features/profile/screens/AchievementsScreen';
 import EarnedBadgesScreen from '@/src/features/profile/screens/EarnedBadgesScreen';
 import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
 import PlanPreviewScreen from '@/src/features/chat/screens/PlanPreviewScreen';
@@ -24,6 +25,7 @@ export type TabParamList = {
 export type AppStackParamList = {
   MainTabs: NavigatorScreenParams<TabParamList> | undefined;
   Settings: undefined;
+  Achievements: { userId: string; displayName?: string };
   EarnedBadges: { userId: string; displayName?: string };
   PlanPreview: {
     plan: GeneratedPlan;
@@ -104,6 +106,24 @@ export default function AppNavigator() {
           header: () => (
             <Header
               title="Settings"
+              showBackButton
+              onBackPress={() => navigation.goBack()}
+              onAiPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Chat',
+                })
+              }
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="Achievements"
+        component={AchievementsScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <Header
+              title="Achievements"
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>

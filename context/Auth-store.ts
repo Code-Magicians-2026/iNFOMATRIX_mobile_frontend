@@ -33,6 +33,12 @@ interface AuthState {
   confirmEmail: (email: string, token: string) => Promise<void>;
   completePasswordReset: (email: string, newPassword: string) => Promise<void>;
   createSessionFromToken: (token: TokenDto, fallbackEmail?: string) => Promise<void>;
+  setCurrentUserProgress: (input: {
+    userId: string;
+    xp: number;
+    level: number;
+    streak?: number;
+  }) => Promise<void>;
   refreshFamily: () => Promise<FamilySummary | null>;
   registerChild: (payload: RegisterChildInput) => Promise<void>;
   setRole: (role: UserRole) => Promise<void>;
@@ -244,6 +250,11 @@ const isFamilyNotFoundError = (error: unknown): boolean => {
 
   return false;
 };
+
+const normalizeProgressNumber = (value: number, fallback: number, min: number): number =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(min, Math.round(value))
+    : fallback;
 
 const buildLocalUser = (role: UserRole): UserProfile => ({
   id: `local-${role}`,
@@ -549,6 +560,49 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
     set(payload);
     await persistState(payload);
+  },
+
+  setCurrentUserProgress: async (input) => {
+    const currentUser = get().currentUser;
+    if (!currentUser || currentUser.id !== input.userId) {
+      return;
+    }
+
+    const nextXp = normalizeProgressNumber(input.xp, currentUser.xp, 0);
+    const nextLevel = normalizeProgressNumber(input.level, currentUser.level, 1);
+    const nextStreak = normalizeProgressNumber(input.streak ?? currentUser.streak, currentUser.streak, 0);
+
+    if (
+      currentUser.xp === nextXp &&
+      currentUser.level === nextLevel &&
+      currentUser.streak === nextStreak
+    ) {
+      return;
+    }
+
+    const nextUser: UserProfile = {
+      ...currentUser,
+      xp: nextXp,
+      level: nextLevel,
+      streak: nextStreak,
+    };
+
+    const payload: PersistedAuthEnvelope = {
+      session: get().session,
+      currentUser: nextUser,
+      role: get().role,
+      selectedChildId: get().selectedChildId,
+      family: get().family,
+      pendingFamilyName: get().pendingFamilyName,
+    };
+
+    set({
+      currentUser: nextUser,
+    });
+
+    if (payload.session) {
+      await persistState(payload);
+    }
   },
 
   refreshFamily: async () => {
