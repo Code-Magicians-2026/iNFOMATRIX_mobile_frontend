@@ -22,6 +22,7 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
   const completedStepsCount =
     quest.completedStepsCount ?? quest.steps?.filter((step) => step.status === 'completed').length ?? 0;
   const isDone = isArchived;
+  const statusLabel = isArchived ? 'ARCHIVED' : 'ACTIVE';
   const rewardLabel = getQuestRewardLabel(quest);
   const reportPhotoRequired = Boolean(quest.beforePhoto?.uri);
 
@@ -31,13 +32,22 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
         <Text style={[styles.title, { color: colors.text }]} allowFontScaling>
           {quest.title}
         </Text>
-        {isDone ? (
-          <View style={styles.doneCheckWrap}>
-            <Text style={styles.doneCheckLabel} allowFontScaling={false}>
-              ✓
-            </Text>
-          </View>
-        ) : null}
+        <View
+          style={[
+            styles.doneCheckWrap,
+            !isDone ? styles.activeCheckWrap : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.doneCheckLabel,
+              !isDone ? styles.activeCheckLabel : null,
+            ]}
+            allowFontScaling={false}
+          >
+            {isDone ? '✓' : '•'}
+          </Text>
+        </View>
       </View>
       {quest.originalTask ? (
         <Text style={[styles.originalTask, { color: colors.textSecondary }]} allowFontScaling>
@@ -72,11 +82,9 @@ const QuestCard = ({ quest, onViewDetails }: QuestCardProps) => {
       </View>
 
       <View style={styles.footer}>
-        {isArchived ? (
-          <Text style={styles.completedBadge} allowFontScaling>
-            ARCHIVED
-          </Text>
-        ) : null}
+        <Text style={styles.completedBadge} allowFontScaling>
+          {statusLabel}
+        </Text>
         {canViewDetails ? (
           <Pressable
             onPress={() => onViewDetails(quest)}
@@ -121,11 +129,19 @@ const getStyles = (isTablet: boolean) =>
       backgroundColor: '#1f9b54',
       elevation: 1,
     },
+    activeCheckWrap: {
+      backgroundColor: '#d9f3e3',
+    },
     doneCheckLabel: {
       color: '#ffffff',
       fontSize: isTablet ? 15 : 14,
       fontWeight: '900',
       lineHeight: isTablet ? 16 : 15,
+    },
+    activeCheckLabel: {
+      color: '#1c8f4e',
+      fontSize: isTablet ? 17 : 15,
+      lineHeight: isTablet ? 18 : 16,
     },
     originalTask: {
       fontSize: isTablet ? 15 : 13,

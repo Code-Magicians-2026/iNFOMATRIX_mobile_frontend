@@ -215,6 +215,8 @@ const AgentChatScreen = () => {
             generating: 'Генерація...',
             generate: 'Згенерувати',
             generatingPlan: 'Генерація AI-плану...',
+            resolution: 'Роздільна здатність',
+            size: 'Розмір',
           }
         : {
             activeTargetFallback: 'No active child',
@@ -276,6 +278,8 @@ const AgentChatScreen = () => {
             generating: 'Generating...',
             generate: 'Generate',
             generatingPlan: 'Generating AI plan...',
+            resolution: 'Resolution',
+            size: 'Size',
           },
     [isUk],
   );
@@ -878,11 +882,11 @@ const AgentChatScreen = () => {
                 />
                 <View style={styles.photoMetaBlock}>
                   <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
-                    Resolution: {capturedPhoto.width ?? '?'} x {capturedPhoto.height ?? '?'}
+                    {copy.resolution}: {capturedPhoto.width ?? '?'} x {capturedPhoto.height ?? '?'}
                   </Text>
                   {capturedPhoto.fileSize ? (
                     <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
-                      Size: {(capturedPhoto.fileSize / 1024 / 1024).toFixed(2)} MB
+                      {copy.size}: {(capturedPhoto.fileSize / 1024 / 1024).toFixed(2)} MB
                     </Text>
                   ) : null}
                 </View>

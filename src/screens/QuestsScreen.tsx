@@ -18,6 +18,7 @@ import {
 import useAuthStore from "@/context/Auth-store";
 import useThemeStore from "@/context/Theme-store";
 import useResponsiveLayout from "@/hooks/use-responsive-layout";
+import { useI18n } from "@/src/i18n/useI18n";
 import {
   CompletionBadge,
   EmptyState,
@@ -145,9 +146,290 @@ const QuestsScreen = () => {
   const navigation = useNavigation<QuestsNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
+  const { language } = useI18n();
+  const isUk = language === "uk";
   const styles = React.useMemo(
     () => getStyles(cardMaxWidth, isTablet, spacing),
     [cardMaxWidth, isTablet, spacing],
+  );
+  const copy = React.useMemo(
+    () =>
+      isUk
+        ? {
+            myself: "Я",
+            noActiveChild: "Немає активної дитини",
+            failedToLoadAssignedQuests:
+              "Не вдалося завантажити призначені квести. Спробуйте ще раз.",
+            selectedQuestNotFound: "Обраний квест не знайдено.",
+            couldNotUpdateStep: "Не вдалося оновити крок квесту. Спробуйте ще раз.",
+            couldNotSwitchChildProfile: "Не вдалося перемкнути профіль дитини.",
+            rewardLockedForCompleted: "Нагорода заблокована для завершених квестів.",
+            parentsUpdatedReward: "Батьки оновили нагороду цього квесту.",
+            rewardUpdated: "Нагороду оновлено.",
+            couldNotUpdateReward:
+              "Не вдалося оновити нагороду квесту. Спробуйте ще раз.",
+            cameraPermissionRequired:
+              "Потрібен доступ до камери, щоб додати фото квесту.",
+            galleryPermissionRequired:
+              "Потрібен доступ до галереї, щоб додати фото квесту.",
+            beforePhotoAdded:
+              "Фото до виконання додано. Після завершення потрібне звітне фото.",
+            beforePhotoRemoved:
+              "Фото до виконання видалено. Звітне фото тепер не обов’язкове.",
+            couldNotUpdateBeforePhoto: "Не вдалося оновити фото до виконання.",
+            reportPhotoAdded: "Звітне фото додано.",
+            reportPhotoRemoved: "Звітне фото видалено.",
+            couldNotUpdateReportPhoto: "Не вдалося оновити звітне фото.",
+            completeAllSteps:
+              "Завершіть усі кроки перед тим, як завершити квест.",
+            addReportPhotoToComplete:
+              "Щоб завершити цей квест, додайте звітне фото.",
+            couldNotCompleteQuest: "Не вдалося завершити цей квест.",
+            hide: "Сховати",
+            show: "Показати",
+            loadingAssignedQuests: "Завантаження призначених квестів...",
+            questsTitle: "Квести",
+            questsSubtitleChild:
+              "Режим виконання: завершуйте призначені квести та отримуйте XP",
+            questsSubtitleAdult:
+              "Режим батьків: перегляд і редагування квестів обраної дитини",
+            targetChildTitle: "Цільова дитина",
+            targetChildSubtitle: "Квести прив’язані до обраного профілю",
+            noActiveChildSelectedTitle: "Активну дитину не обрано",
+            noActiveChildSelectedDescription:
+              "Оберіть дитину, щоб переглянути її призначені квести.",
+            selectFirstChild: "Обрати першу дитину",
+            childMeta: (age: number, level: number) => `Вік ${age} | Рівень ${level}`,
+            noChildProfilesTitle: "Немає профілів дітей",
+            noChildProfilesDescription:
+              "Створіть дитину на Головній, щоб призначати квести.",
+            questProgressTitle: "Прогрес квестів",
+            executionMetrics: "Метрики виконання",
+            target: (label: string) => `Ціль: ${label}`,
+            activeQuests: (value: number) => `Активні квести: ${value}`,
+            completedToday: (value: number) => `Завершено сьогодні: ${value}`,
+            xpToday: (value: number) => `XP за сьогодні: ${value}`,
+            totalXp: (value: number) => `Загальний XP: ${value}`,
+            streak: (value: number) => `Streak: ${value}`,
+            questCompleted: "Квест завершено",
+            rewardPendingParent: (label: string) =>
+              `Нагорода очікує підтвердження батьків: ${label}`,
+            rewardUnlocked: (label: string) => `Нагороду розблоковано: ${label}`,
+            questFinalized: "Квест фіналізовано",
+            questMovedToArchive: "Квест перенесено в Архів",
+            totalXpAndStreak: (xp: number, streak: number) =>
+              `Загальний XP: ${xp} | Streak: ${streak}`,
+            refreshing: "Оновлення...",
+            refreshQuests: "Оновити квести",
+            questFlowError: "Помилка потоку квестів",
+            activeQuestsSection: "Активні квести",
+            noActiveQuestsTitle: "Немає активних квестів",
+            noActiveQuestsDescription:
+              "Підтвердьте AI-план, щоб перевести квести в активний стан.",
+            noTargetSelectedTitle: "Ціль не обрано",
+            noTargetSelectedDescription:
+              "Оберіть профіль дитини, щоб завантажити призначені квести.",
+            archivedSection: "Архів",
+            archiveIsEmptyTitle: "Архів порожній",
+            archiveIsEmptyDescription:
+              "Завершуйте кроки і завершуйте квест у деталях, щоб перенести його сюди.",
+            noArchivedQuestsTitle: "Немає архівних квестів",
+            noArchivedQuestsDescription:
+              "Спочатку створіть профіль дитини та підтвердьте план.",
+            up: "Вгору",
+            badgeUnlocked: "Бейдж розблоковано",
+            achievementUnlocked: "Досягнення розблоковано!",
+            questDetails: "Деталі квесту",
+            tapSectionToToggle:
+              "Торкніться назви секції, щоб розгорнути або згорнути деталі.",
+            overview: "Огляд",
+            progressCounter: (completed: number, total: number) =>
+              `Прогрес ${completed}/${total}`,
+            originalTask: "Початкове завдання",
+            generatedFromPlan: "Згенеровано з підтвердженого AI-плану",
+            difficulty: "Складність",
+            estimatedMinutes: "Орієнтовні хвилини",
+            reward: "Нагорода",
+            rewardXp: (xp: number) => `Нагорода XP: +${xp} XP`,
+            rewardLabel: (label: string) => `🎁 Нагорода: ${label}`,
+            rewardType: "Тип нагороди",
+            comment: "Коментар",
+            rewardLockedAfterCompletion:
+              "Нагорода блокується після завершення квесту.",
+            savingReward: "Збереження нагороди...",
+            saveReward: "Зберегти нагороду",
+            rewardLock: "Блокування нагороди",
+            locked: "Заблоковано",
+            editable: "Редагується",
+            beforeCompletion: "До завершення",
+            photoAdded: "Фото додано",
+            photoMissing: "Фото відсутнє",
+            beforePhotoNotAdded: "Фото до виконання не додано.",
+            reportPhoto: "Звітне фото",
+            required: "обов’язкове",
+            optional: "опційне",
+            childMustSubmitAfter:
+              "Після завершення дитина має надіслати фото результату.",
+            loading: "Завантаження...",
+            gallery: "Галерея",
+            camera: "Камера",
+            beforePhotoReplacementLocked:
+              "Заміна фото до виконання блокується після старту квесту.",
+            removeBeforePhotoA11y: "Видалити фото до виконання",
+            reportPhotoSection: "Звітне фото",
+            resultUploaded: "Результат завантажено",
+            resultPending: "Результат очікується",
+            resultPhotoNotAdded: "Фото результату ще не додано.",
+            addResultPhotoToComplete:
+              "Додайте фото результату, щоб завершити цей квест.",
+            aiSummary: "AI підсумок",
+            steps: "Кроки",
+            completedCounter: (completed: number, total: number) =>
+              `${completed}/${total} завершено`,
+            questActions: "Дії з квестом",
+            archivedReadOnly: "Архівні квести доступні лише для перегляду.",
+            completingQuest: "Завершення квесту...",
+            completeQuest: "Завершити квест",
+            close: "Закрити",
+          }
+        : {
+            myself: "Myself",
+            noActiveChild: "No active child",
+            failedToLoadAssignedQuests:
+              "Failed to load assigned quests. Please try again.",
+            selectedQuestNotFound: "Selected quest was not found.",
+            couldNotUpdateStep: "Could not update quest step. Please try again.",
+            couldNotSwitchChildProfile: "Could not switch child profile.",
+            rewardLockedForCompleted: "Reward is locked for completed quests.",
+            parentsUpdatedReward: "Parents updated this quest reward.",
+            rewardUpdated: "Reward updated.",
+            couldNotUpdateReward:
+              "Could not update quest reward. Please try again.",
+            cameraPermissionRequired:
+              "Camera permission is required to add a quest photo.",
+            galleryPermissionRequired:
+              "Gallery permission is required to add a quest photo.",
+            beforePhotoAdded:
+              "Before photo added. Report photo after completion is required.",
+            beforePhotoRemoved:
+              "Before photo removed. Report photo is now optional.",
+            couldNotUpdateBeforePhoto: "Could not update before photo.",
+            reportPhotoAdded: "Report photo added.",
+            reportPhotoRemoved: "Report photo removed.",
+            couldNotUpdateReportPhoto: "Could not update report photo.",
+            completeAllSteps:
+              "Complete all steps before finishing this quest.",
+            addReportPhotoToComplete:
+              "To complete this quest, add a report photo.",
+            couldNotCompleteQuest: "Could not complete this quest.",
+            hide: "Hide",
+            show: "Show",
+            loadingAssignedQuests: "Loading assigned quests...",
+            questsTitle: "Quests",
+            questsSubtitleChild:
+              "Execution mode: complete assigned quests and earn XP",
+            questsSubtitleAdult:
+              "Parent mode: review and update selected child quests",
+            targetChildTitle: "Target Child",
+            targetChildSubtitle: "Quests are tied to selected profile",
+            noActiveChildSelectedTitle: "No active child selected",
+            noActiveChildSelectedDescription:
+              "Choose a child to preview their assigned quests.",
+            selectFirstChild: "Select first child",
+            childMeta: (age: number, level: number) => `Age ${age} | Level ${level}`,
+            noChildProfilesTitle: "No child profiles",
+            noChildProfilesDescription:
+              "Create child from Home to assign quests.",
+            questProgressTitle: "Quest Progress",
+            executionMetrics: "Execution metrics",
+            target: (label: string) => `Target: ${label}`,
+            activeQuests: (value: number) => `Active quests: ${value}`,
+            completedToday: (value: number) => `Completed today: ${value}`,
+            xpToday: (value: number) => `XP earned today: ${value}`,
+            totalXp: (value: number) => `Total XP: ${value}`,
+            streak: (value: number) => `Streak: ${value}`,
+            questCompleted: "Quest completed",
+            rewardPendingParent: (label: string) =>
+              `Reward pending parent confirmation: ${label}`,
+            rewardUnlocked: (label: string) => `Reward unlocked: ${label}`,
+            questFinalized: "Quest finalized",
+            questMovedToArchive: "Quest moved to Archive",
+            totalXpAndStreak: (xp: number, streak: number) =>
+              `Total XP: ${xp} | Streak: ${streak}`,
+            refreshing: "Refreshing...",
+            refreshQuests: "Refresh quests",
+            questFlowError: "Quest flow error",
+            activeQuestsSection: "Active Quests",
+            noActiveQuestsTitle: "No active quests",
+            noActiveQuestsDescription:
+              "Approve an AI plan to move quests into active state.",
+            noTargetSelectedTitle: "No target selected",
+            noTargetSelectedDescription:
+              "Select child profile to load assigned quests.",
+            archivedSection: "Archived",
+            archiveIsEmptyTitle: "Archive is empty",
+            archiveIsEmptyDescription:
+              "Complete steps and finish the quest in Details to move it here.",
+            noArchivedQuestsTitle: "No archived quests",
+            noArchivedQuestsDescription:
+              "Create child profile and approve a plan first.",
+            up: "Up",
+            badgeUnlocked: "Badge unlocked",
+            achievementUnlocked: "Achievement unlocked!",
+            questDetails: "Quest Details",
+            tapSectionToToggle:
+              "Tap section title to expand or collapse details.",
+            overview: "Overview",
+            progressCounter: (completed: number, total: number) =>
+              `Progress ${completed}/${total}`,
+            originalTask: "Original task",
+            generatedFromPlan: "Generated from approved AI plan",
+            difficulty: "Difficulty",
+            estimatedMinutes: "Estimated minutes",
+            reward: "Reward",
+            rewardXp: (xp: number) => `Reward XP: +${xp} XP`,
+            rewardLabel: (label: string) => `🎁 Reward: ${label}`,
+            rewardType: "Reward type",
+            comment: "Comment",
+            rewardLockedAfterCompletion:
+              "Reward is locked after quest completion.",
+            savingReward: "Saving reward...",
+            saveReward: "Save reward",
+            rewardLock: "Reward lock",
+            locked: "Locked",
+            editable: "Editable",
+            beforeCompletion: "Before Completion",
+            photoAdded: "Photo added",
+            photoMissing: "Photo missing",
+            beforePhotoNotAdded: "Before photo not added.",
+            reportPhoto: "Report photo",
+            required: "required",
+            optional: "optional",
+            childMustSubmitAfter:
+              "After completion, child must submit a result photo.",
+            loading: "Loading...",
+            gallery: "Gallery",
+            camera: "Camera",
+            beforePhotoReplacementLocked:
+              "Before photo replacement is locked after quest start.",
+            removeBeforePhotoA11y: "Remove before photo",
+            reportPhotoSection: "Report Photo",
+            resultUploaded: "Result uploaded",
+            resultPending: "Result pending",
+            resultPhotoNotAdded: "Result photo not added yet.",
+            addResultPhotoToComplete:
+              "Add a result photo to complete this quest.",
+            aiSummary: "AI Summary",
+            steps: "Steps",
+            completedCounter: (completed: number, total: number) =>
+              `${completed}/${total} completed`,
+            questActions: "Quest actions",
+            archivedReadOnly: "Archived quests are read-only.",
+            completingQuest: "Completing quest...",
+            completeQuest: "Complete quest",
+            close: "Close",
+          },
+    [isUk],
   );
 
   const role = useAuthStore((s) => s.role);
@@ -160,7 +442,7 @@ const QuestsScreen = () => {
 
   const [children, setChildren] = React.useState<ChildProfile[]>([]);
   const [targetUserId, setTargetUserId] = React.useState<string | null>(null);
-  const [targetLabel, setTargetLabel] = React.useState<string>("Myself");
+  const [targetLabel, setTargetLabel] = React.useState<string>(copy.myself);
   const [quests, setQuests] = React.useState<Quest[]>([]);
   const [progress, setProgress] = React.useState<ProgressSummary | null>(null);
 
@@ -278,7 +560,7 @@ const QuestsScreen = () => {
 
             setTargetUserId(null);
             setTargetLabel(
-              childrenData.length === 0 ? meData.fullName : "No active child",
+              childrenData.length === 0 ? meData.fullName : copy.noActiveChild,
             );
             setQuests([]);
             setProgress(childrenData.length === 0 ? selfProgress : null);
@@ -303,7 +585,7 @@ const QuestsScreen = () => {
           );
           if (!activeChild) {
             setTargetUserId(null);
-            setTargetLabel("No active child");
+            setTargetLabel(copy.noActiveChild);
             setQuests([]);
             setProgress(null);
             return null;
@@ -334,7 +616,7 @@ const QuestsScreen = () => {
         setProgress(progressData);
         return progressData;
       } catch {
-        setScreenError("Failed to load assigned quests. Please try again.");
+        setScreenError(copy.failedToLoadAssignedQuests);
         return null;
       } finally {
         setIsLoading(false);
@@ -342,7 +624,7 @@ const QuestsScreen = () => {
         lastRefreshAtRef.current = Date.now();
       }
     },
-    [effectiveRole, selectedChildId, setSelectedChildId],
+    [copy.failedToLoadAssignedQuests, copy.noActiveChild, effectiveRole, selectedChildId, setSelectedChildId],
   );
 
   React.useEffect(() => {
@@ -506,7 +788,7 @@ const QuestsScreen = () => {
   const handleToggleStep = async (questId: string, step: QuestStep) => {
     const questToUpdate = quests.find((quest) => quest.id === questId);
     if (!questToUpdate) {
-      setScreenError("Selected quest was not found.");
+      setScreenError(copy.selectedQuestNotFound);
       return;
     }
 
@@ -531,7 +813,7 @@ const QuestsScreen = () => {
         setRewardSystemNote(null);
       }
     } catch {
-      setScreenError("Could not update quest step. Please try again.");
+      setScreenError(copy.couldNotUpdateStep);
     } finally {
       setTogglingStepId(null);
     }
@@ -736,7 +1018,7 @@ const QuestsScreen = () => {
         refreshData(false, childId),
       ]);
     } catch {
-      setScreenError("Could not switch child profile.");
+      setScreenError(copy.couldNotSwitchChildProfile);
     }
   };
 
@@ -746,7 +1028,7 @@ const QuestsScreen = () => {
     }
 
     if (isQuestArchived(detailsQuest)) {
-      setScreenError("Reward is locked for completed quests.");
+      setScreenError(copy.rewardLockedForCompleted);
       return;
     }
 
@@ -766,11 +1048,11 @@ const QuestsScreen = () => {
       const progress = getQuestProgress(updatedQuest);
       setRewardSystemNote(
         progress.completedStepsCount > 0
-          ? "Parents updated this quest reward."
-          : "Reward updated.",
+          ? copy.parentsUpdatedReward
+          : copy.rewardUpdated,
       );
     } catch {
-      setScreenError("Could not update quest reward. Please try again.");
+      setScreenError(copy.couldNotUpdateReward);
     } finally {
       setIsSavingReward(false);
     }
@@ -790,7 +1072,7 @@ const QuestsScreen = () => {
     if (source === "camera") {
       const permission = await cameraService.requestCameraPermission();
       if (permission !== "granted") {
-        throw new Error("Camera permission is required to add a quest photo.");
+        throw new Error(copy.cameraPermissionRequired);
       }
 
       const photo = await cameraService.openCamera();
@@ -803,7 +1085,7 @@ const QuestsScreen = () => {
 
     const permission = await cameraService.requestGalleryPermission();
     if (permission !== "granted") {
-      throw new Error("Gallery permission is required to add a quest photo.");
+      throw new Error(copy.galleryPermissionRequired);
     }
 
     const photo = await cameraService.openGallery();
@@ -847,12 +1129,12 @@ const QuestsScreen = () => {
       );
       setRewardSystemNote(
         updatedQuest.beforePhoto
-          ? "Before photo added. Report photo after completion is required."
-          : "Before photo removed. Report photo is now optional.",
+          ? copy.beforePhotoAdded
+          : copy.beforePhotoRemoved,
       );
     } catch (error) {
       setScreenError(
-        resolveActionErrorMessage(error, "Could not update before photo."),
+        resolveActionErrorMessage(error, copy.couldNotUpdateBeforePhoto),
       );
     } finally {
       setPhotoUpdateAction(null);
@@ -892,12 +1174,12 @@ const QuestsScreen = () => {
       );
       setRewardSystemNote(
         updatedQuest.afterPhoto
-          ? "Report photo added."
-          : "Report photo removed.",
+          ? copy.reportPhotoAdded
+          : copy.reportPhotoRemoved,
       );
     } catch (error) {
       setScreenError(
-        resolveActionErrorMessage(error, "Could not update report photo."),
+        resolveActionErrorMessage(error, copy.couldNotUpdateReportPhoto),
       );
     } finally {
       setPhotoUpdateAction(null);
@@ -913,12 +1195,12 @@ const QuestsScreen = () => {
     setValidationMessage(null);
 
     if (!isDetailsQuestReadyToComplete) {
-      setValidationMessage("Complete all steps before finishing this quest.");
+      setValidationMessage(copy.completeAllSteps);
       return;
     }
 
     if (isDetailsQuestReportRequired && !hasDetailsQuestAfterPhoto) {
-      setValidationMessage("To complete this quest, add a report photo.");
+      setValidationMessage(copy.addReportPhotoToComplete);
       return;
     }
 
@@ -975,10 +1257,14 @@ const QuestsScreen = () => {
     } catch (error) {
       const errorMessage = resolveActionErrorMessage(
         error,
-        "Could not complete this quest.",
+        copy.couldNotCompleteQuest,
       );
-      if (errorMessage.toLowerCase().includes("report photo")) {
-        setValidationMessage("To complete this quest, add a report photo.");
+      const normalizedErrorMessage = errorMessage.toLowerCase();
+      if (
+        normalizedErrorMessage.includes("report photo") ||
+        normalizedErrorMessage.includes("звітне фото")
+      ) {
+        setValidationMessage(copy.addReportPhotoToComplete);
         return;
       }
 
@@ -1047,7 +1333,7 @@ const QuestsScreen = () => {
                 ]}
                 allowFontScaling
               >
-                {isExpanded ? "Hide" : "Show"}
+                {isExpanded ? copy.hide : copy.show}
               </Text>
               <Ionicons
                 name={isExpanded ? "chevron-up" : "chevron-down"}
@@ -1070,9 +1356,9 @@ const QuestsScreen = () => {
   };
 
   return (
-    <ScreenContainer contentStyle={styles.container}>
+      <ScreenContainer contentStyle={styles.container}>
       {isLoading ? (
-        <LoadingState label="Loading assigned quests..." />
+        <LoadingState label={copy.loadingAssignedQuests} />
       ) : (
         <ScrollView
           ref={scrollRef}
@@ -1091,29 +1377,29 @@ const QuestsScreen = () => {
           scrollEventThrottle={16}
         >
           <SectionHeader
-            title="Quests"
+            title={copy.questsTitle}
             subtitle={
               isChildExecutionMode
-                ? "Execution mode: complete assigned quests and earn XP"
-                : "Parent mode: review and update selected child quests"
+                ? copy.questsSubtitleChild
+                : copy.questsSubtitleAdult
             }
           />
 
           {effectiveRole === "adult" ? (
             <StatCard
-              title="Target Child"
-              subtitle="Quests are tied to selected profile"
+              title={copy.targetChildTitle}
+              subtitle={copy.targetChildSubtitle}
             >
               {children.length > 0 ? (
                 <View style={styles.childList}>
                   {!targetUserId ? (
                     <View style={styles.noChildSelectedWrap}>
                       <EmptyState
-                        title="No active child selected"
-                        description="Choose a child to preview their assigned quests."
+                        title={copy.noActiveChildSelectedTitle}
+                        description={copy.noActiveChildSelectedDescription}
                       />
                       <PrimaryButton
-                        label="Select first child"
+                        label={copy.selectFirstChild}
                         variant="secondary"
                         onPress={() => {
                           const firstChild = children[0];
@@ -1163,7 +1449,7 @@ const QuestsScreen = () => {
                           ]}
                           allowFontScaling
                         >
-                          Age {child.age} | Level {child.level}
+                          {copy.childMeta(child.age, child.level)}
                         </Text>
                       </Pressable>
                     );
@@ -1171,50 +1457,50 @@ const QuestsScreen = () => {
                 </View>
               ) : (
                 <EmptyState
-                  title="No child profiles"
-                  description="Create child from Home to assign quests."
+                  title={copy.noChildProfilesTitle}
+                  description={copy.noChildProfilesDescription}
                 />
               )}
             </StatCard>
           ) : null}
 
           <StatCard
-            title="Quest Progress"
+            title={copy.questProgressTitle}
             subtitle={
               isChildExecutionMode
-                ? "Execution metrics"
-                : `Target: ${targetLabel}`
+                ? copy.executionMetrics
+                : copy.target(targetLabel)
             }
           >
             <Text
               style={[styles.progressText, { color: colors.text }]}
               allowFontScaling
             >
-              Active quests: {activeQuests.length}
+              {copy.activeQuests(activeQuests.length)}
             </Text>
             <Text
               style={[styles.progressText, { color: colors.text }]}
               allowFontScaling
             >
-              Completed today: {completedToday}
+              {copy.completedToday(completedToday)}
             </Text>
             <Text
               style={[styles.progressText, { color: colors.text }]}
               allowFontScaling
             >
-              XP earned today: {xpToday}
+              {copy.xpToday(xpToday)}
             </Text>
             <Text
               style={[styles.progressText, { color: colors.text }]}
               allowFontScaling
             >
-              Total XP: {progress?.xp ?? 0}
+              {copy.totalXp(progress?.xp ?? 0)}
             </Text>
             <Text
               style={[styles.progressText, { color: colors.text }]}
               allowFontScaling
             >
-              Streak: {progress?.streak ?? 0}
+              {copy.streak(progress?.streak ?? 0)}
             </Text>
           </StatCard>
 
@@ -1231,7 +1517,7 @@ const QuestsScreen = () => {
               ]}
             >
               <StatCard
-                title="Quest completed"
+                title={copy.questCompleted}
                 subtitle={completionFeedback.questTitle}
               >
                 <View style={styles.completionCheckWrap}>
@@ -1253,34 +1539,36 @@ const QuestsScreen = () => {
                   allowFontScaling
                 >
                   {isChildExecutionMode
-                    ? `Reward pending parent confirmation: ${completionFeedback.rewardLabel}`
-                    : `Reward unlocked: ${completionFeedback.rewardLabel}`}
+                    ? copy.rewardPendingParent(completionFeedback.rewardLabel)
+                    : copy.rewardUnlocked(completionFeedback.rewardLabel)}
                 </Text>
                 <Text
                   style={[styles.progressText, { color: colors.text }]}
                   allowFontScaling
                 >
-                  Quest finalized
+                  {copy.questFinalized}
                 </Text>
                 <Text
                   style={[styles.progressText, { color: colors.text }]}
                   allowFontScaling
                 >
-                  Quest moved to Archive
+                  {copy.questMovedToArchive}
                 </Text>
                 <Text
                   style={[styles.progressText, { color: colors.textSecondary }]}
                   allowFontScaling
                 >
-                  Total XP: {completionFeedback.totalXp} | Streak:{" "}
-                  {completionFeedback.streak}
+                  {copy.totalXpAndStreak(
+                    completionFeedback.totalXp,
+                    completionFeedback.streak,
+                  )}
                 </Text>
               </StatCard>
             </Animated.View>
           ) : null}
 
           <PrimaryButton
-            label={isRefreshing ? "Refreshing..." : "Refresh quests"}
+            label={isRefreshing ? copy.refreshing : copy.refreshQuests}
             disabled={isRefreshing}
             onPress={() => {
               void refreshData(false);
@@ -1288,11 +1576,11 @@ const QuestsScreen = () => {
           />
 
           {screenError ? (
-            <EmptyState title="Quest flow error" description={screenError} />
+            <EmptyState title={copy.questFlowError} description={screenError} />
           ) : null}
 
           <View style={styles.sectionBlock}>
-            <SectionHeader title="Active Quests" />
+            <SectionHeader title={copy.activeQuestsSection} />
             {targetUserId ? (
               activeQuests.length > 0 ? (
                 activeQuests.map((quest) => (
@@ -1304,20 +1592,20 @@ const QuestsScreen = () => {
                 ))
               ) : (
                 <EmptyState
-                  title="No active quests"
-                  description="Approve an AI plan to move quests into active state."
+                  title={copy.noActiveQuestsTitle}
+                  description={copy.noActiveQuestsDescription}
                 />
               )
             ) : (
               <EmptyState
-                title="No target selected"
-                description="Select child profile to load assigned quests."
+                title={copy.noTargetSelectedTitle}
+                description={copy.noTargetSelectedDescription}
               />
             )}
           </View>
 
           <View style={styles.sectionBlock}>
-            <SectionHeader title="Archived" />
+            <SectionHeader title={copy.archivedSection} />
             {targetUserId ? (
               archivedQuests.length > 0 ? (
                 archivedQuests.map((quest) => (
@@ -1329,14 +1617,14 @@ const QuestsScreen = () => {
                 ))
               ) : (
                 <EmptyState
-                  title="Archive is empty"
-                  description="Complete steps and finish the quest in Details to move it here."
+                  title={copy.archiveIsEmptyTitle}
+                  description={copy.archiveIsEmptyDescription}
                 />
               )
             ) : (
               <EmptyState
-                title="No archived quests"
-                description="Create child profile and approve a plan first."
+                title={copy.noArchivedQuestsTitle}
+                description={copy.noArchivedQuestsDescription}
               />
             )}
           </View>
@@ -1350,7 +1638,7 @@ const QuestsScreen = () => {
           android_ripple={{ color: "rgba(255, 255, 255, 0.16)" }}
         >
           <Text style={styles.scrollTopLabel} allowFontScaling>
-            Up
+            {copy.up}
           </Text>
         </Pressable>
       ) : null}
@@ -1375,7 +1663,7 @@ const QuestsScreen = () => {
                 style={styles.completionSpotlightBadge}
               />
               <Text style={styles.completionSpotlightLabel} allowFontScaling>
-                Badge unlocked
+                {copy.badgeUnlocked}
               </Text>
             </Animated.View>
           </View>
@@ -1395,7 +1683,7 @@ const QuestsScreen = () => {
               ]}
             >
               <Text style={styles.achievementUnlockCaption} allowFontScaling>
-                Achievement unlocked!
+                {copy.achievementUnlocked}
               </Text>
               <View style={styles.achievementUnlockIconWrap}>
                 <Ionicons
@@ -1456,7 +1744,7 @@ const QuestsScreen = () => {
                   keyboardShouldPersistTaps="handled"
                 >
                   <SectionHeader
-                    title="Quest Details"
+                    title={copy.questDetails}
                     subtitle={detailsQuest.title}
                   />
                   <Text
@@ -1466,13 +1754,16 @@ const QuestsScreen = () => {
                     ]}
                     allowFontScaling
                   >
-                    Tap section title to expand or collapse details.
+                    {copy.tapSectionToToggle}
                   </Text>
 
                   {renderDetailsSection(
                     "overview",
-                    "Overview",
-                    `Progress ${detailsQuestProgress.completedStepsCount}/${detailsQuestProgress.stepsCount}`,
+                    copy.overview,
+                    copy.progressCounter(
+                      detailsQuestProgress.completedStepsCount,
+                      detailsQuestProgress.stepsCount,
+                    ),
                     <>
                       <View style={styles.detailsTitleRow}>
                         <Text
@@ -1484,16 +1775,26 @@ const QuestsScreen = () => {
                         >
                           {detailsQuest.title}
                         </Text>
-                        {isQuestDone(detailsQuest) ? (
-                          <View style={styles.detailsDoneCheckWrap}>
-                            <Text
-                              style={styles.detailsDoneCheckLabel}
-                              allowFontScaling={false}
-                            >
-                              ✓
-                            </Text>
-                          </View>
-                        ) : null}
+                        <View
+                          style={[
+                            styles.detailsDoneCheckWrap,
+                            !isQuestDone(detailsQuest)
+                              ? styles.detailsActiveCheckWrap
+                              : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.detailsDoneCheckLabel,
+                              !isQuestDone(detailsQuest)
+                                ? styles.detailsActiveCheckLabel
+                                : null,
+                            ]}
+                            allowFontScaling={false}
+                          >
+                            {isQuestDone(detailsQuest) ? "✓" : "•"}
+                          </Text>
+                        </View>
                       </View>
                       <Text
                         style={[
@@ -1502,9 +1803,9 @@ const QuestsScreen = () => {
                         ]}
                         allowFontScaling
                       >
-                        Original task:{" "}
+                        {copy.originalTask}:{" "}
                         {detailsQuest.originalTask ??
-                          "Generated from approved AI plan"}
+                          copy.generatedFromPlan}
                       </Text>
                       <Text
                         style={[styles.previewText, { color: colors.text }]}
@@ -1519,7 +1820,7 @@ const QuestsScreen = () => {
                         ]}
                         allowFontScaling
                       >
-                        Difficulty: {detailsQuest.difficulty}
+                        {copy.difficulty}: {detailsQuest.difficulty}
                       </Text>
                       <Text
                         style={[
@@ -1528,14 +1829,14 @@ const QuestsScreen = () => {
                         ]}
                         allowFontScaling
                       >
-                        Estimated minutes: {detailsQuest.estimatedMinutes}
+                        {copy.estimatedMinutes}: {detailsQuest.estimatedMinutes}
                       </Text>
                     </>,
                   )}
 
                   {renderDetailsSection(
                     "reward",
-                    "Reward",
+                    copy.reward,
                     getQuestRewardLabel(detailsQuest),
                     <>
                       <Text
@@ -1545,13 +1846,13 @@ const QuestsScreen = () => {
                         ]}
                         allowFontScaling
                       >
-                        Reward XP: +{detailsQuest.rewardXp} XP
+                        {copy.rewardXp(detailsQuest.rewardXp)}
                       </Text>
                       <Text
                         style={[styles.previewLabel, { color: colors.text }]}
                         allowFontScaling
                       >
-                        🎁 Reward: {getQuestRewardLabel(detailsQuest)}
+                        {copy.rewardLabel(getQuestRewardLabel(detailsQuest))}
                       </Text>
                       <Text
                         style={[
@@ -1560,7 +1861,7 @@ const QuestsScreen = () => {
                         ]}
                         allowFontScaling
                       >
-                        Reward type:{" "}
+                        {copy.rewardType}:{" "}
                         {getQuestRewardTypeLabel(detailsQuest.rewardType)}
                       </Text>
                       {detailsQuest.rewardDescription ? (
@@ -1571,7 +1872,7 @@ const QuestsScreen = () => {
                           ]}
                           allowFontScaling
                         >
-                          Comment: {detailsQuest.rewardDescription}
+                          {copy.comment}: {detailsQuest.rewardDescription}
                         </Text>
                       ) : null}
                       {detailsQuest.rewardUpdatedAt &&
@@ -1583,7 +1884,7 @@ const QuestsScreen = () => {
                           ]}
                           allowFontScaling
                         >
-                          Parents updated this quest reward.
+                          {copy.parentsUpdatedReward}
                         </Text>
                       ) : null}
                       {rewardSystemNote ? (
@@ -1635,14 +1936,14 @@ const QuestsScreen = () => {
                               ]}
                               allowFontScaling
                             >
-                              Reward is locked after quest completion.
+                              {copy.rewardLockedAfterCompletion}
                             </Text>
                           ) : (
                             <PrimaryButton
                               label={
                                 isSavingReward
-                                  ? "Saving reward..."
-                                  : "Save reward"
+                                  ? copy.savingReward
+                                  : copy.saveReward
                               }
                               onPress={() => {
                                 void handleSaveReward();
@@ -1659,18 +1960,18 @@ const QuestsScreen = () => {
                         ]}
                         allowFontScaling
                       >
-                        Reward lock:{" "}
-                        {isQuestArchived(detailsQuest) ? "Locked" : "Editable"}
+                        {copy.rewardLock}:{" "}
+                        {isQuestArchived(detailsQuest) ? copy.locked : copy.editable}
                       </Text>
                     </>,
                   )}
 
                   {renderDetailsSection(
                     "beforePhoto",
-                    "Before Completion",
+                    copy.beforeCompletion,
                     hasDetailsQuestBeforePhoto
-                      ? "Photo added"
-                      : "Photo missing",
+                      ? copy.photoAdded
+                      : copy.photoMissing,
                     <>
                       {hasDetailsQuestBeforePhoto ? (
                         <Image
@@ -1686,15 +1987,15 @@ const QuestsScreen = () => {
                           ]}
                           allowFontScaling
                         >
-                          Before photo not added.
+                          {copy.beforePhotoNotAdded}
                         </Text>
                       )}
                       <Text
                         style={[styles.previewLabel, { color: colors.text }]}
                         allowFontScaling
                       >
-                        Report photo:{" "}
-                        {isDetailsQuestReportRequired ? "required" : "optional"}
+                        {copy.reportPhoto}:{" "}
+                        {isDetailsQuestReportRequired ? copy.required : copy.optional}
                       </Text>
                       {isDetailsQuestReportRequired ? (
                         <Text
@@ -1704,7 +2005,7 @@ const QuestsScreen = () => {
                           ]}
                           allowFontScaling
                         >
-                          After completion, child must submit a result photo.
+                          {copy.childMustSubmitAfter}
                         </Text>
                       ) : null}
                       {canAddBeforePhoto ? (
@@ -1734,8 +2035,8 @@ const QuestsScreen = () => {
                               allowFontScaling
                             >
                               {photoUpdateAction === "before_gallery"
-                                ? "Loading..."
-                                : "Gallery"}
+                                ? copy.loading
+                                : copy.gallery}
                             </Text>
                           </Pressable>
                           <Pressable
@@ -1763,8 +2064,8 @@ const QuestsScreen = () => {
                               allowFontScaling
                             >
                               {photoUpdateAction === "before_camera"
-                                ? "Loading..."
-                                : "Camera"}
+                                ? copy.loading
+                                : copy.camera}
                             </Text>
                           </Pressable>
                         </View>
@@ -1779,7 +2080,7 @@ const QuestsScreen = () => {
                           ]}
                           allowFontScaling
                         >
-                          Before photo replacement is locked after quest start.
+                          {copy.beforePhotoReplacementLocked}
                         </Text>
                       ) : null}
                     </>,
@@ -1802,7 +2103,7 @@ const QuestsScreen = () => {
                         android_ripple={{ color: "rgba(0, 0, 0, 0.1)" }}
                         disabled={photoUpdateAction !== null}
                         accessibilityRole="button"
-                        accessibilityLabel="Remove before photo"
+                        accessibilityLabel={copy.removeBeforePhotoA11y}
                       >
                         <Ionicons
                           name={
@@ -1824,10 +2125,10 @@ const QuestsScreen = () => {
                   {isDetailsQuestReportRequired
                     ? renderDetailsSection(
                         "afterPhoto",
-                        "Report Photo",
+                        copy.reportPhotoSection,
                         hasQuestPhoto(detailsQuest.afterPhoto)
-                          ? "Result uploaded"
-                          : "Result pending",
+                          ? copy.resultUploaded
+                          : copy.resultPending,
                         <>
                           {hasQuestPhoto(detailsQuest.afterPhoto) ? (
                             <Image
@@ -1843,7 +2144,7 @@ const QuestsScreen = () => {
                               ]}
                               allowFontScaling
                             >
-                              Result photo not added yet.
+                              {copy.resultPhotoNotAdded}
                             </Text>
                           )}
                           {!isQuestArchived(detailsQuest) &&
@@ -1857,7 +2158,7 @@ const QuestsScreen = () => {
                               ]}
                               allowFontScaling
                             >
-                              Add a result photo to complete this quest.
+                              {copy.addResultPhotoToComplete}
                             </Text>
                           ) : null}
                           {canEditAfterPhoto ? (
@@ -1887,8 +2188,8 @@ const QuestsScreen = () => {
                                   allowFontScaling
                                 >
                                   {photoUpdateAction === "after_gallery"
-                                    ? "Loading..."
-                                    : "Gallery"}
+                                    ? copy.loading
+                                    : copy.gallery}
                                 </Text>
                               </Pressable>
                               <Pressable
@@ -1916,8 +2217,8 @@ const QuestsScreen = () => {
                                   allowFontScaling
                                 >
                                   {photoUpdateAction === "after_camera"
-                                    ? "Loading..."
-                                    : "Camera"}
+                                    ? copy.loading
+                                    : copy.camera}
                                 </Text>
                               </Pressable>
                             </View>
@@ -1929,7 +2230,7 @@ const QuestsScreen = () => {
                   {detailsQuest.visionSummary
                     ? renderDetailsSection(
                         "aiSummary",
-                        "AI Summary",
+                        copy.aiSummary,
                         null,
                         <View style={styles.visionSummaryWrap}>
                           <Text
@@ -1947,8 +2248,11 @@ const QuestsScreen = () => {
 
                   {renderDetailsSection(
                     "steps",
-                    "Steps",
-                    `${detailsQuestProgress.completedStepsCount}/${detailsQuestProgress.stepsCount} completed`,
+                    copy.steps,
+                    copy.completedCounter(
+                      detailsQuestProgress.completedStepsCount,
+                      detailsQuestProgress.stepsCount,
+                    ),
                     <ScrollView
                       style={styles.stepsScroll}
                       contentContainerStyle={styles.stepsList}
@@ -2056,7 +2360,7 @@ const QuestsScreen = () => {
                       ]}
                       allowFontScaling
                     >
-                      Quest actions
+                      {copy.questActions}
                     </Text>
                     {isQuestArchived(detailsQuest) ? (
                       <Text
@@ -2066,7 +2370,7 @@ const QuestsScreen = () => {
                         ]}
                         allowFontScaling
                       >
-                        Archived quests are read-only.
+                        {copy.archivedReadOnly}
                       </Text>
                     ) : (
                       <>
@@ -2080,14 +2384,14 @@ const QuestsScreen = () => {
                         isDetailsQuestReportRequired &&
                         !hasDetailsQuestAfterPhoto ? (
                           <Text style={styles.validationText} allowFontScaling>
-                            To complete this quest, add a report photo.
+                            {copy.addReportPhotoToComplete}
                           </Text>
                         ) : null}
                         <PrimaryButton
                           label={
                             isCompletingQuest
-                              ? "Completing quest..."
-                              : "Complete quest"
+                              ? copy.completingQuest
+                              : copy.completeQuest
                           }
                           onPress={() => {
                             void handleCompleteQuest();
@@ -2101,7 +2405,7 @@ const QuestsScreen = () => {
                   </View>
 
                   <PrimaryButton
-                    label="Close"
+                    label={copy.close}
                     variant="secondary"
                     onPress={handleCloseQuestDetails}
                   />
@@ -2449,11 +2753,19 @@ const getStyles = (cardMaxWidth: number, isTablet: boolean, spacing: number) =>
       backgroundColor: "#1f9b54",
       elevation: 1,
     },
+    detailsActiveCheckWrap: {
+      backgroundColor: "#d9f3e3",
+    },
     detailsDoneCheckLabel: {
       color: "#ffffff",
       fontSize: isTablet ? 15 : 14,
       fontWeight: "900",
       lineHeight: isTablet ? 16 : 15,
+    },
+    detailsActiveCheckLabel: {
+      color: "#1c8f4e",
+      fontSize: isTablet ? 17 : 15,
+      lineHeight: isTablet ? 18 : 16,
     },
     previewText: {
       fontSize: isTablet ? 16 : 14,
