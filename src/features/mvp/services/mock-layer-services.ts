@@ -979,12 +979,16 @@ const assertQuestCompletionRequirements = (quest: Quest) => {
   }
 };
 
-const assertBeforePhotoEditable = (quest: Quest) => {
+const assertBeforePhotoEditable = (
+  quest: Quest,
+  isAddingBeforePhoto: boolean,
+  isRemovingBeforePhoto: boolean,
+) => {
   if (isArchivedQuestStatus(quest.status)) {
     throw new Error('Before photo is locked for completed quests.');
   }
 
-  if ((quest.completedStepsCount ?? 0) > 0 || hasQuestPhoto(quest.afterPhoto)) {
+  if (!isAddingBeforePhoto && !isRemovingBeforePhoto && ((quest.completedStepsCount ?? 0) > 0 || hasQuestPhoto(quest.afterPhoto))) {
     throw new Error('Before photo cannot be changed after quest progress starts.');
   }
 };
@@ -1124,9 +1128,11 @@ export const updateQuestBeforePhotoMock = async (
   await wait(MOCK_DELAY_MS);
 
   const currentQuest = getQuestFromStateOrPlans(questId);
-  assertBeforePhotoEditable(currentQuest);
-
   const beforePhoto = normalizeQuestPhoto(photo);
+  const isAddingBeforePhoto = !hasQuestPhoto(currentQuest.beforePhoto) && hasQuestPhoto(beforePhoto);
+  const isRemovingBeforePhoto = hasQuestPhoto(currentQuest.beforePhoto) && !hasQuestPhoto(beforePhoto);
+  assertBeforePhotoEditable(currentQuest, isAddingBeforePhoto, isRemovingBeforePhoto);
+
   const updatedQuest = normalizeQuest({
     ...currentQuest,
     beforePhoto,
