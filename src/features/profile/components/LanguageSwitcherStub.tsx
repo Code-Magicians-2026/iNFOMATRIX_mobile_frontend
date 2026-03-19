@@ -1,9 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ThemeColors } from '@/shared/styles/theme';
-
-type LanguageCode = 'uk' | 'en' | 'pl';
+import type { LanguageCode } from '@/context/Language-store';
+import { useI18n } from '@/src/i18n/useI18n';
+import type { ThemeColors } from '@/shared/styles/theme';
 
 interface LanguageOption {
   code: LanguageCode;
@@ -15,22 +15,22 @@ interface LanguageSwitcherStubProps {
   isTablet: boolean;
 }
 
-const LANGUAGE_OPTIONS: LanguageOption[] = [
-  { code: 'uk', label: 'Українська' },
-  { code: 'en', label: 'English' },
-  { code: 'ro', label: 'Limba română' },
-  { code: 'pl', label: 'Polski' },
-];
-
 const LanguageSwitcherStub = ({
   colors,
   isTablet,
 }: LanguageSwitcherStubProps) => {
-  const [selectedLanguage, setSelectedLanguage] =
-    React.useState<LanguageCode>('uk');
+  const { language, setLanguage, t } = useI18n();
   const styles = React.useMemo(
     () => getStyles(colors, isTablet),
     [colors, isTablet],
+  );
+
+  const languageOptions = React.useMemo<LanguageOption[]>(
+    () => [
+      { code: 'uk', label: t('settings.language.option.uk') },
+      { code: 'en', label: t('settings.language.option.en') },
+    ],
+    [t],
   );
 
   return (
@@ -38,26 +38,28 @@ const LanguageSwitcherStub = ({
       style={styles.container}
       accessible
       importantForAccessibility="yes"
-      accessibilityLabel="Налаштування мови інтерфейсу"
+      accessibilityLabel={t('settings.language.sectionLabel')}
     >
       <Text style={styles.title} allowFontScaling>
-        Мова інтерфейсу
+        {t('settings.language.title')}
       </Text>
       <View style={styles.optionsContainer}>
-        {LANGUAGE_OPTIONS.map((option) => {
-          const isActive = option.code === selectedLanguage;
+        {languageOptions.map((option) => {
+          const isActive = option.code === language;
 
           return (
             <Pressable
               key={option.code}
               onPress={() => {
-                setSelectedLanguage(option.code);
+                void setLanguage(option.code);
               }}
               style={[styles.optionButton, isActive && styles.optionButtonActive]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
-              accessibilityLabel={`Обрати мову: ${option.label}`}
+              accessibilityLabel={t('settings.language.selectOption', {
+                label: option.label,
+              })}
             >
               <Text style={[styles.optionText, isActive && styles.optionTextActive]}>
                 {option.label}

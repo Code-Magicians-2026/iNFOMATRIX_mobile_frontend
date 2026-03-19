@@ -13,6 +13,7 @@ import useThemeStore from '@/context/Theme-store';
 import useAuthStore from '@/context/Auth-store';
 import useOfflineTestingStore from '@/context/OfflineTesting-store';
 import usePlansStore from '@/context/Plans-store';
+import useLanguageStore from '@/context/Language-store';
 import { queryClient } from '@/src/features/auth/api/queryClient';
 import AppErrorBoundary from '@/shared/components/AppErrorBoundary';
 
@@ -24,6 +25,7 @@ export default function RootLayout() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const hydratePlans = usePlansStore((s) => s.hydrate);
   const hydrateOfflineTesting = useOfflineTestingStore((s) => s.hydrate);
+  const hydrateLanguage = useLanguageStore((s) => s.hydrate);
   const paperTheme = React.useMemo(
     () =>
       isDark
@@ -57,7 +59,8 @@ export default function RootLayout() {
     void hydrateAuth();
     void hydratePlans();
     void hydrateOfflineTesting();
-  }, [hydrateAuth, hydrateOfflineTesting, hydratePlans, loadTheme]);
+    void hydrateLanguage();
+  }, [hydrateAuth, hydrateLanguage, hydrateOfflineTesting, hydratePlans, loadTheme]);
 
   return (
     <GestureHandlerRootView style={styles.root}>

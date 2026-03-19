@@ -24,10 +24,12 @@ describe('navigation-config', () => {
   });
 
   it('returns role-based tab and header titles', () => {
-    expect(getTabTitle('Quests', 'adult')).toBe('Quests / Plans');
-    expect(getTabTitle('Chat', 'adult')).toBe('AI Builder');
-    expect(getTabTitle('Quests', 'child')).toBe('Quests');
-    expect(getTabTitle('Chat', 'child')).toBe('Guide / Chat');
-    expect(getMainHeaderTitle('Chat', 'child')).toBe('Guide / Chat');
+    expect(getTabTitle('Quests', 'adult')).toBe('Квести / Плани');
+    expect(getTabTitle('Chat', 'adult')).toBe('AI помічник');
+    expect(getTabTitle('Quests', 'child')).toBe('Квести');
+    expect(getTabTitle('Chat', 'child')).toBe('Гайд / Чат');
+    expect(getMainHeaderTitle('Chat', 'child')).toBe('Гайд / Чат');
+    expect(getTabTitle('Quests', 'adult', 'en')).toBe('Quests / Plans');
+    expect(getMainHeaderTitle('Chat', 'child', 'en')).toBe('Guide / Chat');
   });
 });

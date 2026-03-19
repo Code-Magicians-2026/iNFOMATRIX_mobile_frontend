@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import React from 'react';
 
 import useThemeStore from '@/context/Theme-store';
+import useLanguageStore from '@/context/Language-store';
 import AgentChatScreen from '@/src/features/chat/screens/AgentChatScreen';
 import ProfileScreen from '@/src/features/profile/screens/ProfileScreen';
 import type { AdultTabParamList } from '@/src/navigation/AppNavigator';
@@ -15,6 +16,7 @@ const Tab = createBottomTabNavigator<AdultTabParamList>();
 export default function AdultTabNavigator() {
   const isDark = useThemeStore((s) => s.isDark);
   const colors = useThemeStore((s) => s.colors);
+  const language = useLanguageStore((s) => s.language);
 
   return (
     <Tab.Navigator
@@ -33,17 +35,25 @@ export default function AdultTabNavigator() {
         ),
       })}
     >
-      <Tab.Screen name="Home" component={AdultHomeScreen} options={{ title: getTabTitle('Home', 'adult') }} />
+      <Tab.Screen
+        name="Home"
+        component={AdultHomeScreen}
+        options={{ title: getTabTitle('Home', 'adult', language) }}
+      />
       <Tab.Screen
         name="Quests"
         component={QuestsScreen}
-        options={{ title: getTabTitle('Quests', 'adult') }}
+        options={{ title: getTabTitle('Quests', 'adult', language) }}
       />
-      <Tab.Screen name="Chat" component={AgentChatScreen} options={{ title: getTabTitle('Chat', 'adult') }} />
+      <Tab.Screen
+        name="Chat"
+        component={AgentChatScreen}
+        options={{ title: getTabTitle('Chat', 'adult', language) }}
+      />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: getTabTitle('Profile', 'adult') }}
+        options={{ title: getTabTitle('Profile', 'adult', language) }}
       />
     </Tab.Navigator>
   );
