@@ -7,6 +7,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { useI18n } from '@/src/i18n/useI18n';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import {
   EmptyState,
@@ -44,9 +45,98 @@ const PlanPreviewScreen = () => {
   const role = useAuthStore((s) => s.role);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
+  const { language } = useI18n();
   const styles = React.useMemo(
     () => getStyles(cardMaxWidth, isTablet, spacing),
     [cardMaxWidth, isTablet, spacing],
+  );
+
+  const copy = React.useMemo(
+    () =>
+      language === 'uk'
+        ? {
+            cameraPermissionRequired: 'Потрібен доступ до камери, щоб додати фото квесту.',
+            galleryPermissionRequired: 'Потрібен доступ до галереї, щоб додати фото квесту.',
+            beforePhotoAdded: 'Фото до виконання додано. Для завершення буде потрібне звітне фото.',
+            beforePhotoRemoved: 'Фото до виконання видалено. Звітне фото тепер необовʼязкове.',
+            beforePhotoUpdateError: 'Не вдалося оновити фото до виконання.',
+            approvedFeedback: 'План підтверджено, квести активовано.',
+            approveError: 'Не вдалося підтвердити цей план.',
+            regeneratedFeedback: 'План згенеровано повторно. Перевірте нові квести нижче.',
+            regenerateError: 'Не вдалося перегенерувати план.',
+            approving: 'Підтвердження плану...',
+            regenerating: 'Перегенерація плану...',
+            title: 'Попередній перегляд плану',
+            targetSubtitle: (label: string) => `Ціль: ${label}`,
+            actionErrorTitle: 'Помилка дії з планом',
+            statusSubtitle: (status: string) => `Статус: ${status}`,
+            questsTitle: 'Квести',
+            questsSubtitle: (count: number) => `${count} згенерованих квестів`,
+            difficulty: (value: string) => `Складність: ${value}`,
+            rewardXp: (value: number) => `Нагорода XP: ${value}`,
+            rewardActive: (label: string) => `Активна нагорода: ${label}`,
+            estimatedMinutes: (value: number) => `Орієнтовно хвилин: ${value}`,
+            reportPhoto: (required: boolean) => `Звітне фото: ${required ? 'обовʼязково' : 'необовʼязково'}`,
+            beforePhotoTitle: 'Фото до виконання',
+            beforePhotoNotAdded: 'Фото до виконання не додано.',
+            beforePhotoRequiredHint: 'Після завершення дитина має надіслати фото результату.',
+            loading: 'Завантаження...',
+            gallery: 'Галерея',
+            camera: 'Камера',
+            removing: 'Видалення...',
+            remove: 'Видалити',
+            steps: 'Кроки',
+            noQuestsTitle: 'Квести не згенеровано',
+            noQuestsDescription: 'Перегенеруйте план, щоб створити квести.',
+            totalMinutesTitle: 'Загальна орієнтовна тривалість',
+            totalMinutesSubtitle: 'Загальне навантаження',
+            minutes: (value: number) => `${value} хв`,
+            approve: 'Підтвердити',
+            regenerate: 'Перегенерувати',
+            back: 'Назад',
+          }
+        : {
+            cameraPermissionRequired: 'Camera permission is required to add a quest photo.',
+            galleryPermissionRequired: 'Gallery permission is required to add a quest photo.',
+            beforePhotoAdded: 'Before photo added. Report photo will be required on completion.',
+            beforePhotoRemoved: 'Before photo removed. Report photo is now optional.',
+            beforePhotoUpdateError: 'Failed to update quest before photo.',
+            approvedFeedback: 'Plan approved and quests activated.',
+            approveError: 'Failed to approve this plan.',
+            regeneratedFeedback: 'Plan regenerated. Review new quests below.',
+            regenerateError: 'Failed to regenerate plan.',
+            approving: 'Approving plan...',
+            regenerating: 'Regenerating plan...',
+            title: 'Plan Preview',
+            targetSubtitle: (label: string) => `Target: ${label}`,
+            actionErrorTitle: 'Plan action error',
+            statusSubtitle: (status: string) => `Status: ${status}`,
+            questsTitle: 'Quests',
+            questsSubtitle: (count: number) => `${count} generated quests`,
+            difficulty: (value: string) => `Difficulty: ${value}`,
+            rewardXp: (value: number) => `Reward XP: ${value}`,
+            rewardActive: (label: string) => `Active reward: ${label}`,
+            estimatedMinutes: (value: number) => `Estimated minutes: ${value}`,
+            reportPhoto: (required: boolean) => `Report photo: ${required ? 'required' : 'optional'}`,
+            beforePhotoTitle: 'Before photo',
+            beforePhotoNotAdded: 'Before photo not added.',
+            beforePhotoRequiredHint: 'After completion, child must submit a result photo.',
+            loading: 'Loading...',
+            gallery: 'Gallery',
+            camera: 'Camera',
+            removing: 'Removing...',
+            remove: 'Remove',
+            steps: 'Steps',
+            noQuestsTitle: 'No quests generated',
+            noQuestsDescription: 'Regenerate plan to create quests.',
+            totalMinutesTitle: 'Total Estimated Minutes',
+            totalMinutesSubtitle: 'Overall workload',
+            minutes: (value: number) => `${value} min`,
+            approve: 'Approve',
+            regenerate: 'Regenerate',
+            back: 'Back',
+          },
+    [language],
   );
 
   const [plan, setPlan] = React.useState(route.params.plan);
@@ -116,7 +206,7 @@ const PlanPreviewScreen = () => {
     if (source === 'camera') {
       const permission = await cameraService.requestCameraPermission();
       if (permission !== 'granted') {
-        throw new Error('Camera permission is required to add a quest photo.');
+        throw new Error(copy.cameraPermissionRequired);
       }
 
       const photo = await cameraService.openCamera();
@@ -129,7 +219,7 @@ const PlanPreviewScreen = () => {
 
     const permission = await cameraService.requestGalleryPermission();
     if (permission !== 'granted') {
-      throw new Error('Gallery permission is required to add a quest photo.');
+      throw new Error(copy.galleryPermissionRequired);
     }
 
     const photo = await cameraService.openGallery();
@@ -160,13 +250,9 @@ const PlanPreviewScreen = () => {
         ...currentPlan,
         quests: currentPlan.quests.map((item) => (item.id === updatedQuest.id ? updatedQuest : item)),
       }));
-      setFeedback(
-        updatedQuest.beforePhoto
-          ? 'Before photo added. Report photo will be required on completion.'
-          : 'Before photo removed. Report photo is now optional.',
-      );
+      setFeedback(updatedQuest.beforePhoto ? copy.beforePhotoAdded : copy.beforePhotoRemoved);
     } catch (error) {
-      setScreenError(resolveActionErrorMessage(error, 'Failed to update quest before photo.'));
+      setScreenError(resolveActionErrorMessage(error, copy.beforePhotoUpdateError));
     } finally {
       setPhotoActionQuestId(null);
       setPhotoActionType(null);
@@ -189,10 +275,10 @@ const PlanPreviewScreen = () => {
       if (role === 'adult' && targetChildId) {
         await setSelectedChildId(targetChildId);
       }
-      setFeedback('Plan approved and quests activated.');
+      setFeedback(copy.approvedFeedback);
       navigation.navigate('MainTabs', { screen: 'Quests' });
     } catch (error) {
-      setScreenError(getApiErrorMessage(error, 'Failed to approve this plan.'));
+      setScreenError(getApiErrorMessage(error, copy.approveError, language));
     } finally {
       setIsApproving(false);
     }
@@ -204,9 +290,9 @@ const PlanPreviewScreen = () => {
       setScreenError(null);
       const regenerated = await plansService.generatePlan(route.params.request);
       setPlan(regenerated);
-      setFeedback('Plan regenerated. Review new quests below.');
+      setFeedback(copy.regeneratedFeedback);
     } catch (error) {
-      setScreenError(getApiErrorMessage(error, 'Failed to regenerate plan.'));
+      setScreenError(getApiErrorMessage(error, copy.regenerateError, language));
     } finally {
       setIsRegenerating(false);
     }
@@ -215,7 +301,7 @@ const PlanPreviewScreen = () => {
   if (isApproving || isRegenerating) {
     return (
       <ScreenContainer centered>
-        <LoadingState label={isApproving ? 'Approving plan...' : 'Regenerating plan...'} />
+        <LoadingState label={isApproving ? copy.approving : copy.regenerating} />
       </ScreenContainer>
     );
   }
@@ -223,15 +309,15 @@ const PlanPreviewScreen = () => {
   return (
     <ScreenContainer>
       <SectionHeader
-        title="Plan Preview"
-        subtitle={`Target: ${route.params.targetLabel}`}
+        title={copy.title}
+        subtitle={copy.targetSubtitle(route.params.targetLabel)}
       />
 
-      {screenError ? <EmptyState title="Plan action error" description={screenError} /> : null}
+      {screenError ? <EmptyState title={copy.actionErrorTitle} description={screenError} /> : null}
       {feedback ? <EmptyState title={feedback} /> : null}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <StatCard title={plan.title} subtitle={`Status: ${plan.status}`} style={styles.card}>
+        <StatCard title={plan.title} subtitle={copy.statusSubtitle(plan.status)} style={styles.card}>
           <Text style={[styles.text, { color: colors.text }]} allowFontScaling>
             {plan.summary}
           </Text>
@@ -240,7 +326,7 @@ const PlanPreviewScreen = () => {
           </Text>
         </StatCard>
 
-        <StatCard title="Quests" subtitle={`${plan.quests.length} generated quests`} style={styles.card}>
+        <StatCard title={copy.questsTitle} subtitle={copy.questsSubtitle(plan.quests.length)} style={styles.card}>
           {plan.quests.length > 0 ? (
             plan.quests.map((quest) => {
               const rewardDraft =
@@ -256,38 +342,38 @@ const PlanPreviewScreen = () => {
                     {quest.description}
                   </Text>
                   <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                    Difficulty: {quest.difficulty}
+                    {copy.difficulty(quest.difficulty)}
                   </Text>
                   <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                    Reward XP: {quest.rewardXp}
+                    {copy.rewardXp(quest.rewardXp)}
                   </Text>
                   <Text style={[styles.questMeta, { color: colors.text }]} allowFontScaling>
                     🎁 {canApprove ? rewardPreview : getQuestRewardLabel(quest)}
                   </Text>
                   <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                    Active reward: {canApprove ? rewardPreview : getQuestRewardLabel(quest)}
+                    {copy.rewardActive(canApprove ? rewardPreview : getQuestRewardLabel(quest))}
                   </Text>
                   <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                    Estimated minutes: {quest.estimatedMinutes}
+                    {copy.estimatedMinutes(quest.estimatedMinutes)}
                   </Text>
                   <Text style={[styles.questMeta, { color: colors.text }]} allowFontScaling>
-                    Report photo: {quest.beforePhoto?.uri ? 'required' : 'optional'}
+                    {copy.reportPhoto(Boolean(quest.beforePhoto?.uri))}
                   </Text>
 
                   <View style={styles.beforePhotoWrap}>
                     <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
-                      Before photo
+                      {copy.beforePhotoTitle}
                     </Text>
                     {quest.beforePhoto?.uri ? (
                       <Image source={{ uri: quest.beforePhoto.uri }} style={styles.beforePhotoPreview} resizeMode="cover" />
                     ) : (
                       <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                        Before photo not added.
+                        {copy.beforePhotoNotAdded}
                       </Text>
                     )}
                     {quest.beforePhoto?.uri ? (
                       <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                        After completion, child must submit a result photo.
+                        {copy.beforePhotoRequiredHint}
                       </Text>
                     ) : null}
                     {canApprove ? (
@@ -305,7 +391,7 @@ const PlanPreviewScreen = () => {
                           disabled={photoActionQuestId === quest.id}
                         >
                           <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
-                            {photoActionQuestId === quest.id && photoActionType === 'gallery' ? 'Loading...' : 'Gallery'}
+                            {photoActionQuestId === quest.id && photoActionType === 'gallery' ? copy.loading : copy.gallery}
                           </Text>
                         </Pressable>
                         <Pressable
@@ -321,7 +407,7 @@ const PlanPreviewScreen = () => {
                           disabled={photoActionQuestId === quest.id}
                         >
                           <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
-                            {photoActionQuestId === quest.id && photoActionType === 'camera' ? 'Loading...' : 'Camera'}
+                            {photoActionQuestId === quest.id && photoActionType === 'camera' ? copy.loading : copy.camera}
                           </Text>
                         </Pressable>
                         {quest.beforePhoto?.uri ? (
@@ -338,7 +424,7 @@ const PlanPreviewScreen = () => {
                             disabled={photoActionQuestId === quest.id}
                           >
                             <Text style={[styles.photoActionLabel, { color: colors.text }]} allowFontScaling>
-                              {photoActionQuestId === quest.id && photoActionType === 'remove' ? 'Removing...' : 'Remove'}
+                              {photoActionQuestId === quest.id && photoActionType === 'remove' ? copy.removing : copy.remove}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -370,7 +456,7 @@ const PlanPreviewScreen = () => {
                   {(quest.steps?.length ?? 0) > 0 ? (
                     <View style={styles.stepsWrap}>
                       <Text style={[styles.stepsHeading, { color: colors.text }]} allowFontScaling>
-                        Steps
+                        {copy.steps}
                       </Text>
                       {[...(quest.steps ?? [])]
                         .sort((left, right) => left.order - right.order)
@@ -392,13 +478,13 @@ const PlanPreviewScreen = () => {
               );
             })
           ) : (
-            <EmptyState title="No quests generated" description="Regenerate plan to create quests." />
+            <EmptyState title={copy.noQuestsTitle} description={copy.noQuestsDescription} />
           )}
         </StatCard>
 
-        <StatCard title="Total Estimated Minutes" subtitle="Overall workload" style={styles.card}>
+        <StatCard title={copy.totalMinutesTitle} subtitle={copy.totalMinutesSubtitle} style={styles.card}>
           <Text style={[styles.totalMinutes, { color: colors.text }]} allowFontScaling>
-            {plan.totalEstimatedMinutes} min
+            {copy.minutes(plan.totalEstimatedMinutes)}
           </Text>
         </StatCard>
 
@@ -410,7 +496,7 @@ const PlanPreviewScreen = () => {
               android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
             >
               <Text style={styles.approveButtonLabel} allowFontScaling>
-                Approve
+                {copy.approve}
               </Text>
             </Pressable>
           ) : null}
@@ -421,7 +507,7 @@ const PlanPreviewScreen = () => {
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           >
             <Text style={[styles.secondaryButtonLabel, { color: colors.text }]} allowFontScaling>
-              Regenerate
+              {copy.regenerate}
             </Text>
           </Pressable>
 
@@ -431,7 +517,7 @@ const PlanPreviewScreen = () => {
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           >
             <Text style={[styles.secondaryButtonLabel, { color: colors.text }]} allowFontScaling>
-              Back
+              {copy.back}
             </Text>
           </Pressable>
         </View>

@@ -1,3 +1,6 @@
+import type { LanguageCode } from '@/context/Language-store';
+import { translate } from '@/src/i18n/translations';
+
 const API_BASE_URL =
   "https://infomatrix-api-cda8ftcucbg8dnfc.germanywestcentral-01.azurewebsites.net";
 const REQUEST_TIMEOUT_MS = 60000;
@@ -183,18 +186,19 @@ export const request = async <T>(
 export const getApiErrorMessage = (
   error: unknown,
   fallback: string,
+  language: LanguageCode = 'uk',
 ): string => {
   if (error instanceof ApiError) {
     if (error.status === 429) {
-      return "Забагато запитів на email. Зачекайте трохи та спробуйте знову.";
+      return translate(language, 'api.error.tooManyRequests');
     }
 
     if (error.status === 504 || error.status === 408) {
-      return "Сервер не відповідає вчасно. Спробуйте ще раз через 10-30 секунд.";
+      return translate(language, 'api.error.timeout');
     }
 
     if (error.status === 502 || error.status === 503) {
-      return "Сервер тимчасово недоступний. Спробуйте пізніше.";
+      return translate(language, 'api.error.unavailable');
     }
 
     return error.message;
@@ -202,7 +206,7 @@ export const getApiErrorMessage = (
 
   if (error instanceof Error) {
     if (error.message === "Network request failed") {
-      return "Не вдалося підключитися до сервера.";
+      return translate(language, 'api.error.network');
     }
     return error.message || fallback;
   }

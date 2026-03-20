@@ -5,6 +5,7 @@ import { getStyles } from './style';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import useAuthStore from '@/context/Auth-store';
 import useOfflineTestingStore from '@/context/OfflineTesting-store';
+import { useI18n } from '@/src/i18n/useI18n';
 
 type HeaderProps = {
   title: string;
@@ -25,6 +26,7 @@ const Header = ({
   const isDark = colorScheme === 'dark';
   const isAuthenticated = useAuthStore((s) => Boolean(s.session?.accessToken));
   const isOfflineTestingMode = useOfflineTestingStore((s) => s.isOfflineTestingMode);
+  const { t } = useI18n();
   const styles = React.useMemo(() => getStyles(isDark, isAuthenticated), [isAuthenticated, isDark]);
   const sessionEmail = useAuthStore((s) => s.session?.email ?? '');
   const profileInitial = React.useMemo(() => {
@@ -43,8 +45,8 @@ const Header = ({
           style={styles.sideButton}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           accessibilityRole="button"
-          accessibilityLabel="Назад"
-          accessibilityHint="Повертає на попередній екран"
+          accessibilityLabel={t('common.back')}
+          accessibilityHint={t('header.backHint')}
         >
           <Text style={styles.sideButtonText} allowFontScaling>
             {'<'}
@@ -56,8 +58,8 @@ const Header = ({
           style={styles.aiButton}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           accessibilityRole="button"
-          accessibilityLabel="AI чат"
-          accessibilityHint="Відкриває екран чату з агентом"
+          accessibilityLabel={t('common.aiChat')}
+          accessibilityHint={t('header.aiHint')}
         >
           <Text style={styles.aiButtonText} allowFontScaling>
             AI
@@ -86,8 +88,8 @@ const Header = ({
           style={styles.profileButton}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           accessibilityRole="button"
-          accessibilityLabel="Профіль"
-          accessibilityHint="Відкриває екран профілю"
+          accessibilityLabel={t('common.profile')}
+          accessibilityHint={t('header.profileHint')}
         >
           <Text style={styles.profileButtonText} allowFontScaling>
             {profileInitial}
@@ -99,8 +101,8 @@ const Header = ({
           style={styles.aiButton}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
           accessibilityRole="button"
-          accessibilityLabel="AI чат"
-          accessibilityHint="Відкриває екран чату з агентом"
+          accessibilityLabel={t('common.aiChat')}
+          accessibilityHint={t('header.aiHint')}
         >
           <Text style={styles.aiButtonText} allowFontScaling>
             AI

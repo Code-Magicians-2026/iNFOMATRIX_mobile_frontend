@@ -19,6 +19,7 @@ import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import { useI18n } from '@/src/i18n/useI18n';
 import type { ThemeColors } from '@/shared/styles/theme';
 
 type LoginNavigation = NativeStackNavigationProp<AppStackParamList, 'Login'>;
@@ -36,6 +37,7 @@ const LoginScreen = () => {
   const login = useAuthStore((s) => s.login);
   const navigation = useNavigation<LoginNavigation>();
   const route = useRoute<LoginRoute>();
+  const { language, t } = useI18n();
 
   const [email, setEmail] = React.useState(route.params?.initialEmail ?? '');
   const [password, setPassword] = React.useState('');
@@ -49,12 +51,12 @@ const LoginScreen = () => {
   const onLoginPress = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!emailPattern.test(normalizedEmail)) {
-      setError('Введіть коректну електронну пошту.');
+      setError(t('auth.login.error.invalidEmail'));
       return;
     }
 
     if (password.length < 6) {
-      setError('Пароль має містити щонайменше 6 символів.');
+      setError(t('auth.login.error.shortPassword'));
       return;
     }
 
@@ -71,7 +73,7 @@ const LoginScreen = () => {
       navigation.dispatch(StackActions.popTo('MainTabs'));
       navigation.navigate('MainTabs', { screen: 'Profile' });
     } catch (loginError) {
-      setError(getApiErrorMessage(loginError, 'Не вдалося увійти.'));
+      setError(getApiErrorMessage(loginError, t('auth.login.error.generic'), language));
     }
   };
 
@@ -85,13 +87,13 @@ const LoginScreen = () => {
           style={styles.card}
           accessible
           importantForAccessibility="yes"
-          accessibilityLabel="Форма входу"
+          accessibilityLabel={t('auth.login.formLabel')}
         >
           <Text style={styles.title} allowFontScaling>
-            Вхід
+            {t('auth.login.title')}
           </Text>
           <Text style={styles.subtitle} allowFontScaling>
-            Увійдіть, щоб продовжити роботу
+            {t('auth.login.subtitle')}
           </Text>
 
           <View style={styles.fieldGroup}>
@@ -108,26 +110,26 @@ const LoginScreen = () => {
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
               editable={!loginMutation.isPending}
-              accessibilityLabel="Електронна пошта"
-              accessibilityHint="Поле для введення електронної пошти"
+              accessibilityLabel={t('auth.login.accessibility.emailLabel')}
+              accessibilityHint={t('auth.login.accessibility.emailHint')}
               importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              Пароль
+              {t('common.password')}
             </Text>
             <TextInput
               style={styles.input}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              placeholder="Введіть пароль"
+              placeholder={t('auth.login.passwordPlaceholder')}
               placeholderTextColor={colors.textSecondary}
               editable={!loginMutation.isPending}
-              accessibilityLabel="Пароль"
-              accessibilityHint="Поле для введення паролю"
+              accessibilityLabel={t('auth.login.accessibility.passwordLabel')}
+              accessibilityHint={t('auth.login.accessibility.passwordHint')}
               importantForAccessibility="yes"
             />
           </View>
@@ -146,8 +148,8 @@ const LoginScreen = () => {
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Кнопка входу"
-            accessibilityHint="Виконує вхід у акаунт"
+            accessibilityLabel={t('auth.login.accessibility.signInButton')}
+            accessibilityHint={t('auth.login.accessibility.signInHint')}
             accessibilityState={{ disabled: loginMutation.isPending }}
             importantForAccessibility="yes"
           >
@@ -155,7 +157,7 @@ const LoginScreen = () => {
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryButtonText} allowFontScaling>
-                Увійти
+                {t('auth.login.signIn')}
               </Text>
             )}
           </Pressable>
@@ -170,13 +172,13 @@ const LoginScreen = () => {
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Кнопка реєстрації"
-            accessibilityHint="Відкриває екран створення акаунта"
+            accessibilityLabel={t('auth.login.accessibility.createAccountButton')}
+            accessibilityHint={t('auth.login.accessibility.createAccountHint')}
             accessibilityState={{ disabled: loginMutation.isPending }}
             importantForAccessibility="yes"
           >
             <Text style={styles.secondaryButtonText} allowFontScaling>
-              Створити акаунт
+              {t('auth.login.createAccount')}
             </Text>
           </Pressable>
 
@@ -191,13 +193,13 @@ const LoginScreen = () => {
             style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Забули пароль"
-            accessibilityHint="Відкриває покрокове відновлення пароля"
+            accessibilityLabel={t('auth.login.accessibility.forgotPasswordButton')}
+            accessibilityHint={t('auth.login.accessibility.forgotPasswordHint')}
             accessibilityState={{ disabled: loginMutation.isPending }}
             importantForAccessibility="yes"
           >
             <Text style={styles.linkButtonText} allowFontScaling>
-              Забули пароль?
+              {t('auth.login.forgotPassword')}
             </Text>
           </Pressable>
         </View>

@@ -19,6 +19,7 @@ import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import { requestResetPassword, verifyOtp } from '@/src/features/auth/api/auth';
 import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
+import { useI18n } from '@/src/i18n/useI18n';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import type { ThemeColors } from '@/shared/styles/theme';
 
@@ -39,6 +40,7 @@ const ResetPasswordScreen = () => {
   const completePasswordReset = useAuthStore((s) => s.completePasswordReset);
   const navigation = useNavigation<ResetPasswordNavigation>();
   const route = useRoute<ResetPasswordRoute>();
+  const { language, t } = useI18n();
 
   const [step, setStep] = React.useState<ResetStep>('request');
   const [email, setEmail] = React.useState(route.params?.initialEmail ?? '');
@@ -88,12 +90,12 @@ const ResetPasswordScreen = () => {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (cooldownLeft > 0) {
-      setError(`Повторний запит буде доступний через ${cooldownLeft} с.`);
+      setError(t('auth.reset.error.cooldownRequest', { seconds: cooldownLeft }));
       return;
     }
 
     if (!emailPattern.test(normalizedEmail)) {
-      setError('Введіть коректну електронну пошту.');
+      setError(t('auth.reset.error.invalidEmail'));
       return;
     }
 
@@ -105,15 +107,19 @@ const ResetPasswordScreen = () => {
       setEmail(response.email ?? normalizedEmail);
       startCooldown();
       setStep('verify');
-      setInfo('Код надіслано на вашу пошту. Введіть його для продовження.');
+      setInfo(t('auth.reset.info.codeSent'));
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 429) {
         startCooldown();
-        setError(`Забагато запитів на email. Спробуйте знову через ${RESEND_COOLDOWN_SECONDS} с.`);
+        setError(
+          t('auth.reset.error.tooManyRequests', {
+            seconds: RESEND_COOLDOWN_SECONDS,
+          }),
+        );
         return;
       }
 
-      setError(getApiErrorMessage(requestError, 'Не вдалося надіслати код відновлення.'));
+      setError(getApiErrorMessage(requestError, t('auth.reset.error.requestGeneric'), language));
     }
   };
 
@@ -121,12 +127,12 @@ const ResetPasswordScreen = () => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedToken = otpToken.trim();
     if (!emailPattern.test(normalizedEmail)) {
-      setError('Введіть коректну електронну пошту.');
+      setError(t('auth.reset.error.invalidEmail'));
       return;
     }
 
     if (!normalizedToken) {
-      setError('Введіть OTP-код із листа.');
+      setError(t('auth.reset.error.missingOtp'));
       return;
     }
 
@@ -140,9 +146,9 @@ const ResetPasswordScreen = () => {
       });
       setEmail(response.email ?? normalizedEmail);
       setStep('reset');
-      setInfo('Код підтверджено. Тепер введіть новий пароль.');
+      setInfo(t('auth.reset.info.otpVerified'));
     } catch (verifyError) {
-      setError(getApiErrorMessage(verifyError, 'Не вдалося підтвердити OTP-код.'));
+      setError(getApiErrorMessage(verifyError, t('auth.reset.error.verifyGeneric'), language));
     }
   };
 
@@ -150,17 +156,17 @@ const ResetPasswordScreen = () => {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!emailPattern.test(normalizedEmail)) {
-      setError('Введіть коректну електронну пошту.');
+      setError(t('auth.reset.error.invalidEmail'));
       return;
     }
 
     if (newPassword.length < 6) {
-      setError('Пароль має містити щонайменше 6 символів.');
+      setError(t('auth.reset.error.shortPassword'));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('Паролі не співпадають.');
+      setError(t('auth.reset.error.passwordMismatch'));
       return;
     }
 
@@ -178,7 +184,7 @@ const ResetPasswordScreen = () => {
       navigation.dispatch(StackActions.popTo('MainTabs'));
       navigation.navigate('MainTabs', { screen: 'Profile' });
     } catch (resetError) {
-      setError(getApiErrorMessage(resetError, 'Не вдалося оновити пароль.'));
+      setError(getApiErrorMessage(resetError, t('auth.reset.error.resetGeneric'), language));
     }
   };
 
@@ -197,25 +203,25 @@ const ResetPasswordScreen = () => {
   };
 
   const titleByStep: Record<ResetStep, string> = {
-    request: 'Відновлення пароля',
-    verify: 'Перевірка OTP',
-    reset: 'Новий пароль',
+    request: t('auth.reset.step.request.title'),
+    verify: t('auth.reset.step.verify.title'),
+    reset: t('auth.reset.step.reset.title'),
   };
 
   const subtitleByStep: Record<ResetStep, string> = {
-    request: 'Крок 1/3: надішліть запит на відновлення пароля.',
-    verify: 'Крок 2/3: перевірте OTP-код з листа.',
-    reset: 'Крок 3/3: задайте новий пароль.',
+    request: t('auth.reset.step.request.subtitle'),
+    verify: t('auth.reset.step.verify.subtitle'),
+    reset: t('auth.reset.step.reset.subtitle'),
   };
 
   const primaryButtonTextByStep: Record<ResetStep, string> = {
-    request: 'Надіслати код',
-    verify: 'Підтвердити OTP',
-    reset: 'Оновити пароль',
+    request: t('auth.reset.step.request.button'),
+    verify: t('auth.reset.step.verify.button'),
+    reset: t('auth.reset.step.reset.button'),
   };
   const primaryButtonText =
     step === 'request' && cooldownLeft > 0
-      ? `Надіслати код (${cooldownLeft}с)`
+      ? t('auth.reset.button.requestWithCooldown', { seconds: cooldownLeft })
       : primaryButtonTextByStep[step];
 
   return (
@@ -228,7 +234,7 @@ const ResetPasswordScreen = () => {
           style={styles.card}
           accessible
           importantForAccessibility="yes"
-          accessibilityLabel="Форма відновлення пароля"
+          accessibilityLabel={t('auth.reset.formLabel')}
         >
           <Text style={styles.title} allowFontScaling>
             {titleByStep[step]}
@@ -251,8 +257,8 @@ const ResetPasswordScreen = () => {
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
               editable={!isAnyPending && step === 'request'}
-              accessibilityLabel="Електронна пошта"
-              accessibilityHint="Email акаунта для відновлення пароля"
+              accessibilityLabel={t('auth.reset.accessibility.emailLabel')}
+              accessibilityHint={t('auth.reset.accessibility.emailHint')}
               importantForAccessibility="yes"
             />
           </View>
@@ -260,7 +266,7 @@ const ResetPasswordScreen = () => {
           {step === 'verify' ? (
             <View style={styles.fieldGroup}>
               <Text style={styles.label} allowFontScaling>
-                OTP-код
+                {t('auth.reset.otpLabel')}
               </Text>
               <TextInput
                 style={styles.input}
@@ -268,11 +274,11 @@ const ResetPasswordScreen = () => {
                 onChangeText={setOtpToken}
                 autoCapitalize="none"
                 autoCorrect={false}
-                placeholder="Введіть OTP-код"
+                placeholder={t('auth.reset.otpPlaceholder')}
                 placeholderTextColor={colors.textSecondary}
                 editable={!isAnyPending}
-                accessibilityLabel="OTP-код"
-                accessibilityHint="Поле для коду з email"
+                accessibilityLabel={t('auth.reset.accessibility.otpLabel')}
+                accessibilityHint={t('auth.reset.accessibility.otpHint')}
                 importantForAccessibility="yes"
               />
             </View>
@@ -282,35 +288,35 @@ const ResetPasswordScreen = () => {
             <>
               <View style={styles.fieldGroup}>
                 <Text style={styles.label} allowFontScaling>
-                  Новий пароль
+                  {t('auth.reset.newPasswordLabel')}
                 </Text>
                 <TextInput
                   style={styles.input}
                   value={newPassword}
                   onChangeText={setNewPassword}
                   secureTextEntry
-                  placeholder="Мінімум 6 символів"
+                  placeholder={t('auth.reset.newPasswordPlaceholder')}
                   placeholderTextColor={colors.textSecondary}
                   editable={!isAnyPending}
-                  accessibilityLabel="Новий пароль"
-                  accessibilityHint="Поле для нового пароля"
+                  accessibilityLabel={t('auth.reset.accessibility.newPasswordLabel')}
+                  accessibilityHint={t('auth.reset.accessibility.newPasswordHint')}
                   importantForAccessibility="yes"
                 />
               </View>
               <View style={styles.fieldGroup}>
                 <Text style={styles.label} allowFontScaling>
-                  Підтвердіть пароль
+                  {t('auth.reset.confirmPasswordLabel')}
                 </Text>
                 <TextInput
                   style={styles.input}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry
-                  placeholder="Повторіть новий пароль"
+                  placeholder={t('auth.reset.confirmPasswordPlaceholder')}
                   placeholderTextColor={colors.textSecondary}
                   editable={!isAnyPending}
-                  accessibilityLabel="Підтвердження нового пароля"
-                  accessibilityHint="Поле для повторного введення нового пароля"
+                  accessibilityLabel={t('auth.reset.accessibility.confirmPasswordLabel')}
+                  accessibilityHint={t('auth.reset.accessibility.confirmPasswordHint')}
                   importantForAccessibility="yes"
                 />
               </View>
@@ -335,8 +341,8 @@ const ResetPasswordScreen = () => {
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Основна дія відновлення пароля"
-            accessibilityHint="Виконує поточний крок відновлення"
+            accessibilityLabel={t('auth.reset.accessibility.primaryLabel')}
+            accessibilityHint={t('auth.reset.accessibility.primaryHint')}
             accessibilityState={{ disabled: isAnyPending || isRequestBlockedByCooldown }}
             importantForAccessibility="yes"
           >
@@ -358,13 +364,15 @@ const ResetPasswordScreen = () => {
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               accessibilityRole="button"
-              accessibilityLabel="Надіслати код повторно"
-              accessibilityHint="Повторно надсилає OTP-код на email"
+              accessibilityLabel={t('auth.reset.accessibility.resendLabel')}
+              accessibilityHint={t('auth.reset.accessibility.resendHint')}
               accessibilityState={{ disabled: isAnyPending || isResendBlockedByCooldown }}
               importantForAccessibility="yes"
             >
               <Text style={styles.secondaryButtonText} allowFontScaling>
-                {cooldownLeft > 0 ? `Надіслати код ще раз (${cooldownLeft}с)` : 'Надіслати код ще раз'}
+                {cooldownLeft > 0
+                  ? t('auth.reset.button.resendWithCooldown', { seconds: cooldownLeft })
+                  : t('auth.reset.button.resend')}
               </Text>
             </Pressable>
           ) : null}
@@ -383,13 +391,13 @@ const ResetPasswordScreen = () => {
               style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               accessibilityRole="button"
-              accessibilityLabel="Почати знову"
-              accessibilityHint="Повертає на перший крок відновлення"
+              accessibilityLabel={t('auth.reset.accessibility.restartLabel')}
+              accessibilityHint={t('auth.reset.accessibility.restartHint')}
               accessibilityState={{ disabled: isAnyPending }}
               importantForAccessibility="yes"
             >
               <Text style={styles.linkButtonText} allowFontScaling>
-                Змінити email або почати спочатку
+                {t('auth.reset.button.restart')}
               </Text>
             </Pressable>
           ) : (
@@ -404,13 +412,13 @@ const ResetPasswordScreen = () => {
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               accessibilityRole="button"
-              accessibilityLabel="Повернутися до входу"
-              accessibilityHint="Переходить на екран входу"
+              accessibilityLabel={t('auth.reset.accessibility.toLoginLabel')}
+              accessibilityHint={t('auth.reset.accessibility.toLoginHint')}
               accessibilityState={{ disabled: isAnyPending }}
               importantForAccessibility="yes"
             >
               <Text style={styles.secondaryButtonText} allowFontScaling>
-                До входу
+                {t('common.toLogin')}
               </Text>
             </Pressable>
           )}
