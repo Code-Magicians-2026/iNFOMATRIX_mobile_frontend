@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { useI18n } from '@/src/i18n/useI18n';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
 import type {
   CapturedPhoto,
@@ -43,25 +44,53 @@ type TargetMode = 'myself' | 'child';
 
 type ChatNavigation = NativeStackNavigationProp<AppStackParamList>;
 
-const resolvePermissionDescription = (state: MediaPermissionState, source: 'camera' | 'gallery') => {
+const resolvePermissionDescription = (
+  state: MediaPermissionState,
+  source: 'camera' | 'gallery',
+  language: 'uk' | 'en',
+) => {
+  const sourceLabel =
+    language === 'uk'
+      ? source === 'camera'
+        ? 'Камера'
+        : 'Галерея'
+      : source === 'camera'
+        ? 'Camera'
+        : 'Gallery';
+
   if (state === 'granted') {
-    return `${source === 'camera' ? 'Camera' : 'Gallery'} access granted.`;
+    return language === 'uk'
+      ? `${sourceLabel}: доступ надано.`
+      : `${sourceLabel} access granted.`;
   }
 
   if (state === 'blocked') {
-    return `${source === 'camera' ? 'Camera' : 'Gallery'} access blocked. Open device settings.`;
+    return language === 'uk'
+      ? `${sourceLabel}: доступ заблоковано. Відкрийте налаштування пристрою.`
+      : `${sourceLabel} access blocked. Open device settings.`;
   }
 
   if (state === 'undetermined') {
-    return `${source === 'camera' ? 'Camera' : 'Gallery'} access not requested yet.`;
+    return language === 'uk'
+      ? `${sourceLabel}: доступ ще не запитувався.`
+      : `${sourceLabel} access not requested yet.`;
   }
 
-  return `${source === 'camera' ? 'Camera' : 'Gallery'} access denied.`;
+  return language === 'uk'
+    ? `${sourceLabel}: доступ відхилено.`
+    : `${sourceLabel} access denied.`;
 };
 
-const buildFallbackMeProfile = (role: UserRole): UserProfile => ({
+const buildFallbackMeProfile = (role: UserRole, language: 'uk' | 'en'): UserProfile => ({
   id: role === 'adult' ? 'adult-self' : 'child-self',
-  fullName: role === 'adult' ? 'Adult Profile' : 'Child Profile',
+  fullName:
+    language === 'uk'
+      ? role === 'adult'
+        ? 'Профіль дорослого'
+        : 'Профіль дитини'
+      : role === 'adult'
+        ? 'Adult Profile'
+        : 'Child Profile',
   email: `${role}@local.infomatrix`,
   role,
   level: 1,
@@ -89,28 +118,30 @@ const resolvePromptPhotoAchievementId = (photo: CapturedPhoto): 'scene_scout' | 
   return 'scene_scout';
 };
 
-const resolvePhotoAchievementLabel = (photo: CapturedPhoto): string => {
+const resolvePhotoAchievementLabel = (photo: CapturedPhoto, language: 'uk' | 'en'): string => {
   const achievementId = resolvePromptPhotoAchievementId(photo);
 
   if (achievementId === 'eagle_eye') {
-    return 'Achievement: Eagle Eye';
+    return language === 'uk' ? 'Досягнення: Eagle Eye' : 'Achievement: Eagle Eye';
   }
 
   if (achievementId === 'detail_hunter') {
-    return 'Achievement: Detail Hunter';
+    return language === 'uk' ? 'Досягнення: Detail Hunter' : 'Achievement: Detail Hunter';
   }
 
-  return 'Achievement: Scene Scout';
+  return language === 'uk' ? 'Досягнення: Scene Scout' : 'Achievement: Scene Scout';
 };
 
 const AgentChatScreen = () => {
   const navigation = useNavigation<ChatNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
+  const { language } = useI18n();
   const styles = React.useMemo(
     () => getStyles(cardMaxWidth, isTablet, spacing),
     [cardMaxWidth, isTablet, spacing],
   );
+  const isUk = language === 'uk';
 
   const role = useAuthStore((s) => s.role);
   const session = useAuthStore((s) => s.session);
@@ -118,6 +149,153 @@ const AgentChatScreen = () => {
   const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const setSelectedChildId = useAuthStore((s) => s.setSelectedChildId);
   const setRole = useAuthStore((s) => s.setRole);
+
+  const copy = React.useMemo(
+    () =>
+      isUk
+        ? {
+            activeTargetFallback: 'Немає активної дитини',
+            myself: 'Я',
+            child: 'Дитина',
+            builderContextError: 'Не вдалося завантажити контекст AI Builder.',
+            cameraBlocked: 'Доступ до камери заблоковано. Відкрийте налаштування.',
+            cameraDenied: 'Доступ до камери відхилено. Можна продовжити з галереєю.',
+            cameraRequestFailed: 'Не вдалося запитати доступ до камери.',
+            galleryBlocked: 'Доступ до галереї заблоковано. Відкрийте налаштування.',
+            galleryDenied: 'Доступ до галереї відхилено.',
+            galleryRequestFailed: 'Не вдалося запитати доступ до галереї.',
+            settingsOpenFailed: 'Не вдалося відкрити налаштування.',
+            cameraBlockedUseGallery:
+              'Доступ до камери заблоковано. Використайте галерею або відкрийте налаштування.',
+            cameraRequired: 'Для фото потрібен доступ до камери. Можна обрати галерею.',
+            captureFailed: 'Не вдалося зробити фото. Спробуйте ще раз.',
+            galleryRequiredForPick: 'Для вибору фото потрібен доступ до галереї.',
+            pickFailed: 'Не вдалося обрати фото з галереї.',
+            promptRequired: 'Щоб згенерувати план, введіть запит.',
+            profileNotLoaded: 'Активний профіль ще не завантажено. Оновіть і спробуйте знову.',
+            noChildForGeneration: 'Не обрано активну дитину. Оберіть дитину перед генерацією.',
+            generationFailed: 'Генерація не вдалася. Спробуйте ще раз.',
+            loadingBuilder: 'Завантаження AI конструктора планів...',
+            builderTitle: 'AI конструктор планів',
+            builderSubtitle: 'Додайте фото, введіть запит і згенеруйте структурований AI-план',
+            builderErrorTitle: 'Помилка білдера',
+            generationErrorTitle: 'Помилка генерації',
+            close: 'Закрити',
+            tryAgain: 'Спробувати знову',
+            selectedTarget: 'Обрана ціль',
+            activeTarget: (label: string) => `Активна: ${label}`,
+            noActiveChildTitle: 'Не обрано активну дитину',
+            noActiveChildDescription: 'Оберіть профіль дитини для генерації плану.',
+            selectFirstChild: 'Обрати першу дитину',
+            ageLevel: (age: number, level: number) => `Вік ${age} | Рівень ${level}`,
+            noChildProfilesTitle: 'Немає профілів дітей',
+            noChildProfilesDescription: 'Створіть профіль дитини спочатку на Головній.',
+            photoTitle: 'Фото кімнати / ситуації',
+            photoSubtitle: 'Фото дає AI контекст для генерації плану',
+            photoHint:
+              'Додайте фото за бажанням, щоб AI отримав кращий контекст кімнати/ситуації.',
+            allowCamera: 'Дозволити доступ до камери',
+            chooseFromGallery: 'Обрати з галереї',
+            allowGallery: 'Дозволити доступ до галереї',
+            openSettings: 'Відкрити налаштування',
+            noPhotoTitle: 'Фото не додано',
+            noPhotoDescription: 'Натисніть Зробити фото або Обрати з галереї для AI-контексту.',
+            lockedAchievement: 'Досягнення заблоковано: Scene Scout',
+            replaceFromCamera: 'Замінити з камери',
+            takePhoto: 'Зробити фото',
+            replaceFromGallery: 'Замінити з галереї',
+            removePhoto: 'Видалити фото',
+            promptTitle: 'Запит',
+            promptSubtitle: 'Опишіть план, який хочете отримати',
+            promptPlaceholder: 'Опишіть, що має побудувати AI...',
+            voiceNotReady: 'Голосовий ввід ще не налаштований. Поки використовуйте клавіатуру.',
+            voiceInput: 'Голосовий ввід',
+            quickPromptsTitle: 'Швидкі запити',
+            quickPromptsSubtitle: 'Тапніть для автозаповнення',
+            generating: 'Генерація...',
+            generate: 'Згенерувати',
+            generatingPlan: 'Генерація AI-плану...',
+            resolution: 'Роздільна здатність',
+            size: 'Розмір',
+          }
+        : {
+            activeTargetFallback: 'No active child',
+            myself: 'Myself',
+            child: 'Child',
+            builderContextError: 'Failed to load AI Builder context.',
+            cameraBlocked: 'Camera permission is blocked. Open settings to enable it.',
+            cameraDenied: 'Camera permission was denied. You can continue with gallery.',
+            cameraRequestFailed: 'Failed to request camera permission.',
+            galleryBlocked: 'Gallery permission is blocked. Open settings to enable it.',
+            galleryDenied: 'Gallery permission was denied.',
+            galleryRequestFailed: 'Failed to request gallery permission.',
+            settingsOpenFailed: 'Failed to open settings.',
+            cameraBlockedUseGallery: 'Camera permission is blocked. Use gallery or open settings.',
+            cameraRequired: 'Camera permission is required. You can fallback to gallery.',
+            captureFailed: 'Failed to capture photo. Please try again.',
+            galleryRequiredForPick: 'Gallery permission is required to choose photo.',
+            pickFailed: 'Failed to pick photo from gallery.',
+            promptRequired: 'Prompt is required to generate a plan.',
+            profileNotLoaded: 'Active profile not loaded yet. Refresh and try again.',
+            noChildForGeneration: 'No active child selected. Select child target before generation.',
+            generationFailed: 'Generation failed. Please try again.',
+            loadingBuilder: 'Loading AI Plan Builder...',
+            builderTitle: 'AI Plan Builder',
+            builderSubtitle: 'Capture one photo, add prompt, and generate a structured AI plan',
+            builderErrorTitle: 'Builder error',
+            generationErrorTitle: 'Generation failed',
+            close: 'Close',
+            tryAgain: 'Try generate again',
+            selectedTarget: 'Selected Target',
+            activeTarget: (label: string) => `Active: ${label}`,
+            noActiveChildTitle: 'No active child selected',
+            noActiveChildDescription: 'Select child profile to generate a plan for them.',
+            selectFirstChild: 'Select first child',
+            ageLevel: (age: number, level: number) => `Age ${age} | Lvl ${level}`,
+            noChildProfilesTitle: 'No child profiles',
+            noChildProfilesDescription: 'Create child profile from Home first.',
+            photoTitle: 'Room / Situation Photo',
+            photoSubtitle: 'Photo is AI context for plan generation',
+            photoHint: 'Add a photo optionally to give AI better room/situation context for generation.',
+            allowCamera: 'Allow camera access',
+            chooseFromGallery: 'Choose from gallery',
+            allowGallery: 'Allow gallery access',
+            openSettings: 'Open settings',
+            noPhotoTitle: 'No photo attached',
+            noPhotoDescription: 'Use Take photo or Choose from gallery to add AI context.',
+            lockedAchievement: 'Achievement locked: Scene Scout',
+            replaceFromCamera: 'Replace from camera',
+            takePhoto: 'Take photo',
+            replaceFromGallery: 'Replace from gallery',
+            removePhoto: 'Remove photo',
+            promptTitle: 'Prompt',
+            promptSubtitle: 'Describe the plan you want',
+            promptPlaceholder: 'Write what the AI should build...',
+            voiceNotReady: 'Voice input is not configured yet. Use keyboard prompt for now.',
+            voiceInput: 'Voice input',
+            quickPromptsTitle: 'Quick Prompts',
+            quickPromptsSubtitle: 'Tap to prefill',
+            generating: 'Generating...',
+            generate: 'Generate',
+            generatingPlan: 'Generating AI plan...',
+            resolution: 'Resolution',
+            size: 'Size',
+          },
+    [isUk],
+  );
+
+  const quickPrompts = React.useMemo(
+    () =>
+      isUk
+        ? [
+            'Створи післяшкільну рутину',
+            'Перетвори прибирання кімнати на квести',
+            'Створи спокійний вечірній план',
+            'Зроби домашні завдання схожими на гру',
+          ]
+        : [...QUICK_PROMPTS],
+    [isUk],
+  );
 
   const effectiveRole: UserRole = role ?? 'child';
 
@@ -183,7 +361,7 @@ const AgentChatScreen = () => {
       }
 
       if (!meData) {
-        meData = buildFallbackMeProfile(effectiveRole);
+        meData = buildFallbackMeProfile(effectiveRole, isUk ? 'uk' : 'en');
       }
 
       setMe(meData);
@@ -220,14 +398,14 @@ const AgentChatScreen = () => {
         return resolvedChildId ? 'child' : 'myself';
       });
     } catch {
-      setContextError('Failed to load AI Builder context.');
+      setContextError(copy.builderContextError);
     } finally {
       if (showLoader) {
         setIsLoading(false);
       }
       lastContextRefreshAtRef.current = Date.now();
     }
-  }, [currentUser, effectiveRole, selectedChildId, session?.accessToken, setSelectedChildId]);
+  }, [copy.builderContextError, currentUser, effectiveRole, isUk, selectedChildId, session?.accessToken, setSelectedChildId]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -253,8 +431,8 @@ const AgentChatScreen = () => {
 
   const canUseChildTarget = effectiveRole === 'adult' && children.length > 0;
   const activeTargetLabel = targetMode === 'myself'
-    ? me?.fullName ?? 'Myself'
-    : selectedChild?.fullName ?? 'No active child';
+    ? me?.fullName ?? copy.myself
+    : selectedChild?.fullName ?? copy.activeTargetFallback;
   const isChildTargetWithoutSelection =
     targetMode === 'child' && canUseChildTarget && !selectedChild;
   const resolvedMyselfTargetUserId = me?.id ?? currentUser?.id ?? null;
@@ -273,16 +451,16 @@ const AgentChatScreen = () => {
       return null;
     }
 
-    const index = QUICK_PROMPTS.findIndex(
+    const index = quickPrompts.findIndex(
       (item) => normalizePromptValue(item) === normalizedPrompt,
     );
     return index >= 0 ? index : null;
-  }, [prompt]);
+  }, [prompt, quickPrompts]);
 
   const resolvedQuickPromptIndex = selectedQuickPromptIndex ?? activeQuickPromptIndex;
   const photoAchievementLabel = React.useMemo(
-    () => (capturedPhoto ? resolvePhotoAchievementLabel(capturedPhoto) : null),
-    [capturedPhoto],
+    () => (capturedPhoto ? resolvePhotoAchievementLabel(capturedPhoto, isUk ? 'uk' : 'en') : null),
+    [capturedPhoto, isUk],
   );
 
   const assignPreparedPhoto = async (photo: CapturedPhoto | null) => {
@@ -320,13 +498,13 @@ const AgentChatScreen = () => {
       }
 
       if (permissionState === 'blocked') {
-        setGenerationError('Camera permission is blocked. Open settings to enable it.');
+        setGenerationError(copy.cameraBlocked);
         return;
       }
 
-      setGenerationError('Camera permission was denied. You can continue with gallery.');
+      setGenerationError(copy.cameraDenied);
     } catch {
-      setGenerationError('Failed to request camera permission.');
+      setGenerationError(copy.cameraRequestFailed);
     }
   };
 
@@ -341,13 +519,13 @@ const AgentChatScreen = () => {
       }
 
       if (permissionState === 'blocked') {
-        setGenerationError('Gallery permission is blocked. Open settings to enable it.');
+        setGenerationError(copy.galleryBlocked);
         return;
       }
 
-      setGenerationError('Gallery permission was denied.');
+      setGenerationError(copy.galleryDenied);
     } catch {
-      setGenerationError('Failed to request gallery permission.');
+      setGenerationError(copy.galleryRequestFailed);
     }
   };
 
@@ -356,7 +534,7 @@ const AgentChatScreen = () => {
       await Linking.openSettings();
       await refreshPermissionsState();
     } catch {
-      setGenerationError('Failed to open settings.');
+      setGenerationError(copy.settingsOpenFailed);
     }
   };
 
@@ -369,11 +547,11 @@ const AgentChatScreen = () => {
 
         if (permissionState !== 'granted') {
           if (permissionState === 'blocked') {
-            setGenerationError('Camera permission is blocked. Use gallery or open settings.');
+            setGenerationError(copy.cameraBlockedUseGallery);
             return;
           }
 
-          setGenerationError('Camera permission is required. You can fallback to gallery.');
+          setGenerationError(copy.cameraRequired);
           return;
         }
       }
@@ -382,7 +560,7 @@ const AgentChatScreen = () => {
       await assignPreparedPhoto(photo);
       await refreshPermissionsState();
     } catch {
-      setGenerationError('Failed to capture photo. Please try again.');
+      setGenerationError(copy.captureFailed);
     }
   };
 
@@ -395,11 +573,11 @@ const AgentChatScreen = () => {
 
         if (permissionState !== 'granted') {
           if (permissionState === 'blocked') {
-            setGenerationError('Gallery permission is blocked. Open settings to enable it.');
+            setGenerationError(copy.galleryBlocked);
             return;
           }
 
-          setGenerationError('Gallery permission is required to choose photo.');
+          setGenerationError(copy.galleryRequiredForPick);
           return;
         }
       }
@@ -408,14 +586,14 @@ const AgentChatScreen = () => {
       await assignPreparedPhoto(photo);
       await refreshPermissionsState();
     } catch {
-      setGenerationError('Failed to pick photo from gallery.');
+      setGenerationError(copy.pickFailed);
     }
   };
 
   const handleGeneratePlan = async () => {
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt) {
-      setGenerationError('Prompt is required to generate a plan.');
+      setGenerationError(copy.promptRequired);
       return;
     }
 
@@ -423,8 +601,8 @@ const AgentChatScreen = () => {
     if (!targetUserId) {
       setGenerationError(
         targetMode === 'myself'
-          ? 'Active profile not loaded yet. Refresh and try again.'
-          : 'No active child selected. Select child target before generation.',
+          ? copy.profileNotLoaded
+          : copy.noChildForGeneration,
       );
       return;
     }
@@ -450,7 +628,7 @@ const AgentChatScreen = () => {
       });
     } catch (error) {
       setGenerationError(
-        getApiErrorMessage(error, 'Generation failed. Please try again.'),
+        getApiErrorMessage(error, copy.generationFailed, language),
       );
     } finally {
       setIsGenerating(false);
@@ -460,7 +638,7 @@ const AgentChatScreen = () => {
   if (isLoading) {
     return (
       <ScreenContainer centered>
-        <LoadingState label="Loading AI Plan Builder..." />
+        <LoadingState label={copy.loadingBuilder} />
       </ScreenContainer>
     );
   }
@@ -468,23 +646,23 @@ const AgentChatScreen = () => {
   return (
     <ScreenContainer>
       <SectionHeader
-        title="AI Plan Builder"
-        subtitle="Capture one photo, add prompt, and generate a structured AI plan"
+        title={copy.builderTitle}
+        subtitle={copy.builderSubtitle}
       />
 
-      {contextError ? <EmptyState title="Builder error" description={contextError} /> : null}
+      {contextError ? <EmptyState title={copy.builderErrorTitle} description={contextError} /> : null}
       {generationError ? (
         <View style={styles.card}>
-          <EmptyState title="Generation failed" description={generationError} />
+          <EmptyState title={copy.generationErrorTitle} description={generationError} />
           <View style={styles.errorActions}>
             <PrimaryButton
-              label="Close"
+              label={copy.close}
               variant="secondary"
               onPress={() => setGenerationError(null)}
               style={styles.retryButton}
             />
             <PrimaryButton
-              label="Try generate again"
+              label={copy.tryAgain}
               onPress={() => {
                 void handleGeneratePlan();
               }}
@@ -501,7 +679,7 @@ const AgentChatScreen = () => {
         keyboardShouldPersistTaps="handled"
       >
         {effectiveRole === 'adult' ? (
-          <StatCard title="Selected Target" subtitle={`Active: ${activeTargetLabel}`} style={styles.card}>
+          <StatCard title={copy.selectedTarget} subtitle={copy.activeTarget(activeTargetLabel)} style={styles.card}>
             <View key={`target-mode-${targetMode}-${selectedChildId ?? 'none'}`} style={styles.optionRow}>
               <Pressable
                 onPress={() => {
@@ -522,7 +700,7 @@ const AgentChatScreen = () => {
                   style={[styles.optionChipLabel, { color: targetMode === 'myself' ? '#ffffff' : BRAND_RED }]}
                   allowFontScaling
                 >
-                  Myself
+                  {copy.myself}
                 </Text>
               </Pressable>
 
@@ -554,7 +732,7 @@ const AgentChatScreen = () => {
                   style={[styles.optionChipLabel, { color: targetMode === 'child' ? '#ffffff' : BRAND_RED }]}
                   allowFontScaling
                 >
-                  Child
+                  {copy.child}
                 </Text>
               </Pressable>
             </View>
@@ -564,11 +742,11 @@ const AgentChatScreen = () => {
                 isChildTargetWithoutSelection ? (
                   <View style={styles.childList}>
                     <EmptyState
-                      title="No active child selected"
-                      description="Select child profile to generate a plan for them."
+                      title={copy.noActiveChildTitle}
+                      description={copy.noActiveChildDescription}
                     />
                     <PrimaryButton
-                      label="Select first child"
+                      label={copy.selectFirstChild}
                       variant="secondary"
                       onPress={() => {
                         const firstChild = children[0];
@@ -611,7 +789,7 @@ const AgentChatScreen = () => {
                             style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
                             allowFontScaling
                           >
-                            Age {child.age} | Lvl {child.level}
+                            {copy.ageLevel(child.age, child.level)}
                           </Text>
                         </Pressable>
                       );
@@ -619,24 +797,24 @@ const AgentChatScreen = () => {
                   </View>
                 )
               ) : (
-                <EmptyState title="No child profiles" description="Create child profile from Home first." />
+                <EmptyState title={copy.noChildProfilesTitle} description={copy.noChildProfilesDescription} />
               )
             ) : null}
           </StatCard>
         ) : null}
 
-        <StatCard title="Room / Situation Photo" subtitle="Photo is AI context for plan generation" style={styles.card}>
+        <StatCard title={copy.photoTitle} subtitle={copy.photoSubtitle} style={styles.card}>
           <Text style={[styles.photoHintText, { color: colors.textSecondary }]} allowFontScaling>
-            Add a photo optionally to give AI better room/situation context for generation.
+            {copy.photoHint}
           </Text>
 
           {shouldShowPermissionHelp ? (
             <View style={[styles.permissionCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
               <Text style={[styles.permissionStatusText, { color: colors.textSecondary }]} allowFontScaling>
-                {resolvePermissionDescription(cameraPermissionState, 'camera')}
+                {resolvePermissionDescription(cameraPermissionState, 'camera', isUk ? 'uk' : 'en')}
               </Text>
               <Text style={[styles.permissionStatusText, { color: colors.textSecondary }]} allowFontScaling>
-                {resolvePermissionDescription(galleryPermissionState, 'gallery')}
+                {resolvePermissionDescription(galleryPermissionState, 'gallery', isUk ? 'uk' : 'en')}
               </Text>
 
               <View style={styles.photoActions}>
@@ -648,7 +826,7 @@ const AgentChatScreen = () => {
                   android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
                 >
                   <Text style={styles.cameraButtonLabel} allowFontScaling>
-                    Allow camera access
+                    {copy.allowCamera}
                   </Text>
                 </Pressable>
 
@@ -660,7 +838,7 @@ const AgentChatScreen = () => {
                   android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                 >
                   <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
-                    Choose from gallery
+                    {copy.chooseFromGallery}
                   </Text>
                 </Pressable>
 
@@ -673,7 +851,7 @@ const AgentChatScreen = () => {
                     android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                   >
                     <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
-                      Allow gallery access
+                      {copy.allowGallery}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -687,7 +865,7 @@ const AgentChatScreen = () => {
                     android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                   >
                     <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
-                      Open settings
+                      {copy.openSettings}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -704,11 +882,11 @@ const AgentChatScreen = () => {
                 />
                 <View style={styles.photoMetaBlock}>
                   <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
-                    Resolution: {capturedPhoto.width ?? '?'} x {capturedPhoto.height ?? '?'}
+                    {copy.resolution}: {capturedPhoto.width ?? '?'} x {capturedPhoto.height ?? '?'}
                   </Text>
                   {capturedPhoto.fileSize ? (
                     <Text style={[styles.photoMeta, { color: colors.textSecondary }]} allowFontScaling>
-                      Size: {(capturedPhoto.fileSize / 1024 / 1024).toFixed(2)} MB
+                      {copy.size}: {(capturedPhoto.fileSize / 1024 / 1024).toFixed(2)} MB
                     </Text>
                   ) : null}
                 </View>
@@ -729,8 +907,8 @@ const AgentChatScreen = () => {
           ) : (
             <View style={styles.photoContainer}>
               <EmptyState
-                title="No photo attached"
-                description="Use Take photo or Choose from gallery to add AI context."
+                title={copy.noPhotoTitle}
+                description={copy.noPhotoDescription}
               />
               <View
                 style={[
@@ -739,7 +917,7 @@ const AgentChatScreen = () => {
                 ]}
               >
                 <Text style={[styles.achievementText, { color: colors.textSecondary }]} allowFontScaling>
-                  Achievement locked: Scene Scout
+                  {copy.lockedAchievement}
                 </Text>
               </View>
             </View>
@@ -754,7 +932,7 @@ const AgentChatScreen = () => {
               android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
             >
               <Text style={styles.cameraButtonLabel} allowFontScaling>
-                {capturedPhoto ? 'Replace from camera' : 'Take photo'}
+                {capturedPhoto ? copy.replaceFromCamera : copy.takePhoto}
               </Text>
             </Pressable>
             <Pressable
@@ -769,7 +947,7 @@ const AgentChatScreen = () => {
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             >
               <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
-                {capturedPhoto ? 'Replace from gallery' : 'Choose from gallery'}
+                {capturedPhoto ? copy.replaceFromGallery : copy.chooseFromGallery}
               </Text>
             </Pressable>
           </View>
@@ -784,20 +962,20 @@ const AgentChatScreen = () => {
                 android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               >
                 <Text style={[styles.secondaryPhotoButtonLabel, { color: colors.text }]} allowFontScaling>
-                  Remove photo
+                  {copy.removePhoto}
                 </Text>
               </Pressable>
             </View>
           ) : null}
         </StatCard>
 
-        <StatCard title="Prompt" subtitle="Describe the plan you want" style={styles.card}>
+        <StatCard title={copy.promptTitle} subtitle={copy.promptSubtitle} style={styles.card}>
           <TextInput
             value={prompt}
             onChangeText={(value) => {
               setPrompt(value);
               if (selectedQuickPromptIndex !== null) {
-                const selectedValue = QUICK_PROMPTS[selectedQuickPromptIndex] ?? '';
+                const selectedValue = quickPrompts[selectedQuickPromptIndex] ?? '';
                 if (normalizePromptValue(value) !== normalizePromptValue(selectedValue)) {
                   setSelectedQuickPromptIndex(null);
                 }
@@ -806,7 +984,7 @@ const AgentChatScreen = () => {
                 setGenerationError(null);
               }
             }}
-            placeholder="Write what the AI should build..."
+            placeholder={copy.promptPlaceholder}
             placeholderTextColor={colors.textSecondary}
             multiline
             numberOfLines={4}
@@ -823,7 +1001,7 @@ const AgentChatScreen = () => {
           <View style={styles.micButtonWrap}>
             <Pressable
               onPress={() => {
-                setGenerationError('Voice input is not configured yet. Use keyboard prompt for now.');
+                setGenerationError(copy.voiceNotReady);
               }}
               disabled={isGenerating}
               style={[styles.micButton, isGenerating ? styles.micButtonDisabled : null]}
@@ -831,15 +1009,15 @@ const AgentChatScreen = () => {
             >
               <Ionicons name="mic" size={isTablet ? 20 : 18} color="#ffffff" />
               <Text style={styles.micButtonText} allowFontScaling>
-                Voice input
+                {copy.voiceInput}
               </Text>
             </Pressable>
           </View>
         </StatCard>
 
-        <StatCard title="Quick Prompts" subtitle="Tap to prefill" style={styles.card}>
+        <StatCard title={copy.quickPromptsTitle} subtitle={copy.quickPromptsSubtitle} style={styles.card}>
           <View key={`quick-prompts-${resolvedQuickPromptIndex ?? 'none'}`} style={styles.quickPromptList}>
-            {QUICK_PROMPTS.map((quickPrompt, index) => {
+            {quickPrompts.map((quickPrompt, index) => {
               const isSelected = resolvedQuickPromptIndex === index;
 
               return (
@@ -877,7 +1055,7 @@ const AgentChatScreen = () => {
           android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
         >
           <Text style={styles.generateButtonLabel} allowFontScaling>
-            {isGenerating ? 'Generating...' : 'Generate'}
+            {isGenerating ? copy.generating : copy.generate}
           </Text>
         </Pressable>
       </ScrollView>
@@ -885,7 +1063,7 @@ const AgentChatScreen = () => {
       <Modal visible={isGenerating} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={[styles.loadingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <LoadingState label="Generating AI plan..." />
+            <LoadingState label={copy.generatingPlan} />
           </View>
         </View>
       </Modal>

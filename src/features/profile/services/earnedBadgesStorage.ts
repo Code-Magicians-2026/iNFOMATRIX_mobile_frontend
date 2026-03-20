@@ -32,6 +32,11 @@ const isNonEmptyString = (value: unknown): value is string =>
 
 const isBadgeType = (value: unknown): value is BadgeType => value === 'basic' || value === 'fire';
 
+const normalizeIdForCompare = (value: string) => value.trim().toLowerCase();
+
+const isSameEntityId = (left: string, right: string): boolean =>
+  normalizeIdForCompare(left) === normalizeIdForCompare(right);
+
 const toEarnedBadgeRecord = (value: unknown): EarnedBadgeRecord | null => {
   if (typeof value !== 'object' || value === null) {
     return null;
@@ -56,13 +61,13 @@ const toEarnedBadgeRecord = (value: unknown): EarnedBadgeRecord | null => {
       : normalizeBadgeImageKey(record.imageKey) ?? 'ref1';
 
   return {
-    id: record.id,
-    userId: record.userId,
-    questId: record.questId,
-    difficulty: record.difficulty,
+    id: record.id.trim(),
+    userId: record.userId.trim(),
+    questId: record.questId.trim(),
+    difficulty: record.difficulty.trim(),
     badgeType: record.badgeType,
     imageKey: normalizedImageKey,
-    earnedAt: record.earnedAt,
+    earnedAt: record.earnedAt.trim(),
   };
 };
 
@@ -109,7 +114,9 @@ const registerEarnedBadge = async ({
 
   const records = await readAll();
   const existing = records.find(
-    (record) => record.userId === normalizedUserId && record.questId === normalizedQuestId,
+    (record) =>
+      isSameEntityId(record.userId, normalizedUserId) &&
+      isSameEntityId(record.questId, normalizedQuestId),
   );
   if (existing) {
     return existing;
@@ -138,7 +145,7 @@ const getEarnedBadgesByUser = async (userId: string): Promise<EarnedBadgeRecord[
   }
 
   const records = await readAll();
-  return sortByNewest(records.filter((record) => record.userId === normalizedUserId));
+  return sortByNewest(records.filter((record) => isSameEntityId(record.userId, normalizedUserId)));
 };
 
 const earnedBadgesStorage = {

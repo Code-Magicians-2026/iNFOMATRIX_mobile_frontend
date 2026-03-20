@@ -3,21 +3,24 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { useI18n } from '@/src/i18n/useI18n';
 
 type LoadingStateProps = {
   label?: string;
 };
 
-const LoadingState = ({ label = 'Loading...' }: LoadingStateProps) => {
+const LoadingState = ({ label }: LoadingStateProps) => {
   const colors = useThemeStore((s) => s.colors);
   const { isTablet } = useResponsiveLayout();
+  const { language } = useI18n();
   const styles = React.useMemo(() => getStyles(isTablet), [isTablet]);
+  const resolvedLabel = label ?? (language === 'uk' ? 'Завантаження...' : 'Loading...');
 
   return (
     <View style={styles.container}>
       <ActivityIndicator size="small" color="#ff2d55" />
       <Text style={[styles.label, { color: colors.textSecondary }]} allowFontScaling>
-        {label}
+        {resolvedLabel}
       </Text>
     </View>
   );

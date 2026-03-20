@@ -18,6 +18,7 @@ import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
+import { useI18n } from '@/src/i18n/useI18n';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import type { ThemeColors } from '@/shared/styles/theme';
 
@@ -36,6 +37,7 @@ const ConfirmEmailScreen = () => {
   const confirmEmail = useAuthStore((s) => s.confirmEmail);
   const navigation = useNavigation<ConfirmEmailNavigation>();
   const route = useRoute<ConfirmEmailRoute>();
+  const { language, t } = useI18n();
 
   const [email, setEmail] = React.useState(route.params?.initialEmail ?? '');
   const [token, setToken] = React.useState('');
@@ -53,12 +55,12 @@ const ConfirmEmailScreen = () => {
     const normalizedToken = token.replace(/\s+/g, '').trim();
 
     if (!emailPattern.test(normalizedEmail)) {
-      setError('Введіть коректну електронну пошту.');
+      setError(t('auth.confirmEmail.error.invalidEmail'));
       return;
     }
 
     if (!normalizedToken) {
-      setError('Введіть код підтвердження з листа.');
+      setError(t('auth.confirmEmail.error.missingCode'));
       return;
     }
 
@@ -81,20 +83,16 @@ const ConfirmEmailScreen = () => {
     } catch (confirmError) {
       if (confirmError instanceof ApiError && (confirmError.status === 504 || confirmError.status === 408)) {
         setDidTimeoutOnce(true);
-        setError(
-          'Підтвердження ще обробляється на сервері. Не відправляйте код повторно одразу. Зачекайте 30-60 с і спробуйте увійти.',
-        );
+        setError(t('auth.confirmEmail.error.timeout'));
         return;
       }
 
       if (confirmError instanceof ApiError && confirmError.status === 401 && didTimeoutOnce) {
-        setError(
-          'Ймовірно попередня спроба вже підтвердила пошту, а код став одноразовим. Спробуйте увійти.',
-        );
+        setError(t('auth.confirmEmail.error.alreadyConfirmed'));
         return;
       }
 
-      setError(getApiErrorMessage(confirmError, 'Не вдалося підтвердити пошту.'));
+      setError(getApiErrorMessage(confirmError, t('auth.confirmEmail.error.generic'), language));
     }
   };
 
@@ -108,13 +106,13 @@ const ConfirmEmailScreen = () => {
           style={styles.card}
           accessible
           importantForAccessibility="yes"
-          accessibilityLabel="Форма підтвердження пошти"
+          accessibilityLabel={t('auth.confirmEmail.formLabel')}
         >
           <Text style={styles.title} allowFontScaling>
-            Підтвердження пошти
+            {t('auth.confirmEmail.title')}
           </Text>
           <Text style={styles.subtitle} allowFontScaling>
-            Введіть email і код з листа для активації акаунта.
+            {t('auth.confirmEmail.subtitle')}
           </Text>
 
           <View style={styles.fieldGroup}>
@@ -131,15 +129,15 @@ const ConfirmEmailScreen = () => {
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
               editable={!confirmEmailMutation.isPending}
-              accessibilityLabel="Електронна пошта"
-              accessibilityHint="Email, на який отримано код підтвердження"
+              accessibilityLabel={t('auth.confirmEmail.accessibility.emailLabel')}
+              accessibilityHint={t('auth.confirmEmail.accessibility.emailHint')}
               importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              Код підтвердження
+              {t('auth.confirmEmail.tokenLabel')}
             </Text>
             <TextInput
               style={styles.input}
@@ -148,11 +146,11 @@ const ConfirmEmailScreen = () => {
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="one-time-code"
-              placeholder="Введіть код із листа"
+              placeholder={t('auth.confirmEmail.tokenPlaceholder')}
               placeholderTextColor={colors.textSecondary}
               editable={!confirmEmailMutation.isPending}
-              accessibilityLabel="Код підтвердження"
-              accessibilityHint="Поле для коду підтвердження email"
+              accessibilityLabel={t('auth.confirmEmail.accessibility.tokenLabel')}
+              accessibilityHint={t('auth.confirmEmail.accessibility.tokenHint')}
               importantForAccessibility="yes"
             />
           </View>
@@ -171,8 +169,8 @@ const ConfirmEmailScreen = () => {
             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Підтвердити пошту"
-            accessibilityHint="Надсилає код підтвердження"
+            accessibilityLabel={t('auth.confirmEmail.accessibility.confirmButtonLabel')}
+            accessibilityHint={t('auth.confirmEmail.accessibility.confirmButtonHint')}
             accessibilityState={{ disabled: confirmEmailMutation.isPending }}
             importantForAccessibility="yes"
           >
@@ -180,7 +178,7 @@ const ConfirmEmailScreen = () => {
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryButtonText} allowFontScaling>
-                Підтвердити
+                {t('auth.confirmEmail.confirm')}
               </Text>
             )}
           </Pressable>
@@ -196,13 +194,13 @@ const ConfirmEmailScreen = () => {
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             accessibilityRole="button"
-            accessibilityLabel="Повернутися до входу"
-            accessibilityHint="Переходить на екран входу"
+            accessibilityLabel={t('auth.confirmEmail.accessibility.toLoginButtonLabel')}
+            accessibilityHint={t('auth.confirmEmail.accessibility.toLoginButtonHint')}
             accessibilityState={{ disabled: confirmEmailMutation.isPending }}
             importantForAccessibility="yes"
           >
             <Text style={styles.secondaryButtonText} allowFontScaling>
-              До входу
+              {t('auth.confirmEmail.toLogin')}
             </Text>
           </Pressable>
         </View>

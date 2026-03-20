@@ -3,6 +3,7 @@ import { getFocusedRouteNameFromRoute, type NavigatorScreenParams } from '@react
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import useAuthStore from '@/context/Auth-store';
+import useLanguageStore from '@/context/Language-store';
 import Header from '@/modules/Header/Header';
 import ConfirmEmailScreen from '@/src/features/auth/screens/ConfirmEmailScreen';
 import LoginScreen from '@/src/features/auth/screens/LoginScreen';
@@ -12,6 +13,7 @@ import AchievementsScreen from '@/src/features/profile/screens/AchievementsScree
 import EarnedBadgesScreen from '@/src/features/profile/screens/EarnedBadgesScreen';
 import SettingsScreen from '@/src/features/profile/screens/SettingsScreen';
 import PlanPreviewScreen from '@/src/features/chat/screens/PlanPreviewScreen';
+import { useI18n } from '@/src/i18n/useI18n';
 import RoleBasedNavigator from '@/src/navigation/RoleBasedNavigator';
 import { getMainHeaderTitle, resolveNavigationRole } from '@/src/navigation/navigation-config';
 import type { GeneratedPlan } from '@/shared/models/mvp-contracts.model';
@@ -54,6 +56,8 @@ const Stack = createNativeStackNavigator<AppStackParamList>();
 export default function AppNavigator() {
   const role = useAuthStore((s) => s.role);
   const isHydrated = useAuthStore((s) => s.isHydrated);
+  const language = useLanguageStore((s) => s.language);
+  const { t } = useI18n();
   const resolvedRoleState = resolveNavigationRole({ isHydrated, role });
   const resolvedRole = resolvedRoleState === 'loading' ? 'child' : resolvedRoleState;
 
@@ -66,12 +70,14 @@ export default function AppNavigator() {
           headerTitle: getMainHeaderTitle(
             (getFocusedRouteNameFromRoute(route as never) ?? 'Home') as keyof MainTabParamList,
             resolvedRole,
+            language,
           ),
           header: () => (
             <Header
               title={getMainHeaderTitle(
                 (getFocusedRouteNameFromRoute(route as never) ?? 'Home') as keyof MainTabParamList,
                 resolvedRole,
+                language,
               )}
               onAiPress={() =>
                 navigation.navigate('MainTabs', {
@@ -93,7 +99,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Plan Preview"
+              title={t('navigation.planPreview')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
@@ -111,7 +117,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Settings"
+              title={t('navigation.settings')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
@@ -129,7 +135,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Achievements"
+              title={t('navigation.achievements')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
@@ -147,7 +153,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Earned Badges"
+              title={t('navigation.earnedBadges')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
@@ -165,7 +171,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Увійти"
+              title={t('navigation.login')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
@@ -183,7 +189,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Реєстрація"
+              title={t('navigation.registration')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
@@ -201,7 +207,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Підтвердження пошти"
+              title={t('navigation.confirmEmail')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
@@ -219,7 +225,7 @@ export default function AppNavigator() {
         options={({ navigation }) => ({
           header: () => (
             <Header
-              title="Відновлення пароля"
+              title={t('navigation.resetPassword')}
               showBackButton
               onBackPress={() => navigation.goBack()}
               onAiPress={() =>
