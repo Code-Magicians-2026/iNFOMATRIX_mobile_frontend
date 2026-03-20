@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { useI18n } from '@/src/i18n/useI18n';
 import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
 import { progressService, questsService, userService } from '@/src/integration/services';
 import type { ProgressSummary, Quest, UserProfile } from '@/shared/models/mvp-contracts.model';
@@ -22,9 +23,76 @@ const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 const ChildHomeScreen = () => {
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
+  const { language } = useI18n();
   const styles = React.useMemo(
     () => getStyles(cardMaxWidth, isTablet, spacing),
     [cardMaxWidth, isTablet, spacing],
+  );
+
+  const copy = React.useMemo(
+    () =>
+      language === 'uk'
+        ? {
+            sessionExpired: 'Сесія завершилась. Увійдіть знову, щоб завантажити дашборд дитини.',
+            loadError: 'Не вдалося завантажити дашборд дитини. Спробуйте ще раз.',
+            loading: 'Завантаження дашборду дитини...',
+            headerTitle: 'Головна',
+            headerSubtitle: (name: string) => `Привіт, ${name}!`,
+            heroFallback: 'Герой',
+            dashboardErrorTitle: 'Помилка дашборду',
+            greetingTitle: 'Вітання',
+            greetingSubtitle: 'Ваш щоденний огляд',
+            greetingLine: (name: string) => `Привіт, ${name}`,
+            explorerFallback: 'Дослідник',
+            greetingHint: 'Підтримуйте streak і завершуйте квести на сьогодні.',
+            todayQuestsTitle: 'Квести на сьогодні',
+            todayQuestsSubtitle: 'Попередній перегляд',
+            noQuestsTitle: 'Квестів ще немає',
+            noQuestsDescription: 'Попросіть дорослого згенерувати та підтвердити план.',
+            questMeta: (quest: Quest) =>
+              `${quest.status.toUpperCase()} | +${quest.rewardXp} XP | ${quest.estimatedMinutes} хв`,
+            progressTitle: 'Прогрес',
+            progressSubtitle: 'Ключові метрики',
+            completedToday: (value: number) => `Завершено сьогодні: ${value}`,
+            totalXp: (value: number) => `Загальний XP: ${value}`,
+            streak: (value: number) => `Streak: ${value} дн.`,
+            level: (value: number) => `Рівень: ${value}`,
+            nextLevel: (percent: number, xp: number) =>
+              `Прогрес до наступного рівня: ${percent}% (залишилось ${xp} XP)`,
+            refreshing: 'Оновлення...',
+            refresh: 'Оновити дашборд',
+          }
+        : {
+            sessionExpired: 'Session expired. Sign in again to load child dashboard data.',
+            loadError: 'Failed to load child dashboard data. Please try again.',
+            loading: 'Loading child dashboard...',
+            headerTitle: 'Home',
+            headerSubtitle: (name: string) => `Hello, ${name}!`,
+            heroFallback: 'Hero',
+            dashboardErrorTitle: 'Dashboard error',
+            greetingTitle: 'Greeting',
+            greetingSubtitle: 'Your daily overview',
+            greetingLine: (name: string) => `Hi, ${name}`,
+            explorerFallback: 'Explorer',
+            greetingHint: "Keep your streak alive and finish today's quests.",
+            todayQuestsTitle: 'Today Quests',
+            todayQuestsSubtitle: 'Preview',
+            noQuestsTitle: 'No quests yet',
+            noQuestsDescription: 'Ask adult to generate and approve a plan.',
+            questMeta: (quest: Quest) =>
+              `${quest.status.toUpperCase()} | +${quest.rewardXp} XP | ${quest.estimatedMinutes} min`,
+            progressTitle: 'Progress',
+            progressSubtitle: 'Core metrics',
+            completedToday: (value: number) => `Completed today: ${value}`,
+            totalXp: (value: number) => `Total XP: ${value}`,
+            streak: (value: number) => `Streak: ${value} days`,
+            level: (value: number) => `Level: ${value}`,
+            nextLevel: (percent: number, xp: number) =>
+              `Progress to next level: ${percent}% (${xp} XP left)`,
+            refreshing: 'Refreshing...',
+            refresh: 'Refresh dashboard',
+          },
+    [language],
   );
 
   const [me, setMe] = React.useState<UserProfile | null>(null);
@@ -56,16 +124,16 @@ const ChildHomeScreen = () => {
       setProgress(progressData);
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-        setScreenError('Session expired. Sign in again to load child dashboard data.');
+        setScreenError(copy.sessionExpired);
       } else {
-        setScreenError(getApiErrorMessage(error, 'Failed to load child dashboard data. Please try again.'));
+        setScreenError(getApiErrorMessage(error, copy.loadError, language));
       }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
       lastDashboardRefreshAtRef.current = Date.now();
     }
-  }, []);
+  }, [copy.loadError, copy.sessionExpired, language]);
 
   React.useEffect(() => {
     void loadDashboard(true);
@@ -103,28 +171,28 @@ const ChildHomeScreen = () => {
   if (isLoading) {
     return (
       <ScreenContainer centered>
-        <LoadingState label="Loading child dashboard..." />
+        <LoadingState label={copy.loading} />
       </ScreenContainer>
     );
   }
 
   return (
     <ScreenContainer>
-      <SectionHeader title="Home" subtitle={`Hello, ${me?.fullName ?? 'Hero'}!`} />
+      <SectionHeader title={copy.headerTitle} subtitle={copy.headerSubtitle(me?.fullName ?? copy.heroFallback)} />
 
-      {screenError ? <EmptyState title="Dashboard error" description={screenError} /> : null}
+      {screenError ? <EmptyState title={copy.dashboardErrorTitle} description={screenError} /> : null}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <StatCard title="Greeting" subtitle="Your daily overview" style={styles.card}>
+        <StatCard title={copy.greetingTitle} subtitle={copy.greetingSubtitle} style={styles.card}>
           <Text style={[styles.headingValue, { color: colors.text }]} allowFontScaling>
-            Hi, {me?.fullName ?? 'Explorer'}
+            {copy.greetingLine(me?.fullName ?? copy.explorerFallback)}
           </Text>
           <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-            Keep your streak alive and finish today&apos;s quests.
+            {copy.greetingHint}
           </Text>
         </StatCard>
 
-        <StatCard title="Today Quests" subtitle="Preview" style={styles.card}>
+        <StatCard title={copy.todayQuestsTitle} subtitle={copy.todayQuestsSubtitle} style={styles.card}>
           {todayQuests.length > 0 ? (
             todayQuests.map((quest) => (
               <View key={quest.id} style={[styles.questItem, { borderColor: colors.border }]}>
@@ -132,27 +200,27 @@ const ChildHomeScreen = () => {
                   {quest.title}
                 </Text>
                 <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                  {quest.status.toUpperCase()} | +{quest.rewardXp} XP | {quest.estimatedMinutes} min
+                  {copy.questMeta(quest)}
                 </Text>
               </View>
             ))
           ) : (
-            <EmptyState title="No quests yet" description="Ask adult to generate and approve a plan." />
+            <EmptyState title={copy.noQuestsTitle} description={copy.noQuestsDescription} />
           )}
         </StatCard>
 
-        <StatCard title="Progress" subtitle="Core metrics" style={styles.card}>
+        <StatCard title={copy.progressTitle} subtitle={copy.progressSubtitle} style={styles.card}>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Completed today: {completedToday}
+            {copy.completedToday(completedToday)}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Total XP: {totalXp}
+            {copy.totalXp(totalXp)}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Streak: {streak} days
+            {copy.streak(streak)}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Level: {level}
+            {copy.level(level)}
           </Text>
 
           <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
@@ -168,12 +236,12 @@ const ChildHomeScreen = () => {
           </View>
 
           <Text style={[styles.progressHint, { color: colors.textSecondary }]} allowFontScaling>
-            Progress to next level: {levelProgressPercent}% ({xpToNextLevel} XP left)
+            {copy.nextLevel(levelProgressPercent, xpToNextLevel)}
           </Text>
         </StatCard>
 
         <PrimaryButton
-          label={isRefreshing ? 'Refreshing...' : 'Refresh dashboard'}
+          label={isRefreshing ? copy.refreshing : copy.refresh}
           onPress={() => {
             void loadDashboard(false);
           }}

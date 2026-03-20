@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '@/context/Auth-store';
 import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
+import { useI18n } from '@/src/i18n/useI18n';
 import { ApiError, getApiErrorMessage } from '@/src/features/auth/api/client';
 import type {
   ChildProfile,
@@ -44,7 +45,7 @@ import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 const XP_PER_LEVEL = 300;
 const HOME_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
-const PLAN_PROMPTS = [
+const DEFAULT_PLAN_PROMPTS = [
   'Build a balanced plan for school progress and healthy routine.',
   'Create a motivational quest sequence with short achievable steps.',
   'Generate a confidence plan focused on consistency and wins.',
@@ -234,9 +235,250 @@ const AdultHomeScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
+  const { language } = useI18n();
   const styles = React.useMemo(
     () => getStyles(cardMaxWidth, isTablet, spacing),
     [cardMaxWidth, isTablet, spacing],
+  );
+  const copy = React.useMemo(
+    () =>
+      language === 'uk'
+        ? {
+            signInToLoadFamilyDashboard: 'Увійдіть, щоб завантажити дані сімейної панелі.',
+            sessionExpired: 'Сесія завершилась. Увійдіть знову, щоб завантажити панель.',
+            failedToLoadDashboard: 'Не вдалося завантажити панель. Спробуйте ще раз.',
+            refreshFamilyFailed: 'Помилка refreshFamily',
+            getFamiliesFailed: 'Помилка GET /api/families',
+            signInToCreateChild: 'Спочатку увійдіть, щоб створити профіль дитини.',
+            firstNameRequired: "Ім'я обов'язкове.",
+            lastNameRequired: 'Прізвище обовʼязкове.',
+            childPasswordTooShort: 'Пароль дитини має містити щонайменше 6 символів.',
+            failedToCreateChild: 'Не вдалося створити профіль дитини. Спробуйте ще раз.',
+            failedToCollectDiagnostics: 'Не вдалося зібрати діагностику сімʼї.',
+            diagnosticsTitle: 'Діагностика:',
+            diagnosticsPostFamilyId: (value: string) => `POST /api/children familyId: ${value}`,
+            diagnosticsCreateStrategy: (value: string) => `стратегія створення: ${value}`,
+            diagnosticsStoreFamilyId: (value: string) => `store family.id: ${value}`,
+            diagnosticsRefreshFamilyId: (value: string) => `refreshFamily family.id: ${value}`,
+            diagnosticsGetFamiliesPayload: (value: string) => `GET /api/families payload: ${value}`,
+            diagnosticsRefreshFamilyError: (value: string) => `refreshFamily помилка: ${value}`,
+            diagnosticsGetFamiliesError: (value: string) => `GET /api/families помилка: ${value}`,
+            selectChildProfileFirst: 'Спочатку оберіть профіль дитини.',
+            promptRequired: "Поле prompt обов'язкове.",
+            failedToGeneratePlan: 'Не вдалося згенерувати AI план. Спробуйте інші параметри.',
+            failedToApprovePlan: 'Не вдалося підтвердити згенерований план.',
+            failedToOpenPricingPage: 'Не вдалося відкрити сторінку тарифів. Спробуйте ще раз.',
+            loadingDashboard: 'Завантаження панелі...',
+            headerTitle: 'Головна',
+            headerSubtitle: (name: string) => `Панель дорослого: ${name}`,
+            parentFallback: 'Батько/Мати',
+            dashboardErrorTitle: 'Помилка панелі',
+            selectedChildTitle: 'Обрана дитина',
+            selectedChildSubtitle: 'Поточний профіль фокусу',
+            ageLabel: 'Вік',
+            levelLabel: 'Рівень',
+            xpLabel: 'XP',
+            streakLabel: 'Streak',
+            activeQuestsLabel: 'Активні квести',
+            noActiveChildTitle: 'Активну дитину не обрано',
+            selectChildBelowDescription: 'Оберіть дитину нижче, щоб активувати ціль планування.',
+            createChildFirstDescription: 'Створіть профіль дитини, щоб почати.',
+            childrenTitle: 'Діти',
+            childrenSubtitle: 'Оберіть, для кого ви плануєте',
+            childRowMeta: (age: string, level: number) => `Вік ${age} | Рів. ${level}`,
+            noChildrenTitle: 'Ще немає дітей',
+            noChildrenDescription: 'Створіть дитину, щоб почати планування.',
+            createChildButton: 'Створити дитину',
+            openAiBuilderButton: 'Відкрити AI конструктор',
+            noActiveChildForPlanDescription: 'Оберіть дитину зі списку, щоб увімкнути AI генерацію плану.',
+            recentPlansTitle: 'Останні згенеровані плани',
+            recentPlansSubtitle: 'Останній AI результат',
+            childLabel: 'Дитина',
+            unknownChild: 'Невідомо',
+            questsLabel: 'Квести',
+            statusLabel: 'Статус',
+            approvingPlan: 'Підтвердження...',
+            approvePlan: 'Підтвердити план',
+            noPlansTitle: 'Немає згенерованих планів',
+            noPlansDescription: 'Натисніть "Створити AI план", щоб згенерувати план.',
+            greetingTitle: 'Вітання',
+            greetingSubtitle: 'Ваш щоденний огляд',
+            greetingLine: (name: string) => `Привіт, ${name}`,
+            explorerFallback: 'Дослідник',
+            greetingHint: 'Підтримуйте streak і завершуйте квести на сьогодні.',
+            todayQuestsTitle: 'Квести на сьогодні',
+            preview: 'Попередній перегляд',
+            questMeta: (quest: Quest) =>
+              `${quest.status.toUpperCase()} | +${quest.rewardXp} XP | ${quest.estimatedMinutes} хв`,
+            noQuestsTitle: 'Квестів ще немає',
+            noQuestsDescription: 'Попросіть дорослого згенерувати та підтвердити план.',
+            progressTitle: 'Прогрес',
+            coreMetrics: 'Ключові метрики',
+            completedToday: (value: number) => `Завершено сьогодні: ${value}`,
+            totalXp: (value: number) => `Загальний XP: ${value}`,
+            streak: (value: number) => `Streak: ${value} дн.`,
+            level: (value: number) => `Рівень: ${value}`,
+            progressToNextLevel: (percent: number, xp: number) =>
+              `Прогрес до наступного рівня: ${percent}% (залишилось ${xp} XP)`,
+            refreshing: 'Оновлення...',
+            refreshDashboard: 'Оновити панель',
+            createChildModalTitle: 'Створити дитину',
+            createChildModalSubtitle: 'Додайте профіль і встановіть активну ціль планування.',
+            firstNameLabel: "Ім'я",
+            firstNamePlaceholder: "Ім'я дитини",
+            lastNameLabel: 'Прізвище',
+            lastNamePlaceholder: 'Прізвище дитини',
+            childPasswordLabel: 'Пароль дитини',
+            childPasswordPlaceholder: 'Мінімум 6 символів',
+            cancel: 'Скасувати',
+            saving: 'Збереження...',
+            saveChild: 'Зберегти дитину',
+            childLoginTitle: 'Вхід дитини',
+            childLoginSubtitle: 'Профіль дитини створено. Використовуйте ці дані для входу:',
+            nameLabel: "Ім'я",
+            emailLabel: 'Email',
+            done: 'Готово',
+            aiBuilderTitle: 'AI Конструктор',
+            aiBuilderSubtitle: (name: string) => `Створіть план квестів для ${name} з власними налаштуваннями.`,
+            selectedChildFallback: 'обраної дитини',
+            quickTemplates: 'Швидкі шаблони',
+            promptLabel: 'Запит',
+            promptPlaceholder: 'Опишіть план і очікуваний результат квестів...',
+            generating: 'Генерація...',
+            generatePlan: 'Згенерувати план',
+            planPrompts: [
+              'Створи збалансований план для прогресу в школі та здорового режиму.',
+              'Створи мотиваційну послідовність квестів із короткими досяжними кроками.',
+              'Згенеруй план впевненості з фокусом на стабільність і маленькі перемоги.',
+            ],
+            planStatus: (status: string) => {
+              const normalized = status.trim().toLowerCase();
+              if (normalized === 'draft') {
+                return 'чернетка';
+              }
+              if (normalized === 'approved') {
+                return 'підтверджено';
+              }
+              if (normalized === 'active') {
+                return 'активний';
+              }
+              if (normalized === 'completed') {
+                return 'завершено';
+              }
+              if (normalized === 'archived') {
+                return 'архів';
+              }
+              return status;
+            },
+          }
+        : {
+            signInToLoadFamilyDashboard: 'Sign in to load family dashboard data.',
+            sessionExpired: 'Session expired. Sign in again to load dashboard data.',
+            failedToLoadDashboard: 'Failed to load dashboard data. Please try again.',
+            refreshFamilyFailed: 'refreshFamily failed',
+            getFamiliesFailed: 'GET /api/families failed',
+            signInToCreateChild: 'Sign in first to create a child profile.',
+            firstNameRequired: 'First name is required.',
+            lastNameRequired: 'Last name is required.',
+            childPasswordTooShort: 'Child password must be at least 6 characters.',
+            failedToCreateChild: 'Failed to create child profile. Please try again.',
+            failedToCollectDiagnostics: 'Failed to collect family diagnostics.',
+            diagnosticsTitle: 'Diagnostics:',
+            diagnosticsPostFamilyId: (value: string) => `POST /api/children familyId: ${value}`,
+            diagnosticsCreateStrategy: (value: string) => `create strategy: ${value}`,
+            diagnosticsStoreFamilyId: (value: string) => `store family.id: ${value}`,
+            diagnosticsRefreshFamilyId: (value: string) => `refreshFamily family.id: ${value}`,
+            diagnosticsGetFamiliesPayload: (value: string) => `GET /api/families payload: ${value}`,
+            diagnosticsRefreshFamilyError: (value: string) => `refreshFamily error: ${value}`,
+            diagnosticsGetFamiliesError: (value: string) => `GET /api/families error: ${value}`,
+            selectChildProfileFirst: 'Select child profile first.',
+            promptRequired: 'Prompt is required.',
+            failedToGeneratePlan: 'Failed to generate AI plan. Please try different settings.',
+            failedToApprovePlan: 'Failed to approve generated plan.',
+            failedToOpenPricingPage: 'Failed to open pricing page. Please try again.',
+            loadingDashboard: 'Loading role dashboard...',
+            headerTitle: 'Home',
+            headerSubtitle: (name: string) => `Adult dashboard: ${name}`,
+            parentFallback: 'Parent',
+            dashboardErrorTitle: 'Dashboard error',
+            selectedChildTitle: 'Selected Child',
+            selectedChildSubtitle: 'Current focus profile',
+            ageLabel: 'Age',
+            levelLabel: 'Level',
+            xpLabel: 'XP',
+            streakLabel: 'Streak',
+            activeQuestsLabel: 'Active quests',
+            noActiveChildTitle: 'No active child selected',
+            selectChildBelowDescription: 'Select a child below to activate planning target.',
+            createChildFirstDescription: 'Create a child profile to begin.',
+            childrenTitle: 'Children',
+            childrenSubtitle: 'Choose who you are planning for',
+            childRowMeta: (age: string, level: number) => `Age ${age} | Lvl ${level}`,
+            noChildrenTitle: 'No children yet',
+            noChildrenDescription: 'Create child to start planning.',
+            createChildButton: 'Create child',
+            openAiBuilderButton: 'Open AI Builder',
+            noActiveChildForPlanDescription: 'Pick a child from the list to enable AI plan generation.',
+            recentPlansTitle: 'Recent Generated Plans',
+            recentPlansSubtitle: 'Latest AI output',
+            childLabel: 'Child',
+            unknownChild: 'Unknown',
+            questsLabel: 'Quests',
+            statusLabel: 'Status',
+            approvingPlan: 'Approving...',
+            approvePlan: 'Approve plan',
+            noPlansTitle: 'No generated plans',
+            noPlansDescription: 'Press Create AI plan to generate one.',
+            greetingTitle: 'Greeting',
+            greetingSubtitle: 'Your daily overview',
+            greetingLine: (name: string) => `Hi, ${name}`,
+            explorerFallback: 'Explorer',
+            greetingHint: "Keep your streak alive and finish today's quests.",
+            todayQuestsTitle: 'Today Quests',
+            preview: 'Preview',
+            questMeta: (quest: Quest) =>
+              `${quest.status.toUpperCase()} | +${quest.rewardXp} XP | ${quest.estimatedMinutes} min`,
+            noQuestsTitle: 'No quests yet',
+            noQuestsDescription: 'Ask adult to generate and approve a plan.',
+            progressTitle: 'Progress',
+            coreMetrics: 'Core metrics',
+            completedToday: (value: number) => `Completed today: ${value}`,
+            totalXp: (value: number) => `Total XP: ${value}`,
+            streak: (value: number) => `Streak: ${value} days`,
+            level: (value: number) => `Level: ${value}`,
+            progressToNextLevel: (percent: number, xp: number) =>
+              `Progress to next level: ${percent}% (${xp} XP left)`,
+            refreshing: 'Refreshing...',
+            refreshDashboard: 'Refresh dashboard',
+            createChildModalTitle: 'Create Child',
+            createChildModalSubtitle: 'Add profile and set active target for planning.',
+            firstNameLabel: 'First Name',
+            firstNamePlaceholder: 'Child first name',
+            lastNameLabel: 'Last Name',
+            lastNamePlaceholder: 'Child last name',
+            childPasswordLabel: 'Child Password',
+            childPasswordPlaceholder: 'Minimum 6 characters',
+            cancel: 'Cancel',
+            saving: 'Saving...',
+            saveChild: 'Save child',
+            childLoginTitle: 'Child Login',
+            childLoginSubtitle: 'Child profile created. Use these credentials to sign in:',
+            nameLabel: 'Name',
+            emailLabel: 'Email',
+            done: 'Done',
+            aiBuilderTitle: 'AI Builder',
+            aiBuilderSubtitle: (name: string) =>
+              `Build a quest plan for ${name} with custom settings.`,
+            selectedChildFallback: 'selected child',
+            quickTemplates: 'Quick templates',
+            promptLabel: 'Prompt',
+            promptPlaceholder: 'Describe the plan and expected quest outcome...',
+            generating: 'Generating...',
+            generatePlan: 'Generate plan',
+            planPrompts: [...DEFAULT_PLAN_PROMPTS],
+            planStatus: (status: string) => status,
+          },
+    [language],
   );
 
   const session = useAuthStore((s) => s.session);
@@ -270,7 +512,7 @@ const AdultHomeScreen = () => {
   const lastDashboardRefreshAtRef = React.useRef(0);
 
   const [isAiBuilderModalVisible, setIsAiBuilderModalVisible] = React.useState(false);
-  const [aiPrompt, setAiPrompt] = React.useState<string>(PLAN_PROMPTS[0]);
+  const [aiPrompt, setAiPrompt] = React.useState<string>(copy.planPrompts[0] ?? DEFAULT_PLAN_PROMPTS[0]);
   const [aiBuilderError, setAiBuilderError] = React.useState<string | null>(null);
 
   const effectiveRole = 'adult' as const;
@@ -295,7 +537,7 @@ const AdultHomeScreen = () => {
             setRecentPlans([]);
             setProgress(null);
             setTodayQuests([]);
-            setScreenError('Sign in to load family dashboard data.');
+            setScreenError(copy.signInToLoadFamilyDashboard);
             return;
           }
 
@@ -341,9 +583,9 @@ const AdultHomeScreen = () => {
         setProgress(progressData);
       } catch (error) {
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-          setScreenError('Session expired. Sign in again to load dashboard data.');
+          setScreenError(copy.sessionExpired);
         } else {
-          setScreenError(getApiErrorMessage(error, 'Failed to load dashboard data. Please try again.'));
+          setScreenError(getApiErrorMessage(error, copy.failedToLoadDashboard, language));
         }
       } finally {
         setIsLoading(false);
@@ -351,7 +593,7 @@ const AdultHomeScreen = () => {
         lastDashboardRefreshAtRef.current = Date.now();
       }
     },
-    [effectiveRole, selectedChildId, session?.accessToken, setSelectedChildId],
+    [copy.failedToLoadDashboard, copy.sessionExpired, copy.signInToLoadFamilyDashboard, effectiveRole, language, selectedChildId, session?.accessToken, setSelectedChildId],
   );
 
   React.useEffect(() => {
@@ -410,14 +652,14 @@ const AdultHomeScreen = () => {
       const refreshedFamily = await refreshFamily();
       refreshedFamilyId = toTrimmedOrNull(refreshedFamily?.id);
     } catch (error) {
-      refreshFamilyError = getApiErrorMessage(error, 'refreshFamily failed');
+      refreshFamilyError = getApiErrorMessage(error, copy.refreshFamilyFailed, language);
     }
 
     if (session?.accessToken) {
       try {
         rawFamilyPayload = await authService.getFamily(session.accessToken);
       } catch (error) {
-        getFamilyError = getApiErrorMessage(error, 'GET /api/families failed');
+        getFamilyError = getApiErrorMessage(error, copy.getFamiliesFailed, language);
       }
     }
 
@@ -429,11 +671,11 @@ const AdultHomeScreen = () => {
       refreshFamilyError,
       getFamilyError,
     };
-  }, [family?.id, refreshFamily, session?.accessToken]);
+  }, [copy.getFamiliesFailed, copy.refreshFamilyFailed, family?.id, language, refreshFamily, session?.accessToken]);
 
   const openCreateChildModal = async () => {
     if (!session) {
-      setScreenError('Sign in first to create a child profile.');
+      setScreenError(copy.signInToCreateChild);
       return;
     }
 
@@ -501,17 +743,17 @@ const AdultHomeScreen = () => {
     const firstName = childFirstName.trim();
     const lastName = childLastName.trim();
     if (!firstName) {
-      setCreateChildError('First name is required.');
+      setCreateChildError(copy.firstNameRequired);
       return;
     }
 
     if (!lastName) {
-      setCreateChildError('Last name is required.');
+      setCreateChildError(copy.lastNameRequired);
       return;
     }
 
     if (childPassword.length < 6) {
-      setCreateChildError('Child password must be at least 6 characters.');
+      setCreateChildError(copy.childPasswordTooShort);
       return;
     }
 
@@ -628,7 +870,8 @@ const AdultHomeScreen = () => {
 
       const baseErrorMessage = getApiErrorMessage(
         error,
-        'Failed to create child profile. Please try again.',
+        copy.failedToCreateChild,
+        language,
       );
 
       const normalizedBaseMessage = baseErrorMessage.toLowerCase();
@@ -640,17 +883,17 @@ const AdultHomeScreen = () => {
         const currentFamilyDebug = familyResolutionDebug ?? (await resolveFamilyId().catch(() => null));
         const diagnostics = currentFamilyDebug
           ? [
-              `POST /api/children familyId: ${usedFamilyId ?? 'null'}`,
-              `create strategy: ${createChildStrategy}`,
-              `store family.id: ${currentFamilyDebug.storeFamilyId ?? 'null'}`,
-              `refreshFamily family.id: ${currentFamilyDebug.refreshedFamilyId ?? 'null'}`,
-              `GET /api/families payload: ${formatDebugPayload(currentFamilyDebug.rawFamilyPayload)}`,
-              `refreshFamily error: ${currentFamilyDebug.refreshFamilyError ?? 'none'}`,
-              `GET /api/families error: ${currentFamilyDebug.getFamilyError ?? 'none'}`,
+              copy.diagnosticsPostFamilyId(usedFamilyId ?? 'null'),
+              copy.diagnosticsCreateStrategy(createChildStrategy),
+              copy.diagnosticsStoreFamilyId(currentFamilyDebug.storeFamilyId ?? 'null'),
+              copy.diagnosticsRefreshFamilyId(currentFamilyDebug.refreshedFamilyId ?? 'null'),
+              copy.diagnosticsGetFamiliesPayload(formatDebugPayload(currentFamilyDebug.rawFamilyPayload)),
+              copy.diagnosticsRefreshFamilyError(currentFamilyDebug.refreshFamilyError ?? 'none'),
+              copy.diagnosticsGetFamiliesError(currentFamilyDebug.getFamilyError ?? 'none'),
             ]
-          : ['Failed to collect family diagnostics.'];
+          : [copy.failedToCollectDiagnostics];
 
-        setCreateChildError(`${baseErrorMessage}\n\nDiagnostics:\n${diagnostics.join('\n')}`);
+        setCreateChildError(`${baseErrorMessage}\n\n${copy.diagnosticsTitle}\n${diagnostics.join('\n')}`);
         return;
       }
 
@@ -666,7 +909,11 @@ const AdultHomeScreen = () => {
     }
 
     setAiBuilderError(null);
-    setAiPrompt(PLAN_PROMPTS[Math.floor(Math.random() * PLAN_PROMPTS.length)] ?? PLAN_PROMPTS[0]);
+    setAiPrompt(
+      copy.planPrompts[Math.floor(Math.random() * copy.planPrompts.length)] ??
+        copy.planPrompts[0] ??
+        DEFAULT_PLAN_PROMPTS[0],
+    );
     setIsAiBuilderModalVisible(true);
   };
 
@@ -681,13 +928,13 @@ const AdultHomeScreen = () => {
 
   const handleCreateAiPlan = async () => {
     if (!selectedChild) {
-      setAiBuilderError('Select child profile first.');
+      setAiBuilderError(copy.selectChildProfileFirst);
       return;
     }
 
     const normalizedPrompt = aiPrompt.trim();
     if (!normalizedPrompt) {
-      setAiBuilderError('Prompt is required.');
+      setAiBuilderError(copy.promptRequired);
       return;
     }
 
@@ -707,7 +954,7 @@ const AdultHomeScreen = () => {
       }
     } catch (error) {
       setAiBuilderError(
-        getApiErrorMessage(error, 'Failed to generate AI plan. Please try different settings.'),
+        getApiErrorMessage(error, copy.failedToGeneratePlan, language),
       );
     } finally {
       setIsGeneratingPlan(false);
@@ -734,7 +981,7 @@ const AdultHomeScreen = () => {
 
       navigation.navigate('MainTabs', { screen: 'Quests' });
     } catch {
-      setScreenError('Failed to approve generated plan.');
+      setScreenError(copy.failedToApprovePlan);
     } finally {
       setApprovingPlanId(null);
     }
@@ -743,7 +990,7 @@ const AdultHomeScreen = () => {
   if (isLoading) {
     return (
       <ScreenContainer centered>
-        <LoadingState label="Loading role dashboard..." />
+        <LoadingState label={copy.loadingDashboard} />
       </ScreenContainer>
     );
   }
@@ -751,25 +998,25 @@ const AdultHomeScreen = () => {
   return (
     <ScreenContainer>
       <SectionHeader
-        title="Home"
-        subtitle={`Adult dashboard: ${me?.fullName ?? 'Parent'}`}
+        title={copy.headerTitle}
+        subtitle={copy.headerSubtitle(me?.fullName ?? copy.parentFallback)}
       />
 
-      {screenError ? <EmptyState title="Dashboard error" description={screenError} /> : null}
+      {screenError ? <EmptyState title={copy.dashboardErrorTitle} description={screenError} /> : null}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <UpgradePlanBanner
           style={styles.card}
           onOpenFailed={() => {
-            setScreenError('Failed to open pricing page. Please try again.');
+            setScreenError(copy.failedToOpenPricingPage);
           }}
         />
 
         {effectiveRole === 'adult' ? (
           <>
             <StatCard
-              title="Selected Child"
-              subtitle="Current focus profile"
+              title={copy.selectedChildTitle}
+              subtitle={copy.selectedChildSubtitle}
               style={styles.card}
             >
               {selectedChild ? (
@@ -778,28 +1025,30 @@ const AdultHomeScreen = () => {
                     {selectedChild.fullName}
                   </Text>
                   <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-                    Age: {formatChildAge(selectedChild.age)} | Level: {progress?.level ?? selectedChild.level}
+                    {copy.ageLabel}: {formatChildAge(selectedChild.age)} | {copy.levelLabel}:{' '}
+                    {progress?.level ?? selectedChild.level}
                   </Text>
                   <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-                    XP: {progress?.xp ?? selectedChild.xp} | Streak: {progress?.streak ?? selectedChild.streak}
+                    {copy.xpLabel}: {progress?.xp ?? selectedChild.xp} | {copy.streakLabel}:{' '}
+                    {progress?.streak ?? selectedChild.streak}
                   </Text>
                   <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-                    Active quests: {progress?.activeQuestsCount ?? 0}
+                    {copy.activeQuestsLabel}: {progress?.activeQuestsCount ?? 0}
                   </Text>
                 </>
               ) : (
                 <EmptyState
-                  title="No active child selected"
+                  title={copy.noActiveChildTitle}
                   description={
                     children.length > 0
-                      ? 'Select a child below to activate planning target.'
-                      : 'Create a child profile to begin.'
+                      ? copy.selectChildBelowDescription
+                      : copy.createChildFirstDescription
                   }
                 />
               )}
             </StatCard>
 
-            <StatCard title="Children" subtitle="Choose who you are planning for" style={styles.card}>
+            <StatCard title={copy.childrenTitle} subtitle={copy.childrenSubtitle} style={styles.card}>
               {children.length > 0 ? (
                 <View style={styles.childList}>
                   {children.map((child) => {
@@ -829,19 +1078,19 @@ const AdultHomeScreen = () => {
                           style={[styles.childMeta, { color: isSelected ? '#ffe7ee' : colors.textSecondary }]}
                           allowFontScaling
                         >
-                          Age {formatChildAge(child.age)} | Lvl {child.level}
+                          {copy.childRowMeta(formatChildAge(child.age), child.level)}
                         </Text>
                       </Pressable>
                     );
                   })}
                 </View>
               ) : (
-                <EmptyState title="No children yet" description="Create child to start planning." />
+                <EmptyState title={copy.noChildrenTitle} description={copy.noChildrenDescription} />
               )}
 
               <View style={styles.actionButtonsWrap}>
                 <PrimaryButton
-                  label="Create child"
+                  label={copy.createChildButton}
                   onPress={() => {
                     void openCreateChildModal();
                   }}
@@ -849,21 +1098,21 @@ const AdultHomeScreen = () => {
                   style={styles.actionButton}
                 />
                 <PrimaryButton
-                  label="Open AI Builder"
+                  label={copy.openAiBuilderButton}
                   onPress={openAiBuilderModal}
                   disabled={!selectedChild}
                   style={styles.actionButton}
                 />
                 {children.length > 0 && !selectedChild ? (
                   <EmptyState
-                    title="No active child selected"
-                    description="Pick a child from the list to enable AI plan generation."
+                    title={copy.noActiveChildTitle}
+                    description={copy.noActiveChildForPlanDescription}
                   />
                 ) : null}
               </View>
             </StatCard>
 
-            <StatCard title="Recent Generated Plans" subtitle="Latest AI output" style={styles.card}>
+            <StatCard title={copy.recentPlansTitle} subtitle={copy.recentPlansSubtitle} style={styles.card}>
               {recentPlans.length > 0 ? (
                 recentPlans.map((plan) => {
                   const isDraft = plan.status === 'draft';
@@ -880,7 +1129,8 @@ const AdultHomeScreen = () => {
                         {plan.summary}
                       </Text>
                       <Text style={[styles.planMeta, { color: colors.textSecondary }]} allowFontScaling>
-                        Child: {targetChild?.fullName ?? 'Unknown'} | Quests: {plan.quests.length} | Status: {plan.status}
+                        {copy.childLabel}: {targetChild?.fullName ?? copy.unknownChild} | {copy.questsLabel}:{' '}
+                        {plan.quests.length} | {copy.statusLabel}: {copy.planStatus(plan.status)}
                       </Text>
 
                       {isDraft ? (
@@ -892,7 +1142,7 @@ const AdultHomeScreen = () => {
                           android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
                         >
                           <Text style={[styles.approveButtonLabel, { color: colors.text }]} allowFontScaling>
-                            {approvingPlanId === plan.id ? 'Approving...' : 'Approve plan'}
+                            {approvingPlanId === plan.id ? copy.approvingPlan : copy.approvePlan}
                           </Text>
                         </Pressable>
                       ) : null}
@@ -900,22 +1150,22 @@ const AdultHomeScreen = () => {
                   );
                 })
               ) : (
-                <EmptyState title="No generated plans" description="Press Create AI plan to generate one." />
+                <EmptyState title={copy.noPlansTitle} description={copy.noPlansDescription} />
               )}
             </StatCard>
           </>
         ) : (
           <>
-            <StatCard title="Greeting" subtitle="Your daily overview" style={styles.card}>
+            <StatCard title={copy.greetingTitle} subtitle={copy.greetingSubtitle} style={styles.card}>
               <Text style={[styles.headingValue, { color: colors.text }]} allowFontScaling>
-                Hi, {me?.fullName ?? 'Explorer'}
+                {copy.greetingLine(me?.fullName ?? copy.explorerFallback)}
               </Text>
               <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-                Keep your streak alive and finish today&apos;s quests.
+                {copy.greetingHint}
               </Text>
             </StatCard>
 
-            <StatCard title="Today Quests" subtitle="Preview" style={styles.card}>
+            <StatCard title={copy.todayQuestsTitle} subtitle={copy.preview} style={styles.card}>
               {todayQuests.length > 0 ? (
                 todayQuests.map((quest) => (
                   <View key={quest.id} style={[styles.questItem, { borderColor: colors.border }]}> 
@@ -923,27 +1173,27 @@ const AdultHomeScreen = () => {
                       {quest.title}
                     </Text>
                     <Text style={[styles.questMeta, { color: colors.textSecondary }]} allowFontScaling>
-                      {quest.status.toUpperCase()} | +{quest.rewardXp} XP | {quest.estimatedMinutes} min
+                      {copy.questMeta(quest)}
                     </Text>
                   </View>
                 ))
               ) : (
-                <EmptyState title="No quests yet" description="Ask adult to generate and approve a plan." />
+                <EmptyState title={copy.noQuestsTitle} description={copy.noQuestsDescription} />
               )}
             </StatCard>
 
-            <StatCard title="Progress" subtitle="Core metrics" style={styles.card}>
+            <StatCard title={copy.progressTitle} subtitle={copy.coreMetrics} style={styles.card}>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Completed today: {completedToday}
+                {copy.completedToday(completedToday)}
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Total XP: {totalXp}
+                {copy.totalXp(totalXp)}
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Streak: {streak} days
+                {copy.streak(streak)}
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Level: {level}
+                {copy.level(level)}
               </Text>
 
               <View style={[styles.progressTrack, { backgroundColor: colors.border }]}> 
@@ -959,14 +1209,14 @@ const AdultHomeScreen = () => {
               </View>
 
               <Text style={[styles.progressHint, { color: colors.textSecondary }]} allowFontScaling>
-                Progress to next level: {levelProgressPercent}% ({xpToNextLevel} XP left)
+                {copy.progressToNextLevel(levelProgressPercent, xpToNextLevel)}
               </Text>
             </StatCard>
           </>
         )}
 
         <PrimaryButton
-          label={isRefreshing ? 'Refreshing...' : 'Refresh dashboard'}
+          label={isRefreshing ? copy.refreshing : copy.refreshDashboard}
           onPress={() => {
             void loadDashboard(false);
           }}
@@ -985,19 +1235,19 @@ const AdultHomeScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
             <Text style={[styles.modalTitle, { color: colors.text }]} allowFontScaling>
-              Create Child
+              {copy.createChildModalTitle}
             </Text>
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]} allowFontScaling>
-              Add profile and set active target for planning.
+              {copy.createChildModalSubtitle}
             </Text>
 
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              First Name
+              {copy.firstNameLabel}
             </Text>
             <TextInput
               value={childFirstName}
               onChangeText={setChildFirstName}
-              placeholder="Child first name"
+              placeholder={copy.firstNamePlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
               autoCapitalize="words"
@@ -1005,12 +1255,12 @@ const AdultHomeScreen = () => {
             />
 
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Last Name
+              {copy.lastNameLabel}
             </Text>
             <TextInput
               value={childLastName}
               onChangeText={setChildLastName}
-              placeholder="Child last name"
+              placeholder={copy.lastNamePlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
               autoCapitalize="words"
@@ -1018,12 +1268,12 @@ const AdultHomeScreen = () => {
             />
 
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Child Password
+              {copy.childPasswordLabel}
             </Text>
             <TextInput
               value={childPassword}
               onChangeText={setChildPassword}
-              placeholder="Minimum 6 characters"
+              placeholder={copy.childPasswordPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
               secureTextEntry
@@ -1054,7 +1304,7 @@ const AdultHomeScreen = () => {
                 android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               >
                 <Text style={[styles.modalButtonLabel, { color: colors.text }]} allowFontScaling>
-                  Cancel
+                  {copy.cancel}
                 </Text>
               </Pressable>
 
@@ -1072,7 +1322,7 @@ const AdultHomeScreen = () => {
                 android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
               >
                 <Text style={[styles.modalButtonLabel, styles.modalButtonLabelPrimary]} allowFontScaling>
-                  {isCreatingChild ? 'Saving...' : 'Save child'}
+                  {isCreatingChild ? copy.saving : copy.saveChild}
                 </Text>
               </Pressable>
             </View>
@@ -1089,22 +1339,22 @@ const AdultHomeScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]} allowFontScaling>
-              Child Login
+              {copy.childLoginTitle}
             </Text>
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]} allowFontScaling>
-              Child profile created. Use these credentials to sign in:
+              {copy.childLoginSubtitle}
             </Text>
 
             <View style={[styles.loginSummaryBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
               <Text style={[styles.loginSummaryLabel, { color: colors.textSecondary }]} allowFontScaling>
-                Name
+                {copy.nameLabel}
               </Text>
               <Text style={[styles.loginSummaryValue, { color: colors.text }]} allowFontScaling>
                 {childLoginSummary?.fullName ?? '—'}
               </Text>
 
               <Text style={[styles.loginSummaryLabel, { color: colors.textSecondary }]} allowFontScaling>
-                Email
+                {copy.emailLabel}
               </Text>
               <Text style={[styles.loginSummaryValue, { color: colors.text }]} allowFontScaling>
                 {childLoginSummary?.email ?? '—'}
@@ -1121,7 +1371,7 @@ const AdultHomeScreen = () => {
               android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
             >
               <Text style={[styles.modalButtonLabel, styles.modalButtonLabelPrimary]} allowFontScaling>
-                Done
+                {copy.done}
               </Text>
             </Pressable>
           </View>
@@ -1137,17 +1387,17 @@ const AdultHomeScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]} allowFontScaling>
-              AI Builder
+              {copy.aiBuilderTitle}
             </Text>
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]} allowFontScaling>
-              Build a quest plan for {selectedChild?.fullName ?? 'selected child'} with custom settings.
+              {copy.aiBuilderSubtitle(selectedChild?.fullName ?? copy.selectedChildFallback)}
             </Text>
 
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Quick templates
+              {copy.quickTemplates}
             </Text>
             <View style={styles.templateList}>
-              {PLAN_PROMPTS.map((prompt) => {
+              {copy.planPrompts.map((prompt) => {
                 const isSelected = aiPrompt.trim() === prompt;
                 return (
                   <Pressable
@@ -1175,12 +1425,12 @@ const AdultHomeScreen = () => {
             </View>
 
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]} allowFontScaling>
-              Prompt
+              {copy.promptLabel}
             </Text>
             <TextInput
               value={aiPrompt}
               onChangeText={setAiPrompt}
-              placeholder="Describe the plan and expected quest outcome..."
+              placeholder={copy.promptPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, styles.notesInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
               multiline
@@ -1211,7 +1461,7 @@ const AdultHomeScreen = () => {
                 android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               >
                 <Text style={[styles.modalButtonLabel, { color: colors.text }]} allowFontScaling>
-                  Cancel
+                  {copy.cancel}
                 </Text>
               </Pressable>
 
@@ -1229,7 +1479,7 @@ const AdultHomeScreen = () => {
                 android_ripple={{ color: 'rgba(255, 255, 255, 0.16)' }}
               >
                 <Text style={[styles.modalButtonLabel, styles.modalButtonLabelPrimary]} allowFontScaling>
-                  {isGeneratingPlan ? 'Generating...' : 'Generate plan'}
+                  {isGeneratingPlan ? copy.generating : copy.generatePlan}
                 </Text>
               </Pressable>
             </View>

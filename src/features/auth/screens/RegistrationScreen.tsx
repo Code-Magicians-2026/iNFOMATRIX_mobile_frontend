@@ -19,6 +19,7 @@ import useThemeStore from '@/context/Theme-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import { getApiErrorMessage } from '@/src/features/auth/api/client';
+import { useI18n } from '@/src/i18n/useI18n';
 import type { ThemeColors } from '@/shared/styles/theme';
 
 type RegistrationNavigation = NativeStackNavigationProp<AppStackParamList, 'Registration'>;
@@ -36,6 +37,7 @@ const RegistrationScreen = () => {
   const register = useAuthStore((s) => s.register);
   const navigation = useNavigation<RegistrationNavigation>();
   const route = useRoute<RegistrationRoute>();
+  const { language, t } = useI18n();
 
   const [firstName, setFirstName] = React.useState('');
   const [lastName, setLastName] = React.useState('');
@@ -64,27 +66,27 @@ const RegistrationScreen = () => {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (normalizedFirstName.length < 2) {
-      setError("Введіть ім'я (мінімум 2 символи).");
+      setError(t('auth.registration.error.invalidFirstName'));
       return;
     }
 
     if (normalizedLastName.length < 2) {
-      setError("Введіть прізвище (мінімум 2 символи).");
+      setError(t('auth.registration.error.invalidLastName'));
       return;
     }
 
     if (!emailPattern.test(normalizedEmail)) {
-      setError('Введіть коректну електронну пошту.');
+      setError(t('auth.registration.error.invalidEmail'));
       return;
     }
 
     if (password.length < 6) {
-      setError('Пароль має містити щонайменше 6 символів.');
+      setError(t('auth.registration.error.shortPassword'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Паролі не співпадають.');
+      setError(t('auth.registration.error.passwordMismatch'));
       return;
     }
 
@@ -104,7 +106,7 @@ const RegistrationScreen = () => {
         }),
       );
     } catch (registrationError) {
-      setError(getApiErrorMessage(registrationError, 'Не вдалося зареєструватися.'));
+      setError(getApiErrorMessage(registrationError, t('auth.registration.error.generic'), language));
     }
   };
 
@@ -118,17 +120,17 @@ const RegistrationScreen = () => {
           style={styles.card}
           accessible
           importantForAccessibility="yes"
-          accessibilityLabel="Форма реєстрації"
+          accessibilityLabel={t('auth.registration.formLabel')}
         >
           <Text style={styles.title} allowFontScaling>
-            Реєстрація
+            {t('auth.registration.title')}
           </Text>
           <Text style={styles.subtitle} allowFontScaling>
-            Створіть обліковий запис
+            {t('auth.registration.subtitle')}
           </Text>
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              Ім&apos;я
+              {t('auth.registration.firstName')}
             </Text>
             <TextInput
               style={styles.input}
@@ -136,18 +138,18 @@ const RegistrationScreen = () => {
               onChangeText={setFirstName}
               autoCapitalize="words"
               autoCorrect={false}
-              placeholder="Ім'я"
+              placeholder={t('auth.registration.firstNamePlaceholder')}
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
-              accessibilityLabel="Ім'я"
-              accessibilityHint="Поле для введення імені"
+              accessibilityLabel={t('auth.registration.accessibility.firstNameLabel')}
+              accessibilityHint={t('auth.registration.accessibility.firstNameHint')}
               importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              Прізвище
+              {t('auth.registration.lastName')}
             </Text>
             <TextInput
               style={styles.input}
@@ -155,11 +157,11 @@ const RegistrationScreen = () => {
               onChangeText={setLastName}
               autoCapitalize="words"
               autoCorrect={false}
-              placeholder="Прізвище"
+              placeholder={t('auth.registration.lastNamePlaceholder')}
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
-              accessibilityLabel="Прізвище"
-              accessibilityHint="Поле для введення прізвища"
+              accessibilityLabel={t('auth.registration.accessibility.lastNameLabel')}
+              accessibilityHint={t('auth.registration.accessibility.lastNameHint')}
               importantForAccessibility="yes"
             />
           </View>
@@ -178,44 +180,44 @@ const RegistrationScreen = () => {
               placeholder="you@example.com"
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
-              accessibilityLabel="Електронна пошта"
-              accessibilityHint="Поле для введення електронної пошти"
+              accessibilityLabel={t('auth.registration.accessibility.emailLabel')}
+              accessibilityHint={t('auth.registration.accessibility.emailHint')}
               importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              Пароль
+              {t('common.password')}
             </Text>
             <TextInput
               style={styles.input}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              placeholder="Мінімум 6 символів"
+              placeholder={t('auth.registration.passwordPlaceholder')}
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
-              accessibilityLabel="Пароль"
-              accessibilityHint="Поле для введення паролю"
+              accessibilityLabel={t('auth.registration.accessibility.passwordLabel')}
+              accessibilityHint={t('auth.registration.accessibility.passwordHint')}
               importantForAccessibility="yes"
             />
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} allowFontScaling>
-              Підтвердження пароля
+              {t('auth.registration.confirmPassword')}
             </Text>
             <TextInput
               style={styles.input}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
-              placeholder="Повторіть пароль"
+              placeholder={t('auth.registration.confirmPasswordPlaceholder')}
               placeholderTextColor={colors.textSecondary}
               editable={!registerMutation.isPending}
-              accessibilityLabel="Підтвердження пароля"
-              accessibilityHint="Поле для повторного введення паролю"
+              accessibilityLabel={t('auth.registration.accessibility.confirmPasswordLabel')}
+              accessibilityHint={t('auth.registration.accessibility.confirmPasswordHint')}
               importantForAccessibility="yes"
             />
           </View>
@@ -241,8 +243,8 @@ const RegistrationScreen = () => {
             ]}
             android_ripple={{ color: "rgba(0, 0, 0, 0.1)" }}
             accessibilityRole="button"
-            accessibilityLabel="Кнопка реєстрації"
-            accessibilityHint="Створює новий акаунт"
+            accessibilityLabel={t('auth.registration.accessibility.registerButtonLabel')}
+            accessibilityHint={t('auth.registration.accessibility.registerButtonHint')}
             accessibilityState={{ disabled: registerMutation.isPending }}
             importantForAccessibility="yes"
           >
@@ -250,7 +252,7 @@ const RegistrationScreen = () => {
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryButtonText} allowFontScaling>
-                Зареєструватися
+                {t('auth.registration.register')}
               </Text>
             )}
           </Pressable>
@@ -271,13 +273,13 @@ const RegistrationScreen = () => {
             ]}
             android_ripple={{ color: "rgba(0, 0, 0, 0.1)" }}
             accessibilityRole="button"
-            accessibilityLabel="Кнопка входу"
-            accessibilityHint="Переходить на екран входу"
+            accessibilityLabel={t('auth.registration.accessibility.loginButtonLabel')}
+            accessibilityHint={t('auth.registration.accessibility.loginButtonHint')}
             accessibilityState={{ disabled: registerMutation.isPending }}
             importantForAccessibility="yes"
           >
             <Text style={styles.secondaryButtonText} allowFontScaling>
-              Вже є акаунт
+              {t('auth.registration.loginInstead')}
             </Text>
           </Pressable>
         </View>

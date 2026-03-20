@@ -6,6 +6,7 @@ import useThemeStore from '@/context/Theme-store';
 import useOfflineTestingStore from '@/context/OfflineTesting-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import LanguageSwitcherStub from '@/src/features/profile/components/LanguageSwitcherStub';
+import { useI18n } from '@/src/i18n/useI18n';
 import { getStyles } from '@/src/features/profile/styles/settings.styles';
 
 const SettingsScreen = () => {
@@ -19,6 +20,7 @@ const SettingsScreen = () => {
   const setRole = useAuthStore((s) => s.setRole);
   const effectiveRole = role ?? 'child';
   const { isLandscape, isTablet, spacing } = useResponsiveLayout();
+  const { t } = useI18n();
   const styles = React.useMemo(
     () => getStyles(colors, spacing, isTablet, isLandscape),
     [colors, isLandscape, isTablet, spacing],
@@ -30,14 +32,14 @@ const SettingsScreen = () => {
         style={styles.settingRow}
         accessible
         importantForAccessibility="yes"
-        accessibilityLabel="Налаштування офлайн демо режиму"
+        accessibilityLabel={t('settings.offlineMode.accessibilityLabel')}
       >
         <View style={styles.labelWrap}>
           <Text style={styles.label} allowFontScaling>
-            Offline testing mode
+            {t('settings.offlineMode.title')}
           </Text>
           <Text style={styles.description} allowFontScaling>
-            Demo data only, no backend requests
+            {t('settings.offlineMode.description')}
           </Text>
         </View>
         <Switch
@@ -46,9 +48,9 @@ const SettingsScreen = () => {
           onValueChange={(value) => {
             void setOfflineTestingMode(value);
           }}
-          trackColor={{ false: "#767577", true: "#ff2d55" }}
-          accessibilityLabel="Перемикач офлайн демо режиму"
-          accessibilityHint="Вмикає локальний офлайн режим із mock даними"
+          trackColor={{ false: '#767577', true: '#ff2d55' }}
+          accessibilityLabel={t('settings.offlineMode.switchLabel')}
+          accessibilityHint={t('settings.offlineMode.switchHint')}
         />
       </View>
 
@@ -57,14 +59,14 @@ const SettingsScreen = () => {
           style={styles.settingBlock}
           accessible
           importantForAccessibility="yes"
-          accessibilityLabel="Debug перемикач ролі"
+          accessibilityLabel={t('settings.debugRole.accessibilityLabel')}
         >
           <View style={styles.labelWrap}>
             <Text style={styles.label} allowFontScaling>
-              Debug role
+              {t('settings.debugRole.title')}
             </Text>
             <Text style={styles.description} allowFontScaling>
-              Available only in offline testing mode
+              {t('settings.debugRole.description')}
             </Text>
           </View>
           <View style={styles.roleChipsRow}>
@@ -81,7 +83,7 @@ const SettingsScreen = () => {
               ]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               accessibilityRole="button"
-              accessibilityLabel="Увімкнути роль adult"
+              accessibilityLabel={t('settings.debugRole.adultButton')}
             >
               <Text
                 style={[
@@ -90,7 +92,7 @@ const SettingsScreen = () => {
                 ]}
                 allowFontScaling
               >
-                Adult
+                {t('common.roleAdult')}
               </Text>
             </Pressable>
             <Pressable
@@ -106,7 +108,7 @@ const SettingsScreen = () => {
               ]}
               android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
               accessibilityRole="button"
-              accessibilityLabel="Увімкнути роль child"
+              accessibilityLabel={t('settings.debugRole.childButton')}
             >
               <Text
                 style={[
@@ -115,7 +117,7 @@ const SettingsScreen = () => {
                 ]}
                 allowFontScaling
               >
-                Child
+                {t('common.roleChild')}
               </Text>
             </Pressable>
           </View>
@@ -126,11 +128,11 @@ const SettingsScreen = () => {
         style={styles.settingRow}
         accessible
         importantForAccessibility="yes"
-        accessibilityLabel="Налаштування темної теми"
+        accessibilityLabel={t('settings.darkTheme.accessibilityLabel')}
       >
         <View style={styles.labelWrap}>
           <Text style={styles.label} allowFontScaling>
-            Темна тема
+            {t('settings.darkTheme.title')}
           </Text>
         </View>
         <Switch
@@ -138,9 +140,9 @@ const SettingsScreen = () => {
           onValueChange={() => {
             void toggleTheme();
           }}
-          trackColor={{ false: "#767577", true: "#ff2d55" }}
-          accessibilityLabel="Перемикач темної теми"
-          accessibilityHint="Вмикає або вимикає темну тему застосунку"
+          trackColor={{ false: '#767577', true: '#ff2d55' }}
+          accessibilityLabel={t('settings.darkTheme.switchLabel')}
+          accessibilityHint={t('settings.darkTheme.switchHint')}
         />
       </View>
 
@@ -148,17 +150,17 @@ const SettingsScreen = () => {
         style={styles.settingRow}
         accessible
         importantForAccessibility="yes"
-        accessibilityLabel="Налаштування біометричної автентифікації"
+        accessibilityLabel={t('settings.biometric.accessibilityLabel')}
       >
         <View style={styles.labelWrap}>
           <Text style={styles.label} allowFontScaling>
-            Біометрична автентифікація
+            {t('settings.biometric.title')}
           </Text>
         </View>
         <Switch
-          trackColor={{ false: "#767577", true: "#ff2d55" }}
-          accessibilityLabel="Перемикач біометричної автентифікації"
-          accessibilityHint="Вмикає або вимикає біометричну автентифікацію"
+          trackColor={{ false: '#767577', true: '#ff2d55' }}
+          accessibilityLabel={t('settings.biometric.switchLabel')}
+          accessibilityHint={t('settings.biometric.switchHint')}
         />
       </View>
 
@@ -166,7 +168,7 @@ const SettingsScreen = () => {
         style={styles.settingBlock}
         accessible
         importantForAccessibility="yes"
-        accessibilityLabel="Налаштування мови інтерфейсу"
+        accessibilityLabel={t('settings.language.sectionLabel')}
       >
         <LanguageSwitcherStub colors={colors} isTablet={isTablet} />
       </View>

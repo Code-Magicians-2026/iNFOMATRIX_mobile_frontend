@@ -7,9 +7,10 @@ import { Ionicons } from '@expo/vector-icons';
 import useAuthStore from '@/context/Auth-store';
 import useResponsiveLayout from '@/hooks/use-responsive-layout';
 import useThemeStore from '@/context/Theme-store';
+import { useI18n } from '@/src/i18n/useI18n';
 import type { AppStackParamList } from '@/src/navigation/AppNavigator';
 import achievementsStorage from '@/src/features/profile/services/achievementsStorage';
-import type { ProgressSummary, UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
+import type { ChildProfile, ProgressSummary, UserProfile, UserRole } from '@/shared/models/mvp-contracts.model';
 import {
   EmptyState,
   LoadingState,
@@ -31,33 +32,46 @@ type ProfileNavigation = NativeStackNavigationProp<AppStackParamList>;
 const XP_PER_LEVEL = 300;
 const PROFILE_FOCUS_REFRESH_COOLDOWN_MS = 5000;
 
-const toMetricLabel = (value: string) => {
-  const normalized = value.trim();
-  if (!normalized) {
-    return 'Quests';
-  }
-
-  return normalized[0].toUpperCase() + normalized.slice(1);
-};
-
 const ProfileScreen = () => {
   const navigation = useNavigation<ProfileNavigation>();
   const colors = useThemeStore((s) => s.colors);
   const { cardMaxWidth, isTablet, spacing } = useResponsiveLayout();
+  const { t } = useI18n();
 
   const session = useAuthStore((s) => s.session);
   const family = useAuthStore((s) => s.family);
   const role = useAuthStore((s) => s.role);
+  const selectedChildId = useAuthStore((s) => s.selectedChildId);
   const refreshFamily = useAuthStore((s) => s.refreshFamily);
   const setRole = useAuthStore((s) => s.setRole);
   const logout = useAuthStore((s) => s.logout);
 
   const effectiveRole: UserRole = role ?? 'child';
 
-  const styles = React.useMemo(() => getStyles(cardMaxWidth, isTablet, spacing), [cardMaxWidth, isTablet, spacing]);
+  const styles = React.useMemo(
+    () => getStyles(cardMaxWidth, isTablet, spacing),
+    [cardMaxWidth, isTablet, spacing],
+  );
+
+  const toMetricLabel = React.useCallback(
+    (value: string) => {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) {
+        return t('profile.metric.default');
+      }
+
+      if (normalized === 'quests') {
+        return t('profile.metric.quests');
+      }
+
+      return normalized[0].toUpperCase() + normalized.slice(1);
+    },
+    [t],
+  );
 
   const [me, setMe] = React.useState<UserProfile | null>(null);
   const [progress, setProgress] = React.useState<ProgressSummary | null>(null);
+  const [children, setChildren] = React.useState<ChildProfile[]>([]);
   const [childrenCount, setChildrenCount] = React.useState(0);
   const [plansCount, setPlansCount] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -107,13 +121,21 @@ const ProfileScreen = () => {
 
       setMe(meData);
       setProgress(progressData);
-      await loadAchievementsMeta(meData.id);
 
       if (effectiveRole === 'adult') {
         const [childrenData, plansData] = await Promise.all([
           childrenService.getChildren(),
           plansService.getPlans(),
         ]);
+        setChildren(childrenData);
+
+        const hasSelectedChild = selectedChildId
+          ? childrenData.some((child) => child.id === selectedChildId)
+          : false;
+        const achievementsOwnerId =
+          hasSelectedChild && selectedChildId ? selectedChildId : meData.id;
+        await loadAchievementsMeta(achievementsOwnerId);
+
         const childIds = new Set(childrenData.map((child) => child.id));
         const assignedPlans = plansData.filter((plan) =>
           plan.quests.some((quest) => childIds.has(quest.assignedToUserId)),
@@ -122,21 +144,46 @@ const ProfileScreen = () => {
         setChildrenCount(childrenData.length);
         setPlansCount(assignedPlans.length);
       } else {
+        setChildren([]);
+        await loadAchievementsMeta(meData.id);
         setChildrenCount(0);
         setPlansCount(0);
       }
     } catch {
-      setScreenError('Failed to load profile progress. Please try again.');
+      setScreenError(t('profile.error.load'));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
       lastProfileRefreshAtRef.current = Date.now();
     }
-  }, [effectiveRole, loadAchievementsMeta, refreshFamily, session]);
+  }, [effectiveRole, loadAchievementsMeta, refreshFamily, selectedChildId, session, t]);
 
   React.useEffect(() => {
     void loadProfile(true);
   }, [loadProfile]);
+
+  const selectedChild = React.useMemo(
+    () => children.find((child) => child.id === selectedChildId) ?? null,
+    [children, selectedChildId],
+  );
+
+  const achievementsOwner = React.useMemo(() => {
+    if (effectiveRole === 'adult' && selectedChild) {
+      return {
+        id: selectedChild.id,
+        displayName: selectedChild.fullName,
+      };
+    }
+
+    if (!me?.id) {
+      return null;
+    }
+
+    return {
+      id: me.id,
+      displayName: me.fullName,
+    };
+  }, [effectiveRole, me?.fullName, me?.id, selectedChild]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -148,12 +195,12 @@ const ProfileScreen = () => {
         void loadProfile(false);
       }
 
-      if (me?.id) {
-        void loadAchievementsMeta(me.id);
+      if (achievementsOwner?.id) {
+        void loadAchievementsMeta(achievementsOwner.id);
       }
 
       return undefined;
-    }, [isLoading, loadAchievementsMeta, loadProfile, me?.id]),
+    }, [achievementsOwner?.id, isLoading, loadAchievementsMeta, loadProfile]),
   );
 
   const onLogoutPress = async () => {
@@ -187,32 +234,36 @@ const ProfileScreen = () => {
   );
 
   const strongestMetric = categoryStats[0];
-  const canOpenEarnedBadges = Boolean(me?.id);
-  const canOpenAchievements = Boolean(me?.id);
+  const canOpenEarnedBadges = Boolean(achievementsOwner?.id);
+  const canOpenAchievements = Boolean(achievementsOwner?.id);
 
   const childBadges = React.useMemo(() => {
     const badges: string[] = [];
 
     if (completedQuests >= 1) {
-      badges.push('First Quest');
+      badges.push(t('profile.badges.firstQuest'));
     }
     if (streak >= 3) {
-      badges.push('Consistency');
+      badges.push(t('profile.badges.consistency'));
     }
     if (totalXp >= 500) {
-      badges.push('XP Hunter');
+      badges.push(t('profile.badges.xpHunter'));
     }
     if ((strongestMetric?.[1] ?? 0) >= 3) {
-      badges.push(`${toMetricLabel(strongestMetric?.[0] ?? 'quests')} Specialist`);
+      badges.push(
+        t('profile.badges.specialist', {
+          metric: toMetricLabel(strongestMetric?.[0] ?? 'quests'),
+        }),
+      );
     }
 
     return badges;
-  }, [completedQuests, streak, strongestMetric, totalXp]);
+  }, [completedQuests, streak, strongestMetric, t, toMetricLabel, totalXp]);
 
   if (isLoading) {
     return (
       <ScreenContainer centered>
-        <LoadingState label="Loading profile progress..." />
+        <LoadingState label={t('profile.loading')} />
       </ScreenContainer>
     );
   }
@@ -220,151 +271,238 @@ const ProfileScreen = () => {
   return (
     <ScreenContainer>
       <SectionHeader
-        title="Profile"
+        title={t('profile.title')}
         subtitle={
           effectiveRole === 'adult'
-            ? 'Adult progress and family overview'
-            : 'Child progress and achievements'
+            ? t('profile.subtitle.adult')
+            : t('profile.subtitle.child')
         }
       />
 
-      {screenError ? <EmptyState title="Profile error" description={screenError} /> : null}
+      {screenError ? (
+        <EmptyState title={t('profile.error.title')} description={screenError} />
+      ) : null}
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <UpgradePlanBanner
           style={styles.card}
           onOpenFailed={() => {
-            setScreenError('Failed to open pricing page. Please try again.');
+            setScreenError(t('profile.error.pricing'));
           }}
         />
 
-        <StatCard title={me?.fullName ?? 'Profile'} subtitle={me?.email ?? 'local profile'} style={styles.card}>
+        <StatCard
+          title={me?.fullName ?? t('profile.identity.defaultName')}
+          subtitle={me?.email ?? t('profile.identity.defaultEmail')}
+          style={styles.card}
+        >
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Role: {effectiveRole}
+            {t('profile.metric.role', {
+              role: effectiveRole === 'adult' ? t('common.roleAdult') : t('common.roleChild'),
+            })}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Total XP: {totalXp}
+            {t('profile.metric.totalXp', { value: totalXp })}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Level: {level}
+            {t('profile.metric.level', { value: level })}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Streak: {streak}
+            {t('profile.metric.streak', { value: streak })}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Completed quests: {completedQuests}
+            {t('profile.metric.completedQuests', { value: completedQuests })}
           </Text>
           <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-            Active quests: {activeQuests}
+            {t('profile.metric.activeQuests', { value: activeQuests })}
           </Text>
         </StatCard>
 
-        <StatCard title="Quest Stats" subtitle="Completed quest metrics" style={styles.card}>
+        <StatCard
+          title={t('profile.questStats.title')}
+          subtitle={t('profile.questStats.subtitle')}
+          style={styles.card}
+        >
           {categoryStats.length > 0 ? (
             categoryStats.map(([metric, count]) => (
-              <Text key={metric} style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                {toMetricLabel(metric)}: {count}
+              <Text
+                key={metric}
+                style={[styles.metricText, { color: colors.text }]}
+                allowFontScaling
+              >
+                {t('profile.questStats.metric', {
+                  metric: toMetricLabel(metric),
+                  count,
+                })}
               </Text>
             ))
           ) : (
-            <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-              Complete quests to build quest stats.
+            <Text
+              style={[styles.metricText, { color: colors.textSecondary }]}
+              allowFontScaling
+            >
+              {t('profile.questStats.empty')}
             </Text>
           )}
         </StatCard>
 
         {effectiveRole === 'adult' ? (
-          <StatCard title="Family Overview" subtitle="Adult-only metrics" style={styles.card}>
+          <StatCard
+            title={t('profile.familyOverview.title')}
+            subtitle={t('profile.familyOverview.subtitle')}
+            style={styles.card}
+          >
             <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-              Children count: {childrenCount}
+              {t('profile.familyOverview.childrenCount', { value: childrenCount })}
             </Text>
             <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-              Plans count: {plansCount}
+              {t('profile.familyOverview.plansCount', { value: plansCount })}
             </Text>
           </StatCard>
         ) : (
-          <StatCard title="Child Progress" subtitle="Level growth and achievements" style={styles.card}>
+          <StatCard
+            title={t('profile.childProgress.title')}
+            subtitle={t('profile.childProgress.subtitle')}
+            style={styles.card}
+          >
             <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-              Progress to next level: {levelProgressPercent}% ({xpToNextLevel} XP left)
+              {t('profile.childProgress.toNextLevel', {
+                percent: levelProgressPercent,
+                xp: xpToNextLevel,
+              })}
             </Text>
             <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-              <View style={[styles.progressFill, { width: `${levelProgressPercent}%` }]} />
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${levelProgressPercent}%` },
+                ]}
+              />
             </View>
 
             <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-              Top quest metric: {strongestMetric ? toMetricLabel(strongestMetric[0]) : 'Not enough data'}
+              {t('profile.childProgress.topMetric', {
+                metric: strongestMetric
+                  ? toMetricLabel(strongestMetric[0])
+                  : t('profile.childProgress.noData'),
+              })}
             </Text>
 
             <View style={styles.badgesWrap}>
               {childBadges.length > 0 ? (
                 childBadges.map((badge) => (
-                  <View key={badge} style={[styles.badge, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                  <View
+                    key={badge}
+                    style={[
+                      styles.badge,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  >
                     <Text style={[styles.badgeText, { color: colors.text }]} allowFontScaling>
                       {badge}
                     </Text>
                   </View>
                 ))
               ) : (
-                <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-                  Complete quests to unlock your first achievement.
+                <Text
+                  style={[styles.metricText, { color: colors.textSecondary }]}
+                  allowFontScaling
+                >
+                  {t('profile.childProgress.emptyAchievements')}
                 </Text>
               )}
             </View>
-
           </StatCard>
         )}
 
-        <StatCard title="Achievements" subtitle="Unlock surprises as you complete quests" style={styles.card}>
+        <StatCard
+          title={t('profile.achievements.title')}
+          subtitle={t('profile.achievements.subtitle')}
+          style={styles.card}
+        >
           <Pressable
-            style={[styles.achievementItem, { borderColor: colors.border, backgroundColor: colors.background }]}
+            style={[
+              styles.achievementItem,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.background,
+              },
+            ]}
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)' }}
             onPress={() => {
-              if (!me?.id) {
+              if (!achievementsOwner?.id) {
                 return;
               }
 
               navigation.navigate('Achievements', {
-                userId: me.id,
-                displayName: me.fullName,
+                userId: achievementsOwner.id,
+                displayName: achievementsOwner.displayName,
               });
             }}
             disabled={!canOpenAchievements}
           >
             <View style={styles.achievementItemLeft}>
               <View style={styles.achievementIconWrap}>
-                <Ionicons name="trophy-outline" size={isTablet ? 22 : 20} color="#ff2d55" />
+                <Ionicons
+                  name="trophy-outline"
+                  size={isTablet ? 22 : 20}
+                  color="#ff2d55"
+                />
               </View>
               <View style={styles.achievementTextWrap}>
                 <Text style={[styles.achievementTitle, { color: colors.text }]} allowFontScaling>
-                  Achievements
+                  {t('profile.achievements.itemTitle')}
                 </Text>
-                <Text style={[styles.achievementSubtitle, { color: colors.textSecondary }]} allowFontScaling>
-                  Unlocked: {unlockedAchievementsCount}
+                <Text
+                  style={[styles.achievementSubtitle, { color: colors.textSecondary }]}
+                  allowFontScaling
+                >
+                  {t('profile.achievements.unlocked', { value: unlockedAchievementsCount })}
                 </Text>
               </View>
             </View>
-            <Text style={[styles.achievementMeta, { color: newAchievementsCount > 0 ? '#ff2d55' : colors.textSecondary }]} allowFontScaling>
-              {newAchievementsCount > 0 ? `• ${newAchievementsCount} new` : 'Open'}
+            <Text
+              style={[
+                styles.achievementMeta,
+                {
+                  color: newAchievementsCount > 0 ? '#ff2d55' : colors.textSecondary,
+                },
+              ]}
+              allowFontScaling
+            >
+              {newAchievementsCount > 0
+                ? t('profile.achievements.new', { value: newAchievementsCount })
+                : t('common.open')}
             </Text>
           </Pressable>
         </StatCard>
 
-        <StatCard title="Earned Badges" subtitle="Saved badge collection" style={styles.card}>
+        <StatCard
+          title={t('profile.earnedBadges.title')}
+          subtitle={t('profile.earnedBadges.subtitle')}
+          style={styles.card}
+        >
           <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-            Open your saved badges collected from completed quests.
+            {t('profile.earnedBadges.description')}
           </Text>
           <PrimaryButton
-            label="Переглянути отримані бейджі"
+            label={t('profile.earnedBadges.openButton')}
             variant="secondary"
             disabled={!canOpenEarnedBadges}
             onPress={() => {
-              if (!me?.id) {
+              if (!achievementsOwner?.id) {
                 return;
               }
 
               navigation.navigate('EarnedBadges', {
-                userId: me.id,
-                displayName: me.fullName,
+                userId: achievementsOwner.id,
+                displayName: achievementsOwner.displayName,
               });
             }}
             style={styles.earnedBadgesButton}
@@ -372,8 +510,8 @@ const ProfileScreen = () => {
         </StatCard>
 
         <StatCard
-          title={session ? 'Signed in account' : 'Guest mode'}
-          subtitle={session ? 'Session active' : 'Sign in to sync progress'}
+          title={session ? t('profile.session.signedInTitle') : t('profile.session.guestTitle')}
+          subtitle={session ? t('profile.session.signedInSubtitle') : t('profile.session.guestSubtitle')}
           style={styles.card}
         >
           {session ? (
@@ -382,22 +520,29 @@ const ProfileScreen = () => {
                 {session.email}
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Family ID: {family?.id ?? 'not linked'}
+                {t('profile.session.familyId', {
+                  value: family?.id ?? t('profile.session.notLinked'),
+                })}
               </Text>
               <Text style={[styles.metricText, { color: colors.text }]} allowFontScaling>
-                Family Name: {family?.name ?? 'not set'}
+                {t('profile.session.familyName', {
+                  value: family?.name ?? t('profile.session.notSet'),
+                })}
               </Text>
             </>
           ) : (
-            <Text style={[styles.metricText, { color: colors.textSecondary }]} allowFontScaling>
-              Use login or registration to sync profile data.
+            <Text
+              style={[styles.metricText, { color: colors.textSecondary }]}
+              allowFontScaling
+            >
+              {t('profile.session.guestDescription')}
             </Text>
           )}
         </StatCard>
 
         {session ? (
           <PrimaryButton
-            label="Вийти"
+            label={t('profile.auth.logout')}
             onPress={() => {
               void onLogoutPress();
             }}
@@ -407,12 +552,12 @@ const ProfileScreen = () => {
         ) : (
           <>
             <PrimaryButton
-              label="Увійти"
+              label={t('profile.auth.login')}
               onPress={() => navigation.navigate('Login', { redirectTo: 'Profile' })}
               style={styles.card}
             />
             <PrimaryButton
-              label="Реєстрація"
+              label={t('profile.auth.register')}
               variant="secondary"
               onPress={() =>
                 navigation.navigate('Registration', {
@@ -425,7 +570,7 @@ const ProfileScreen = () => {
         )}
 
         <PrimaryButton
-          label={isRefreshing ? 'Refreshing...' : 'Refresh progress'}
+          label={isRefreshing ? t('profile.refresh.refreshing') : t('profile.refresh.action')}
           variant="tertiary"
           disabled={isRefreshing}
           onPress={() => {
@@ -435,13 +580,12 @@ const ProfileScreen = () => {
         />
 
         <PrimaryButton
-          label="Налаштування"
+          label={t('profile.settings')}
           variant="secondary"
           onPress={() => navigation.navigate('Settings')}
           style={styles.card}
         />
       </ScrollView>
-
     </ScreenContainer>
   );
 };

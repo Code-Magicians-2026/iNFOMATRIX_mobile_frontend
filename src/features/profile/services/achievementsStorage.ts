@@ -32,6 +32,11 @@ const isNonEmptyString = (value: unknown): value is string =>
 const isRarity = (value: unknown): value is UnlockedAchievement['rarity'] =>
   value === 'common' || value === 'rare' || value === 'epic';
 
+const normalizeIdForCompare = (value: string) => value.trim().toLowerCase();
+
+const isSameEntityId = (left: string, right: string): boolean =>
+  normalizeIdForCompare(left) === normalizeIdForCompare(right);
+
 const isUnlockedAchievement = (value: unknown): value is UnlockedAchievement => {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -63,7 +68,13 @@ const readAll = async (): Promise<UnlockedAchievement[]> => {
       return [];
     }
 
-    return parsed.filter((item): item is UnlockedAchievement => isUnlockedAchievement(item));
+    return parsed
+      .filter((item): item is UnlockedAchievement => isUnlockedAchievement(item))
+      .map((item) => ({
+        ...item,
+        id: item.id.trim(),
+        userId: item.userId.trim(),
+      }));
   } catch {
     return [];
   }
@@ -95,7 +106,9 @@ const unlockAchievement = async ({
 
   const records = await readAll();
   const existing = records.find(
-    (record) => record.userId === normalizedUserId && record.id === normalizedAchievementId,
+    (record) =>
+      isSameEntityId(record.userId, normalizedUserId) &&
+      isSameEntityId(record.id, normalizedAchievementId),
   );
   if (existing) {
     return { achievement: existing, isNewUnlock: false };
@@ -125,7 +138,7 @@ const getUnlockedAchievementsByUser = async (userId: string): Promise<UnlockedAc
   }
 
   const records = await readAll();
-  return sortByNewest(records.filter((record) => record.userId === normalizedUserId));
+  return sortByNewest(records.filter((record) => isSameEntityId(record.userId, normalizedUserId)));
 };
 
 const getNewAchievementsCount = async (userId: string): Promise<number> => {
@@ -142,7 +155,7 @@ const markAchievementsAsSeen = async (userId: string): Promise<void> => {
   const records = await readAll();
   let hasChanges = false;
   const nextRecords = records.map((record) => {
-    if (record.userId !== normalizedUserId || !record.isNew) {
+    if (!isSameEntityId(record.userId, normalizedUserId) || !record.isNew) {
       return record;
     }
 
